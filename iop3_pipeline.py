@@ -16,26 +16,17 @@ import os
 import argparse
 import glob
 import re
-from collections import defaultdict
 
-import numpy as np
 import pandas as pd
+import jinja2 # HTML templates packages for documentation and logging
 
-# from astropy.coordinates import SkyCoord
-# import astropy.units as u
-
-# HTML templates packages for documentation and logging
-import jinja2 # templates module
-
-# from mcReduction import *
-import mcReduction
 from mcFits import *
 
 # ------------------------ MAIN FUNCTION SECTION -----------------------------
 def main():
     parser = argparse.ArgumentParser(prog='iop3_pipeline.py', \
     conflict_handler='resolve',
-    description='''Main program that reads, classify and reduces data from 
+    description='''Main program that reads, classify, reduces and calibrate 
     FITS located at input directory. ''',
     epilog='''''')
     parser.add_argument("config_dir", help="Configuration parameter files directory") # mandatory argument
@@ -46,7 +37,7 @@ def main():
        dest="border_image",
        type=int,
        default=15,
-       help="True is input file is for clusters [default: %(default)s].")
+       help="Discarded FITS border pixels [default: %(default)s].")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
@@ -155,9 +146,24 @@ def main():
     return -1
 
     # 4th STEP: Inserting results in database
-    #print("INSERTING RESULTS IN DATABASE. Please wait...")
-    #com_insertdb = "python iop3_add_db_info.py {raw_csv} {bias_csv} {flats_csv} {red_csv} {cal_csv}"
-    #print(com_insertdb)
+    # raw_csv = os.path.join(reduction_dir, 'input_data_raw.csv')
+    # red_csv = os.path.join(reduction_dir, 'output_data_red.csv')
+    # bias_csv = os.path.join(reduction_dir, 'masterbias_data.csv')
+    # flats_csv = os.path.join(reduction_dir, 'masterflats_data.csv')
+    
+    # info_files = glob.glob(os.path.join(calibration_dir, '*/*final_info.csv'))
+    # cal_df = pd.concat([pd.read_csv(p) for p in info_files], ignore_index=True)
+    # cal_csv = os.path.join(calibration_dir, 'output_data_cal.csv')
+    # cal_df.to_csv(cal_csv, index=False)
+    
+    # Inserting information on Database...
+    # com_insertdb = f"python iop3_add_db_info.py {raw_csv} {bias_csv} {flats_csv} {red_csv} {cal_csv}"
+    data_dir = input_dir.split('data')[0] + 'data'
+    com_insertdb = f"python iop3_add_db_info.py {data_dir} {date_run}"
+    print(com_insertdb)
+    with open(os.path.join(polarization_dir, 'db.log'), 'w') as log_file:
+        subprocess.Popen(com_insertdb, shell=True, stdout=log_file).wait()
+
 
     return 0
 

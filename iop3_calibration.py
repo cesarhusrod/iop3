@@ -14,14 +14,12 @@ VERSION:
 
 # ---------------------- IMPORT SECTION ----------------------
 import shutil
-import sys
 import os
 import argparse
 import subprocess
 import pprint
 import re
 from collections import defaultdict
-import pickle
 
 # Data structures libraries
 import numpy as np
@@ -48,6 +46,9 @@ from astropy.time import Time
 # Catalogs query
 from astroquery.vizier import Vizier
 Vizier.ROW_LIMIT = -1
+
+# HTML ouput template
+import jinja2
 
 # ------------------------ Module functions ------------------------------
 def medianFits(input_fits, output_fits, size=5):

@@ -3,5 +3,8 @@
 *.pdf
 __pycache__/
 *.backup
-*/conf/*.fits
-*/conf/templates
+conf/*.fits
+conf/templates
+conf/*out
+conf/*outexit
+conf/*.yml

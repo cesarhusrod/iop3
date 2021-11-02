@@ -2,7 +2,19 @@
 
 -- USE `iop3db`;
 
+DROP TABLE IF EXISTS `blazar_polarimetry`;
+DROP TABLE IF EXISTS `polarimetry_data`;
+DROP TABLE IF EXISTS `blazar_measure`;
+DROP TABLE IF EXISTS `image_calibrated`;
+DROP TABLE IF EXISTS `image_reduced`;
+DROP TABLE IF EXISTS `raw_flat`;
+DROP TABLE IF EXISTS `master_flat`;
+DROP TABLE IF EXISTS `raw_bias`;
+DROP TABLE IF EXISTS `master_bias`;
+DROP TABLE IF EXISTS `image_raw`;
 DROP TABLE IF EXISTS `blazar_source`;
+
+
 CREATE TABLE IF NOT EXISTS `blazar_source`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT 'Object identification',
   `source_id` int unsigned NOT NULL COMMENT 'Associated Blazar identification for this object',
@@ -19,7 +31,7 @@ CREATE TABLE IF NOT EXISTS `blazar_source`(
   `dTheta` DECIMAL(10,5) DEFAULT NULL COMMENT 'Error in Polarization Angle measured for this source'
 );
 
-DROP TABLE IF EXISTS `image_raw`;
+
 CREATE TABLE IF NOT EXISTS `image_raw`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT 'Raw image identificator',
   `date_run` date NOT NULL COMMENT 'Night date were image were taken',
@@ -46,7 +58,7 @@ CREATE TABLE IF NOT EXISTS `image_raw`(
   `median` float DEFAULT NULL COMMENT 'Median pixel value'
 );
 
-DROP TABLE IF EXISTS `master_bias`;
+
 CREATE TABLE IF NOT EXISTS `master_bias`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT  COMMENT 'MasterBIAS identificator',
   `date_run` date NOT NULL COMMENT 'Night date were bias used for generating masterBIAS were taken',
@@ -65,7 +77,7 @@ CREATE TABLE IF NOT EXISTS `master_bias`(
   `median` float DEFAULT NULL COMMENT 'Median pixel value'
 );
 
-DROP TABLE IF EXISTS `raw_bias`;
+
 CREATE TABLE IF NOT EXISTS `raw_bias`(
   `id`int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   `master_bias_id` int unsigned NOT NULL,
@@ -75,7 +87,7 @@ CREATE TABLE IF NOT EXISTS `raw_bias`(
 );
 
 
-DROP TABLE IF EXISTS `master_flat`;
+
 CREATE TABLE IF NOT EXISTS `master_flat`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   `master_bias_id` int unsigned NOT NULL COMMENT 'MasteBIAS id used in masterFLAT generation',
@@ -99,7 +111,7 @@ CREATE TABLE IF NOT EXISTS `master_flat`(
   FOREIGN KEY (`master_bias_id`) REFERENCES `master_bias`(`id`) on delete cascade on update cascade
 );
 
-DROP TABLE IF EXISTS `raw_flat`;
+
 CREATE TABLE IF NOT EXISTS `raw_flat`(
   `id`int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   `master_flat_id` int unsigned NOT NULL,
@@ -108,20 +120,18 @@ CREATE TABLE IF NOT EXISTS `raw_flat`(
   FOREIGN KEY (`raw_id`) REFERENCES `image_raw`(`id`) on delete cascade on update cascade
 );
 
-DROP TABLE IF EXISTS `image_reduced`;
 CREATE TABLE IF NOT EXISTS `image_reduced`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   `raw_id` int unsigned NOT NULL,
   `master_bias_id` int unsigned NOT NULL,
   `master_flat_id` int unsigned NOT NULL,
   `path` varchar(100) NOT NULL COMMENT 'File name',
-  `soft` varchar(100) DEFAULT NULLL COMMENT 'Pipeline name and version',
+  `soft` varchar(100) DEFAULT NULL COMMENT 'Pipeline name and version',
   `date_run` date DEFAULT NULL COMMENT 'Night date when raw image was taken',
   `proc_date` date DEFAULT NULL COMMENT 'Date and time when reduced image was generated',
   `pix_border` int DEFAULT NULL COMMENT 'Number of pixels discarded in image borders',
   `naxis1` int DEFAULT NULL COMMENT 'Number of pixels in dimension 1',
   `naxis2` int DEFAULT NULL COMMENT 'Number of pixels in dimension 2',
-  `object` varchar(50) DEFAULT NULL COMMENT 'Object name',
   `type` varchar(30) DEFAULT NULL COMMENT 'bias, flat, science...',
   `object` varchar(30) NOT NULL COMMENT 'Object name',
   `ra2000` DECIMAL(15, 8) NOT NULL COMMENT 'Right Ascension (degrees)',
@@ -150,7 +160,7 @@ CREATE TABLE IF NOT EXISTS `image_reduced`(
   FOREIGN KEY (`raw_id`) REFERENCES `image_raw`(`id`) on delete cascade on update cascade
 );
 
-DROP TABLE IF EXISTS `image_calibrated`;
+
 CREATE TABLE IF NOT EXISTS `image_calibrated`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   `reduced_id` int unsigned NOT NULL COMMENT 'Reduced image identification',
@@ -219,7 +229,7 @@ CREATE TABLE IF NOT EXISTS `image_calibrated`(
   FOREIGN KEY (`reduced_id`) REFERENCES `image_reduced`(`id`) on delete cascade on update cascade
 );
 
-DROP TABLE IF EXISTS `blazar_measure`;
+
 CREATE TABLE IF NOT EXISTS `blazar_measure`(
   -- `id` int unsigned NOT NULL AUTO_INCREMENT,
   `cal_id` int unsigned NOT NULL,
@@ -247,7 +257,7 @@ CREATE TABLE IF NOT EXISTS `blazar_measure`(
   FOREIGN KEY (`cal_id`) REFERENCES `image_calibrated`(`id`) on delete cascade on update cascade
 );
 
-DROP TABLE IF EXISTS `polarimetry_data`;
+
 CREATE TABLE IF NOT EXISTS `polarimetry_data`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   `blazar_id` int unsigned NOT NULL COMMENT 'Blazar id',
@@ -266,7 +276,6 @@ CREATE TABLE IF NOT EXISTS `polarimetry_data`(
 );
 
 
-DROP TABLE IF EXISTS `blazar_polarimetry`;
 -- This table set relation between blazar_measure for each image_calibrated and final P+-dP/Theta+-dTheta stored in polarimetry_data
 CREATE TABLE IF NOT EXISTS `blazar_polarimetry`(
   `cal_id` int unsigned NOT NULL,

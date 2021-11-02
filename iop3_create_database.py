@@ -73,7 +73,7 @@ def main():
     mydb = mysql.connector.connect(host=args.db_server, \
         user=db_user, password=db_password, database=args.db_name)
 
-    mycursor = mydb.cursor()
+    mycursor = mydb.cursor(buffered=True)
 
     # Selecting database for table creation
     mycursor.execute(f"USE {args.db_name};")
@@ -81,7 +81,10 @@ def main():
     # Executing command for table creation in database
     with open(args.sql_file) as sql:
         print(f"INFO: Executing SQL commands given in '{args.sql_file}'")
-        mydb.cmd_query_iter(sql.read())
+        for query in [q for q in sql.read().split(';').strip() if len(q)>0]:
+            print(query)
+            mycursor.execute(query + ';')
+
 
     # Disconnecting
     mydb.close()

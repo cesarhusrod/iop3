@@ -12,34 +12,87 @@ VERSION:
 
 
 # ---------------------- IMPORT SECTION ----------------------
-# import collections
 import os
-# import sys
 import argparse
-# import glob
-# import subprocess
-# import math
-# import pickle
-# import pprint
-# import datetime
-# import re
-# from io import StringIO
-# import time
 from collections import defaultdict
 from pprint import pprint
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
-
-# from astropy.coordinates import SkyCoord
-# import astropy.units as u
-
 # HTML templates packages for documentation and logging
-import jinja2 # templates module
+import jinja2 
 
-# from mcReduction import *
 import mcReduction
 from mcFits import *
+
+def report(csv_file, output_dir, template_file, title=''):
+    """Create output HTML report with CSV input data.
+
+    Args:
+        csv_file (string): Input CSV FITS data file.
+        output_dir (string): Output directory report.
+        template_file (string): HMTL template file.
+        title (str): Report title.
+
+    Returns:
+        int:
+            0, if everything was OK.
+            1, if reading csv_file fault.
+            2, if file_template was not found.
+    
+    Exception:
+        Exception: If output html report could not be written.
+    """
+    # rendering Jinja2 web page template
+    results = None
+    try:
+        results = pd.read_csv(csv_file)
+    except:
+        print(f"ERROR: Reading CVS input file '{csv_file}'.")
+        return 1
+
+    # results = results.sort(columns='DATE-OBS')
+    results['FILENAME'] = [os.path.split(r)[1] for r in results['PATH'].values]
+    # results['FILEPNG'] = [quote(r.replace('.fits', '.png'), safe='') for r in results['FILENAME'].values]
+    # results['HISTOPNG'] = [quote(r.replace('.fits', '_histogram.png'), safe='') for r in results['FILENAME'].values]
+    if 'MJD-OBS' in results.columns:
+        results['MJDOBS'] = results['MJD-OBS']
+    if 'DATE-OBS' in results.columns:
+        results['DATEOBS'] = results['DATE-OBS']
+    
+
+    if not os.path.exists(template_file):
+        print(f"ERROR: Template file '{template_file}' not found.")
+        return 2
+
+    fits_dir = os.path.split(results['PATH'].values[0])[0]
+    template_dir, template_name = os.path.split(template_file)
+    templateLoader = jinja2.FileSystemLoader(searchpath=template_dir)
+    templateEnv = jinja2.Environment(loader=templateLoader)
+    template = templateEnv.get_template(template_name)
+
+    dictOfLists = results.to_dict(orient='list')
+    listOfDicts = [dict(zip(dictOfLists,t)) for t in zip(*dictOfLists.values())]
+    print(listOfDicts[0])
+
+    outputText = template.render(results=listOfDicts, \
+        title = title, fits_dir=fits_dir, \
+        num_fits = len(results['FILENAME']))  # this is where to put args to the template renderer
+    outputText = outputText.replace('assets/', \
+        os.path.join(template_dir, 'assets/'))
+
+    # saving QC HTML results page
+    outHTML = os.path.join(output_dir, template_name)
+    # print(f"outHTML = {outputText}")
+    try:
+        with open(outHTML, 'w') as fout:
+            fout.write(outputText)
+    except:
+        print(f"ERROR: output '{template_file}' could not be written.")
+        raise
+    
+    return 0
 
 # ------------------------ MAIN FUNCTION SECTION -----------------------------
 def main():
@@ -58,17 +111,6 @@ def main():
        type=int,
        default=0,
        help="True is input file is for clusters [default: %(default)s].")
-    # parser.add_argument("--calibration_dir",
-    #     action="store",
-    #     dest="calibration_dir",
-    #     default="./",
-    #     help="Output directory [default: %(default)s]")
-    #parser.add_argument("--bool_main_file",
-    #    action="store",
-    #    dest="bool_main_file",
-    #    type=bool,
-    #    default=False,
-    #    help="True is input file is for clusters [default: %(default)s].")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
@@ -151,12 +193,12 @@ def main():
             data_raw_input[some_key].append(ff.header.get(some_key, ''))
         
         info = ff.stats()
-        data_raw_input['MAX'] = info['MAX']
-        data_raw_input['MIN'] = info['MIN']
-        data_raw_input['MEAN'] = info['MEAN']
-        data_raw_input['STD'] = info['STD']
-        data_raw_input['MED'] = info['MEDIAN']
-        data_raw_input['TYPE'] = info['TYPE']
+        data_raw_input['MAX'].append(info['MAX'])
+        data_raw_input['MIN'].append(info['MIN'])
+        data_raw_input['MEAN'].append(info['MEAN'])
+        data_raw_input['STD'].append(info['STD'])
+        data_raw_input['MED'].append(info['MEDIAN'])
+        data_raw_input['TYPE'].append(info['TYPE'])
         
     
     # Saving input raw data
@@ -329,7 +371,34 @@ def main():
     df_red_out = pd.DataFrame(data_red_out)
     df_red_out.to_csv(csv_data_red, index=False)
 
-    return 0
+    # Reporting results...
+    dir_templates = os.path.join(args.config_dir, 'templates')
+    date_run = re.findall('MAPCAT_(\d{4}-\d{2}-\d{2})', args.input_dir)[0]
+
+    # Masterbias
+    res_rep_MB = report(csv_data_raw, \
+        output_dir=args.input_dir, dir_template=dir_templates, \
+        title=f'{date_run} MASTERBIAS result')
+    
+
+    # MasterFlats
+    res_rep_MF = report(csv_data_raw, \
+        output_dir=args.input_dir, dir_template=dir_templates, \
+        title=f'{date_run} MASTERFLATS result')
+    
+
+    # Raw images
+    template = os.path.join(dir_templates, 'raw_fits.html')
+    res_rep_RawFits = report(csv_data_raw, \
+        output_dir=args.input_dir, template_file=template, \
+        title=f'{date_run} raw FITS')
+    
+    # Reduced FITS
+    res_rep_RedFits = report(csv_data_red, \
+        output_dir=args.input_dir, dir_template=dir_templates, \
+        title=f'{date_run} reduced FITS')
+    
+
 
 if __name__ == '__main__':
     if not main():

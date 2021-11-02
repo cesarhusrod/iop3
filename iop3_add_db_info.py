@@ -102,8 +102,12 @@ def register_raw(data_dir, run_date, db_object):
             sql_insert = f"INSERT INTO image_raw ({','.join(params)}) VALUES ({v})"
             print(f"SQL command (image_raw) = '{sql_insert}'")
 
-            db_cursor.execute(sql_insert)
-            
+            try:
+                db_cursor.execute(sql_insert)
+            except:
+                print(f"SQL ERROR: {sql_insert}")
+                raise
+
             # Commiting insertion
             db_object.commit()
 
@@ -187,8 +191,12 @@ def register_masterbias(data_dir, run_date, db_object):
             sql_insert = f"INSERT INTO master_bias ({','.join(params)}) VALUES ({v})"
             print(f"SQL command (image_raw) = '{sql_insert}'")
 
-            db_cursor.execute(sql_insert)
-            
+            try:
+                db_cursor.execute(sql_insert)
+            except:
+                print(f"SQL ERROR: {sql_insert}")
+                raise
+
             # Commiting insertion
             db_object.commit()
 
@@ -276,7 +284,11 @@ def register_rawbias(data_dir, run_date, db_object):
             # Inserting new registers on database.raw_bias
             print(f"SQL command (raw_bias) = '{sql_insert}'")
 
-            db_cursor.execute(sql_insert)
+            try:
+                db_cursor.execute(sql_insert)
+            except:
+                print(f"SQL ERROR: {sql_insert}")
+                raise
             
             # Commiting insertion
             db_object.commit()
@@ -373,8 +385,12 @@ def register_masterflats(data_dir, run_date, db_object):
             sql_insert = f"INSERT INTO master_flat ({','.join(params)}) VALUES ({v})"
             print(f"SQL command (master_flat) = '{sql_insert}'")
 
-            db_cursor.execute(sql_insert)
-            
+            try:
+                db_cursor.execute(sql_insert)
+            except:
+                print(f"SQL ERROR: {sql_insert}")
+                raise
+
             # Commiting insertion
             db_object.commit()
 
@@ -459,7 +475,11 @@ def register_rawflats(data_dir, run_date, db_object):
             # Inserting new registers on database.raw_bias
             print(f"SQL command (raw_bias) = '{sql_insert}'")
 
-            db_cursor.execute(sql_insert)
+            try:
+                db_cursor.execute(sql_insert)
+            except:
+                print(f"SQL ERROR: {sql_insert}")
+                raise
             
             # Commiting insertion
             db_object.commit()
@@ -585,8 +605,12 @@ def register_reduced(data_dir, run_date, db_object):
             # Inserting new register on database.image_raw
             sql_insert = f"INSERT INTO image_reduced ({','.join(params)}) VALUES ({v})"
             print(f"SQL command (image_reduced) = '{sql_insert}'")
-
-            db_cursor.execute(sql_insert)
+            
+            try:
+                db_cursor.execute(sql_insert)
+            except:
+                print(f"SQL ERROR: {sql_insert}")
+                raise
             
             # Commiting insertion
             db_object.commit()
@@ -749,7 +773,11 @@ def register_calibrated(data_dir, run_date, db_object):
                 sql_insert = f"INSERT INTO image_calibrated ({','.join(params)}) VALUES ({v})"
                 print(f"SQL command (image_calibrated) = '{sql_insert}'")
 
-                db_cursor.execute(sql_insert)
+                try:
+                    db_cursor.execute(sql_insert)
+                except:
+                    print(f"SQL ERROR: {sql_insert}")
+                    raise
                 
                 # Commiting insertion
                 db_object.commit()
@@ -872,7 +900,11 @@ def register_blazar_measure(data_dir, run_date, db_object):
                 sql_insert = f"INSERT INTO `blazar_measure` ({','.join(params)}) VALUES ({v})"
                 print(f"SQL command (blazar_measure) = '{sql_insert}'")
 
-                db_cursor.execute(sql_insert)
+                try:
+                    db_cursor.execute(sql_insert)
+                except:
+                    print(f"SQL ERROR: {sql_insert}")
+                    raise
                 
                 # Commiting insertion
                 db_object.commit()
@@ -954,7 +986,11 @@ def register_polarimetry_data(data_dir, run_date, db_object):
             sql_insert = f"INSERT INTO `polarimetry_data` (`{'`,`'.join(params)}`) VALUES ({v})"
             print(f"SQL command (blazar_measure) = '{sql_insert}'")
 
-            db_cursor.execute(sql_insert)
+            try:
+                db_cursor.execute(sql_insert)
+            except:
+                print(f"SQL ERROR: {sql_insert}")
+                raise
             
             # Commiting insertion
             db_object.commit()
@@ -1037,7 +1073,7 @@ def main():
     my_cursor = my_db.cursor()
 
     # Selecting database for table creation
-    my_cursor.execute(f"USE {args.db_name};")
+    # my_cursor.execute(f"USE {args.db_name};")
 
     # Processing RAW images (image_raw table) from run date
     res = register_raw(args.input_data_dir, args.run_date, my_db)
