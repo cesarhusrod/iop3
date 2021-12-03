@@ -18,10 +18,8 @@ from collections import defaultdict
 from pprint import pprint
 from urllib.parse import quote
 
-import numpy as np
 import pandas as pd
-# HTML templates packages for documentation and logging
-import jinja2 
+import jinja2 # HTML templates packages for documentation and logging
 
 import mcReduction
 from mcFits import *
@@ -143,8 +141,9 @@ def main():
         print(str_err.format(args.border_image))
         return 4
     
-    # Getting run date (input directory must have pattern like *MAPCAT_yyyy-mm-dd)
-    date_run = re.findall('MAPCAT_(\d{4}-\d{2}-\d{2})', input_dir)[0]
+    # Getting run date
+    dt_run = re.findall('(\d{6})', input_dir)[-1]
+    date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
 
     if not os.path.exists(args.reduction_dir):
         try:
@@ -165,9 +164,9 @@ def main():
                                          border=border_image)
 
     # Input FITS classification printing
-    # print('Bias = {}'.format(oReduction.bias))
-    # print('Flats = {}'.format(oReduction.flats))
-    # print('Science = {}'.format(oReduction.science))
+    print(f'Bias number = {len(oReduction.bias)}')
+    print(f'Flats number = {len(oReduction.flats)}')
+    print(f'Science number = {len(oReduction.science)}')
     # print('Description = {}'.format(oReduction.science.describe))
 
     # Getting input FITS info
@@ -178,9 +177,13 @@ def main():
         oReduction.science['FILENAME'].tolist()
 
     for fi in input_fits:
+        # reading input FITS
         ff = mcFits(fi, border=args.border_image)
-        if ff.header['NAXIS1'] < 1024:
-            continue
+
+        # if ff.header['NAXIS1'] < 1024:
+        #     continue
+        
+        # getting formated info
         data_raw_input['PATH'].append(fi)
         data_raw_input['RUN_DATE'].append(date_run)
         
@@ -189,20 +192,15 @@ def main():
             pol_ang = round(float(ff.header['INSPOROT']), 1)
         data_raw_input['POLANGLE'].append(pol_ang)
         
-        for some_key in some_raw_keys:
-            data_raw_input[some_key].append(ff.header.get(some_key, ''))
+        for s_key in some_raw_keys:
+            data_raw_input[s_key].append(ff.header.get(s_key, ''))
         
-        info = ff.stats()
-        data_raw_input['MAX'].append(info['MAX'])
-        data_raw_input['MIN'].append(info['MIN'])
-        data_raw_input['MEAN'].append(info['MEAN'])
-        data_raw_input['STD'].append(info['STD'])
-        data_raw_input['MED'].append(info['MEDIAN'])
-        data_raw_input['TYPE'].append(info['TYPE'])
+        # adding FITS data statistics
+        for key, value in ff.stats().items():
+            data_raw_input[key].append(value)
         
     
-    # Saving input raw data
-    # Ouput CSV data file info
+    # Saving input raw data by using a CSV file
     csv_data_raw = os.path.join(args.reduction_dir, 'input_data_raw.csv')
     df_raw_out = pd.DataFrame(data_raw_input)
     # print('df_raw_out.info()')
@@ -213,14 +211,14 @@ def main():
     # ------------------- MasterBIAS generation -------------------
     if oReduction.createMasterBIAS() != 0:
         print("MasterBIAS generation failed.")
+        # without MasterBIAS, reduction process has no sense. So script ends here.
         return 6
 
-    # MASTERBIAS plotting
+    # Plotting MasterBIAS and histogram
     mcBIAS = mcFits(oReduction.masterBIAS, border=oReduction.border)
-    info = mcBIAS.stats()
-    # print('MasterBIAS statistics \n\n{}'.format(info))
+    
     plotBIAS = oReduction.masterBIAS.replace('.fits', '.png')
-    title = '{} masterBIAS'.format(os.path.split(args.input_dir)[1])
+    title = f'{oReduction.date} masterBIAS'
     mcBIAS.plot(title)
 
     plotBIASHist = oReduction.masterBIAS.replace('.fits', '_histogram.png')
@@ -232,33 +230,31 @@ def main():
     mcBIAS.plot_histogram(plotBIASHist, title=title, histogram_params=histo_par)
 
 
-    # Collecting masterBIAS info (there is only one by night)
+    # Getting masterBIAS info (there is only one by night)
     data_masterbias_info = {}
-
-    # Collecting FLATS info
-    some_bias_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', 'BIASOP', 'PXBORDER', \
-        'OBJECT', 'MAX', 'MIN', 'MEAN', 'STD', 'MED']
-
+    
     data_masterbias_info['RUN_DATE'] = [date_run]
-    data_masterbias_info['PATH'] = oReduction.masterBIAS
+    data_masterbias_info['PATH'] = oReduction.masterBIAS # this attribute is a list
     data_masterbias_info['PLOT'] = [plotBIAS]
     data_masterbias_info['HISTOGRAM'] = [plotBIASHist]
 
-    for some_key in some_bias_keys:
-        data_masterbias_info[some_key] = [mcBIAS.header.get(some_key, '')]
-    
-    for j in range(20):
-        if f'BIAS{j}' in mcBIAS.header:
-            data_masterbias_info[f'BIAS{j}'] = [mcBIAS.header.get(f'BIAS{j}', '')]
-        else:
-            break
+    some_bias_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', 'BIASOP', 'PXBORDER', \
+        'OBJECT', 'MAX', 'MIN', 'MEAN', 'STD', 'MED']
 
-    # Saving masterbias data
-    # Ouput CSV data file info
-    # pprint.pprint(data_masterbias_info)
+    for s_key in some_bias_keys:
+        data_masterbias_info[s_key] = [mcBIAS.header.get(s_key, '')]
+    
+    # Number of FITS used in MasterBIAS composition is variable.
+    counter = 0
+    while f'BIAS{counter}' in mcBIAS.header:
+        data_masterbias_info[f'BIAS{counter}'] = [mcBIAS.header[f'BIAS{counter}']]
+        counter += 1
+
+    # Saving masterbias data in CSV file
     csv_masterbias_data = os.path.join(args.reduction_dir, 'masterbias_data.csv')
     df_masterbias_out = pd.DataFrame(data_masterbias_info)
     df_masterbias_out.to_csv(csv_masterbias_data, index=False)
+    # pprint.pprint(data_masterbias_info)
     
 
     # --------------- MasterFLATs generation ---------------------
@@ -267,25 +263,22 @@ def main():
     if oReduction.createMasterFLAT():
         print("MasterFLATs generation failed.")
         return 7
-    for k, v in oReduction.masterFLAT.items():
-        print('- ' * 5 + v)
-        mcFLAT = mcFits(v, border=oReduction.border)
 
-        mf_info = mcFLAT.stats()
-        # print('FLATS statistics = {}'.format(mf_info))
-        plotFLAT = oReduction.masterFLAT[k].replace('.fits', '.png')
-        title = f"MF (date, pol.angle)=({oReduction.date}, {k})"
+    for pol_ang, mf_path in oReduction.masterFLAT.items():
+        print('- ' * 5 + mf_path)
+        mcFLAT = mcFits(mf_path, border=oReduction.border)
+
+        # Plotting FLAT and histogram
+        plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fits', '.png')
+        title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
         mcFLAT.plot(title)
-        plotFLATHist = oReduction.masterFLAT[k].replace('.fits', '_histogram.png')
+        plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
 
         mcFLAT.plot_histogram(plotFLATHist, title=title, \
             histogram_params=histo_par)
         
-        # Collecting FLATS info
-        some_flats_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', 'FLATOP', \
-            'PXBORDER', 'OBJECT', 'MBIAS', 'MAX', 'MIN', 'MEAN', 'STD', 'MED']
-
-        data_masterflats_info['PATH'].append(v)
+        # Getting FLATS info
+        data_masterflats_info['PATH'].append(mf_path)
         data_masterflats_info['RUN_DATE'].append(date_run)
         pol_ang = ''
         if 'INSPOROT' in mcFLAT.header:
@@ -294,14 +287,17 @@ def main():
         data_masterflats_info['PLOT'].append(plotFLAT)
         data_masterflats_info['HISTOGRAM'].append(plotFLATHist)
 
-        for some_key in some_flats_keys:
-            data_masterflats_info[some_key].append(mcFLAT.header.get(some_key, ''))
+        some_flats_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', 'FLATOP', \
+            'PXBORDER', 'OBJECT', 'MBIAS', 'MAX', 'MIN', 'MEAN', 'STD', 'MED']
 
-        for j in range(20): # adding raw FLAT used for generating masterFLAT
-            if "FLAT{j}" in mcFLAT.header:
-                data_masterflats_info["FLAT{j}"].append(mcFLAT.header.get("FLAT{j}", ''))
-            else:
-                break
+        for sf_key in some_flats_keys:
+            data_masterflats_info[sf_key].append(mcFLAT.header.get(sf_key, ''))
+
+        # FITS number used for generating FLAT is variable
+        counter = 0
+        while f"FLAT{counter}" in mcFLAT.header:
+            data_masterflats_info[f"FLAT{counter}"].append(mcFLAT.header[f"FLAT{counter}"])
+            counter += 1
         
     # Saving masterbias data
     # Ouput CSV data file info
@@ -309,12 +305,12 @@ def main():
     df_masterflats_out = pd.DataFrame(data_masterflats_info)
     df_masterflats_out.to_csv(csv_masterflats_data, index=False)
 
-    # --------------- Making FITS set reduction operations --------------
+    # --------------- Making FITS set reduction operations --------------#
     
     # info container
     data_red_out = defaultdict(list)
 
-    # Science FITS
+    # Computing Science FITS
     oReduction.reduce()
 
     #print('Plotting figures. Please wait...')
@@ -322,37 +318,30 @@ def main():
         sci = oReduction.science.iloc[index]
         path_red = os.path.join(oReduction.out_dir, os.path.split(sci['FILENAME'])[1])
         if not os.path.exists(path_red):
-            str_warn = "WARNING: '{}' not available."
-            print(str_warn.format(path_red))
+            print(f"WARNING: '{path_red}' not available.")
             continue
         mcRED = mcFits(path_red)
 
-        # FWHM
-        dictSEx = dict()
+        # Estimating FWHM from extracted sources
+        dictSEx = {}
         dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
         dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
         mcRED.compute_fwhm(dictSEx)
         mcRED = 0 # Forcing to write FWHM dataSEX
         mcRED = mcFits(path_red, border=border_image)
 
-        # print(f"{path_red} statistics...")
-        # print(mcRED.stats())
-        # print('')
-
+        # Plotting Science image...
         plotSCI = mcRED.path.replace('.fits', '.png')
         title_pattern = "{} - {} - {:.2f} deg - {:.1f} s"
         title = title_pattern.format(os.path.split(mcRED.path)[1][:-5], \
             sci['procOBJ'], float(sci['INSPOROT']), float(sci['EXPTIME']))
         mcRED.plot(title)
+
+        # Plotting histogram
         plotSCIHist = mcRED.path.replace('.fits', '_histogram.png')
         mcRED.plot_histogram(plotSCIHist, title=title, histogram_params=histo_par)
 
-        # Collecting REDUCED FITS info
-        some_reduction_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', 'PXBORDER', \
-            'INSFLNAM',  \
-            'RA', 'DEC', 'OBJECT', 'EXPTIME', 'DATE-OBS', 'EQUINOX', 'MJD-OBS', \
-            'BIAS', 'FLAT', 'FWHM', 'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI', \
-            'MAX', 'MIN', 'MEAN', 'STD', 'MED']
+        # Getting REDUCED FITS info
         data_red_out['PATH'].append(mcRED.path)
         data_red_out['RUN_DATE'].append(date_run)
         pol_ang = ''
@@ -362,8 +351,14 @@ def main():
         data_red_out['PLOT'].append(plotSCI)
         data_red_out['HISTOGRAM'].append(plotSCIHist)
 
-        for some_key in some_reduction_keys:
-            data_red_out[some_key].append(mcRED.header.get(some_key, ''))
+        some_reduction_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', \
+            'PXBORDER', 'INSFLNAM', 'RA', 'DEC', 'OBJECT', 'EXPTIME', \
+            'DATE-OBS', 'EQUINOX', 'MJD-OBS', 'BIAS', 'FLAT', 'FWHM', \
+            'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI', \
+            'MAX', 'MIN', 'MEAN', 'STD', 'MED']
+        
+        for sr_key in some_reduction_keys:
+            data_red_out[sr_key].append(mcRED.header.get(sr_key, ''))
 
     # Saving output reduced data
     # Output CSV data file
@@ -373,32 +368,32 @@ def main():
 
     # Reporting results...
     dir_templates = os.path.join(args.config_dir, 'templates')
-    date_run = re.findall('MAPCAT_(\d{4}-\d{2}-\d{2})', args.input_dir)[0]
-
-    # Masterbias
-    res_rep_MB = report(csv_data_raw, \
-        output_dir=args.input_dir, dir_template=dir_templates, \
-        title=f'{date_run} MASTERBIAS result')
-    
-
-    # MasterFlats
-    res_rep_MF = report(csv_data_raw, \
-        output_dir=args.input_dir, dir_template=dir_templates, \
-        title=f'{date_run} MASTERFLATS result')
-    
 
     # Raw images
     template = os.path.join(dir_templates, 'raw_fits.html')
     res_rep_RawFits = report(csv_data_raw, \
-        output_dir=args.input_dir, template_file=template, \
+        output_dir=args.reduction_dir, template_file=template, \
         title=f'{date_run} raw FITS')
     
+    # MasterBIAS
+    template = os.path.join(dir_templates, 'masterbias_fits.html')
+    rep_MB = report(csv_masterbias_data, \
+        output_dir=args.reduction_dir, template_file=template, \
+        title=f'{date_run} MASTERBIAS result')
+    
+    # MasterFlats
+    template = os.path.join(dir_templates, 'masterflat_fits.html')
+    rep_MF = report(csv_masterflats_data, \
+        output_dir=args.reduction_dir, template_file=template, \
+        title=f'{date_run} MASTERFLATS result')
+    
     # Reduced FITS
-    res_rep_RedFits = report(csv_data_red, \
-        output_dir=args.input_dir, dir_template=dir_templates, \
+    template = os.path.join(dir_templates, 'reduced_fits.html')
+    rep_RedFits = report(csv_data_red, \
+        output_dir=args.reduction_dir, template_file=template, \
         title=f'{date_run} reduced FITS')
     
-
+    return 0
 
 if __name__ == '__main__':
     if not main():

@@ -50,6 +50,16 @@ Vizier.ROW_LIMIT = -1
 # HTML ouput template
 import jinja2
 
+# =================================
+from astropy.utils.exceptions import AstropyWarning, AstropyDeprecationWarning
+import warnings
+
+# Ignore too many FITSFixedWarnings
+warnings.simplefilter('ignore', category=AstropyWarning)
+warnings.simplefilter('ignore', category=AstropyDeprecationWarning)
+
+# =================================
+
 # ------------------------ Module functions ------------------------------
 def medianFits(input_fits, output_fits, size=5):
     """Compute pass low filter to FITS data"""
@@ -60,8 +70,8 @@ def medianFits(input_fits, output_fits, size=5):
     return 0
 
 def plotFits(inputFits, outputImage, title=None, colorBar=True, coords=None, \
-ref_coords='world', astroCal=False, color='green', \
-    dictParams={'aspect':'auto', 'vmin': 1, 'stretch': 'log'}):
+    ref_coords='world', astroCal=False, color='green', \
+    dictParams={'aspect':'auto', 'vmin': 1, 'invert': True}):
     """Plot 'inputFits' as image 'outputImage'.
     Return 0 is everything was fine. Exception in the other case."""
     gc = aplpy.FITSFigure(inputFits, dpi=300)
@@ -152,14 +162,15 @@ def default_detection_params(exptime):
     return detect_params
 
 def relaxed_detection_params(exptime):
-    """ Relaxed values for some SExtractor detection parameters.They are
-    used for some low exposure FITS.
+    """ Relaxed values for some SExtractor detection parameters.
+    
+        SExtractor used parameters are broader than for high exposure FITS.
 
     Args:
         exptime (float): Exposure time in seconds.
 
     Return:
-        detect_params (dict): Best test parameters for source-extractor detection
+        detect_params (dict): Best tested parameters for source-extractor detection.
 
     Raises:
         ValueError, if exptime can't be cast to float.
@@ -259,11 +270,11 @@ def main():
     final_fits = copy_input_fits.replace('.fits', '_final.fits')
 
     if os.path.exists(final_fits):
-        print("INFO: Calibration donde before")
+        print("INFO: Calibration done before")
         return -1
-
-    date_run = re.findall('MAPCAT_(\d{4}-\d{2}-\d{2})', args.input_fits)[0]
-
+    
+    dt_run = re.findall('/(\d{6})/', args.input_fits)[0]
+    date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
     fits_name = os.path.split(input_fits)[1][:-5]
 
     # Getting header informacion
@@ -353,7 +364,7 @@ def main():
 
         # Input image PNG
         median_fits_png = median_fits.replace('.fits', '.png')
-        plotFits(median_fits, median_fits_png, dictParams={'aspect':'auto', 'stretch': 'log', 'vmin': 1})
+        plotFits(median_fits, median_fits_png) # , dictParams={'aspect':'auto', 'stretch': 'log', 'vmin': 1})
 
         working_input_fits = median_fits # change working fits file to median one
 
@@ -517,8 +528,8 @@ def main():
     title_plot = f"SExtractor astrocalibration sources in {fits_name}"
     plotFits(clean_rotated_fits, all_detect_sext_png, title=title_plot, \
         colorBar=True, ref_coords='pixel', astroCal=False, color='magenta', \
-        coords=(data_sex['X_IMAGE'], data_sex['Y_IMAGE']), \
-        dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
+        coords=(data_sex['X_IMAGE'], data_sex['Y_IMAGE'])) # , \
+        # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
 
 
     # Working with Pandas dataframe
@@ -576,8 +587,8 @@ def main():
         title_plot = f"SExtractor astrocalibration sources in {fits_name}"
         plotFits(clean_rotated_fits, all_detect_sext_png, title=title_plot, \
             colorBar=True, ref_coords='pixel', astroCal=False, color='magenta', \
-            coords=(data_sex['X_IMAGE'], data_sex['Y_IMAGE']), \
-            dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
+            coords=(data_sex['X_IMAGE'], data_sex['Y_IMAGE'])) # , \
+            # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
 
         # Filtering sources too close to FITS limits
         cat_lines = ''
@@ -592,16 +603,16 @@ def main():
         data_sex = pd.DataFrame({k:data_sex[k] for k in campos})
 
         # Border size (pixels)
-        border = 15
+        border = args.border_image
         x = data_sex['X_IMAGE'].values
         y = data_sex['Y_IMAGE'].values
         inner_sources = (x > border) & (x < (int(header['NAXIS1']) - border)) \
             & (y > border) & (y < (int(header['NAXIS2']) - border))
 
-        # filtering sources too closer than 100 pixels to HD stars
+        # filtering sources too closer than 5'-0 pixels to HD stars
         if header['EXPTIME'] < 5: # HD source
             print(f"EXPTIME = {header['EXPTIME']}")
-            print("\t---------------Deleting sources closer than 100 pixels to calibrator")
+            print("\t---------------Deleting sources closer than 50 pixels to calibrator")
             index_brilliant = data_sex['FLUX_ISO'].values.argmax()
             xb = data_sex['X_IMAGE'].values[index_brilliant]
             yb = data_sex['Y_IMAGE'].values[index_brilliant]
@@ -612,9 +623,7 @@ def main():
 
         print("Number of sources before filtering = {}".format(y.size))
         data_sex_filtered = data_sex[inner_sources]
-        # for k in campos:
-        #     data_sex_filtered[k] = data_sex[k][inner_sources]
-
+        
         n_sources = len(data_sex_filtered.index)
         print(f"Number of sources after filtering = {n_sources}")
 
@@ -625,12 +634,13 @@ def main():
     title_plot = 'SExtractor astrocalibration sources in %s' % fits_name
     plotFits(clean_rotated_fits, inner_detect_sext_png, title=title_plot, \
         colorBar=True, ref_coords='pixel', astroCal=False, color='magenta', \
-        coords=(data_sex_filtered['X_IMAGE'], data_sex_filtered['Y_IMAGE']), \
-        dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
+        coords=(data_sex_filtered['X_IMAGE'], data_sex_filtered['Y_IMAGE'])) # , \
+        # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
 
     # Getting brightest detections
     num_sorted = 75
     index_ord = None
+    dsfo = data_sex_filtered
 
     if input_head['EXPTIME'] <= 1:
         # low EXPTIME produces noisy images and too many false detections
@@ -647,15 +657,6 @@ def main():
 
     # Writing to file (needed for WCSTools astrometric calibration)
     dsfo.to_csv(cat_sort_filtered, index=False, sep=' ', header=False)
-
-
-    # lines_out = []
-    # for index in range(num_sorted):
-    #     lines_out.append(' '.join([str(int(data_sex_filtered[k][index_ord][index])) if k in ['FLAGS', 'NUMBER'] else str(data_sex_filtered[k][index_ord][index]) for k in campos]))
-    #
-    # cat_sort_filtered = cat_sort.replace('.cat', '_filtered.cat')
-    # with open(cat_sort_filtered, 'w') as fout:
-    #     fout.write('\n'.join(lines_out))
 
     # Plotting selected brilliant sources
     out_detect_sext_png = clean_rotated_png.replace('.png', '_detect_sext.png')
@@ -702,7 +703,7 @@ def main():
     fout.close()
 
     # Not good calibration process if not enough sources
-    # where used
+    # were used
 
     astro_header = {'WCSMATCH': 0}
     try:
@@ -717,7 +718,7 @@ def main():
         ra_im = alternative_ra
         dec_im = alternative_dec
         if astro_header['WCSMATCH'] <= 4:
-            # reducing "matchinable" fit field ("-y 2" instead "-y 3")
+            # reducing "matchable" fit field ("-y 2" instead "-y 3")
             com_str = "imwcs -wve -d {} -r 0 -y 2 -p {} -j {} {} -h {} -c {} -t 10 -o {} {}"
         com = com_str.format(cat_sort_filtered, pix_scale, ra_im, dec_im, \
             num_sorted, 'tmc', astrom_out_fits, clean_rotated_fits)
@@ -736,9 +737,15 @@ def main():
 
     print("2nd astrometric calibration try for file: {}".format(astrom_out_fits))
     print('-' * 100)
-    calhdul = fits.open(astrom_out_fits)
-    astro_header = calhdul[0].header
-    calhdul.close()
+
+    astro_header = None
+    try:
+        calhdul = fits.open(astrom_out_fits)
+        astro_header = calhdul[0].header
+        calhdul.close()
+    except IOError:
+        # If imwcs program could'n calibrate, output FITS will not be created
+        raise
 
     print('*' * 50)
     message = "Number of sources used in calibration: {} (of {})"
@@ -764,7 +771,6 @@ def main():
     for k in catalogs.keys():
         wcat = None
         try:
-
             wcat = result[catalogs[k]]
             cat_out_pngs[k] = clean_rotated_png.replace('.png', f'_{k}.png')
             coords = None
@@ -774,7 +780,7 @@ def main():
                 coords = (wcat['RAJ2000'], wcat['DEJ2000'])
             print(f"Plotting data from {k} catalog")
             plotFits(astrom_out_fits, cat_out_pngs[k], \
-                title=f'{k} sources in %s' % fits_name, colorBar=True, \
+                title=f'{k} sources in {fits_name}', colorBar=True, \
                 coords=coords, astroCal=True, color='green', \
                 dictParams={'aspect':'auto', 'invert':'True'})
         except TypeError:
@@ -802,8 +808,10 @@ def main():
 
     # Plotting final calibrated FITS
     final_png = final_fits.replace('.fits', '_final.png')
-    title = '{} rotated astrocalib'.format(fits_name)
+    title = f'{fits_name} rotated astrocalib'
     plotFits(final_fits, final_png, title=title)
+
+    ################ WORKING ON ASTROMETRIC CALIBRATED FITS ################
 
     # Getting data from ordinary-extraordinary sources in final FITS
     # 1. SExtractor calling
@@ -856,8 +864,8 @@ def main():
     plotFits(final_fits, sources_sext_png, \
         title=f'MAPCAT sources in {fits_name}', colorBar=True, \
         coords=(data['ALPHA_J2000'], data['DELTA_J2000']), \
-        astroCal=True, color='red', \
-        dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
+        astroCal=True, color='red') # , \
+        # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
 
     # Searching for MAPCAT sources inside limits FITS coordinates
     df_mc = df_mapcat[df_mapcat['ra2000_mc_deg'] > ra_min]
@@ -939,8 +947,8 @@ def main():
     plotFits(final_fits, source_pair_png, colorBar=True, \
         title=f'SExtractor Pair Detections in {os.path.split(final_fits)[1]}', \
         coords=(data['ALPHA_J2000'][indexes], data['DELTA_J2000'][indexes]), \
-        astroCal=True, color='red', \
-        dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
+        astroCal=True, color='red') # , \
+        # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
 
 
     # Parameters to store...

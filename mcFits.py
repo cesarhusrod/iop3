@@ -1,6 +1,24 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+This module contains routines oriented to deal with FITS format files.
+
+It allows to users read, write, update and create new files in FITS format.
+
+Created on Mon March 28 17:43:15 2020.
+
+___e-mail__ = cesar_husillos@tutanota.com
+__author__ = 'Cesar Husillos'
+
+VERSION:
+    1.1 Cleaned initial version (2021-11-03)
+"""
+
+
 import os
 import subprocess
-import copy
+# import copy
 import re
 from io import StringIO
 
@@ -21,40 +39,42 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord  # High-level coordinates
 # from PyAstronomy import pyasl # for changing coordinates format
 
-import statsmodels.api as smapi  # Linear fitting module
-from scipy import optimize
+# import statsmodels.api as smapi  # Linear fitting module
+# from scipy import optimize
 
 def _read_sextractor_catalog(catalog):
     """
-    A short description.
+    It reads SExtractor output catalog.
 
-    A bit longer description.
+    This function reads files in text or FITS/LDAC format
+    produced by SExtractor.
 
     Args:
-        variable (type): description
+        catalog (str): path to SExtractor output file.
 
     Returns:
-        type: description
+        ndarray: numpy.ndarray with SExtractor detection parameters.
 
     Raises:
-        Exception: description
+        Exception: Any type, depending on failing code line.
 
     """
     data_sextractor = None
-    cat_ext = os.path.splitext(catalog)[1]
-    if cat_ext == '.fits':
+    
+    if os.path.splitext(catalog)[1] == '.fits':
         hdul = fits.open(catalog)
         data_sextractor = hdul[2].data  # assuming first extension is a table
-        # cols = hdul[2].columns
-        # cols.info()
     else:
-        lines = open(catalog).readlines()
         fields = list()
-        for line in lines:
-            if line.startswith('#'):
-                fields.append(line.split()[2])
-            else:
-                break
+        with open(catalog) as f_input:
+            line = f_input.readline()
+            while line.startswith('#'):
+                try:
+                    fields.append(line.split()[2])
+                except:
+                    pass
+                line = f_input.readline()
+
         data_sextractor = np.genfromtxt(catalog, names=fields)
 
     return data_sextractor
@@ -81,12 +101,6 @@ def _linear_fit(x, ord):
 
 
 class mcFits:
-    # _path = None
-    # _header = None
-    # _data = None
-    # _save = False
-    # _index = 0
-
     def __init__(self, path, index=0, border=0, saturation=40000):
         self._path = path
         self._index = index
@@ -99,26 +113,17 @@ class mcFits:
             self._header = self._hdu[self._index].header
             self._data = self._hdu[self._index].data
         except FileNotFoundError:
-            print(f'PATH ERROR = {path}')
+            print(f"ERROR: '{path}' not found.")
             raise
 
         # Checking and setting border parameter
-        dims = self._data.shape
-        bborder = True
-        if border < 0:
-            bborder = False
-        for n in dims:
-            if 2 * border >= n:
-                bborder = False
-                break
-        if bborder:
-            self._border = border
-        else:
-            self._border = 0
+        self._border = 0
+        if (np.array(self._data.shape) - 2 * int(border)).all():
+            self._border = int(border)
 
         # Checking and setting saturation
         try:
-            self.saturation = float(saturation)
+            self.saturation = int(saturation)
         except ValueError:
             raise
 
@@ -179,15 +184,15 @@ class mcFits:
 
     def stats(self, exclude_borders=True):
         """
-        A short description.
+        Basic statistical parameters from FITS data.
 
-        A bit longer description.
+        minimum, maximum, mean, std, median and data type are computed.
 
         Args:
-            variable (type): description
+            exclude_borders (bool): If True, image border are excluded.
 
         Returns:
-            type: description
+            dict: keywords are ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN', 'TYPE']
 
         Raises:
             Exception: description
@@ -195,11 +200,12 @@ class mcFits:
         """
 
         """Return a dictionary with min, max, mean, std and median of data."""
-        dictStats = dict()
+        
         new_data = self.data
         if exclude_borders and self._border > 0:
             new_data = self.data[self._border:-self._border,
                                  self._border:-self._border]
+        dictStats = dict()
         dictStats['MIN'] = new_data.min()
         dictStats['MAX'] = new_data.max()
         dictStats['MEAN'] = new_data.mean()
@@ -220,10 +226,16 @@ class mcFits:
         It is passed to matplotlib 'hist' function.
 
         Args:
-            variable (type): description
+            out_plot (str): output FITS histogram.
+            title (str): Histogram title.
+            log_y (bool): if True, y-axis is given in logarithmic scale.
+            dpi (int): plot resolution in "dots per inch" units.
+            exclude_borders (bool): If True, FITS data borders are excluded 
+                from histogram plot.
+            histogram_params (dict): matplotlib.pyplot.hist valid parameters.
 
         Returns:
-            int: This function returns 0 if everything was fine.
+            int: 0, if everything was fine.
 
         Raises:
             Exception: if something failed.
@@ -234,9 +246,10 @@ class mcFits:
             new_data = self.data[self._border:-self._border,
                                  self._border:-self._border]
 
+        # Generation of pd.Series object
         sdata = pd.Series(new_data.flatten())
         my_figure, my_axis = plt.subplots()
-        # pd Serie histogram function
+        # pd.Series histogram function
         sdata.hist(**histogram_params)
         if title:
             my_axis.set_title(title)
@@ -245,15 +258,15 @@ class mcFits:
         if log_y:
             my_axis.set_ylabel(r'$log_{10}(Counts)$ (#)')
             my_axis.set_yscale('log')
-        # plt.show()
+        
         my_figure.savefig(out_plot, dpi=dpi)
         plt.close()
 
         return 0
 
-    def plotFits(self, plot_path, title=None, colorbar=True, coords=None,
-             ref_coords='world', astrocal=False, colors=['green', 'red', 'blue'],
-             dparams={'aspect':'auto'}):
+    def plotFits(self, plot_path, title=None, colorbar=True, \
+        coords=None, ref_coords='world', astrocal=False, \
+        colors=['green', 'red', 'blue'], dparams={'aspect':'auto'}):
         """
         It creates 'plot_path' image file using data from current FITS.
 
@@ -273,7 +286,7 @@ class mcFits:
             int: 0 if everything was fine.
 
         Raises:
-            Exception: It depends on input parameters.
+            Exception: depending on failing line of code.
 
         """
 
@@ -310,24 +323,29 @@ class mcFits:
              coords=list(), coord_color='magenta', dpi=300,
              parameters={'aspect': 'auto'}):
         """
-        A short description.
+        Another plotting FITS data function.
 
-        A bit longer description.
+        It is a wrapper of aplpy.FITSFigure class that plots FITS data.
+        Output plot is located at the same path of input image. Extension
+        is changed to '.png'.
 
         Args:
-            variable (type): description
+            title (str): Title plot.
+            colorBar (bool): If True, color bar is added to plot.
+            coords (list): [[x_coords], [y_coords]] list of points 
+                to draw in plot.
+            coord_color (str): valid color name.
+            dpi (int): plot resolution in "dot per inch" units.
+            parameters (dict): valid aplpy.FITSFigure.show_grayscale 
+                parameters dictionary.
 
         Returns:
-            type: description
+            int: 0, if everything was fine.
 
         Raises:
-            Exception: description
+            Exception: depending on failing line of code.
 
         """
-
-        """Plot FITS as image 'outputImage'.
-        Return 0 is everything was fine. Exception in the other case."""
-
         gc = aplpy.FITSFigure(self._path, dpi=dpi)
         # gc.set_xaxis_coord_type('scalar')
         # gc.set_yaxis_coord_type('scalar')
@@ -447,73 +465,58 @@ class mcFits:
     def extract_sources(self, detect_params, overwrite=False,
                         show_info=True):
         """
-        A short description.
+        Source extraction from FITS file.
 
-        A bit longer description.
+        It parse input parameters and set best parameters depending on
+        FITS exposure time ('EXPTIME') in order to improve SExtractor 
+        source detection.
 
         Args:
-            variable (type): description
+            detect_params (dict): valid SExtractor input parameters.
+            overwrite (bool): if True, ouput SExtractor catalog is overwritten.
+            show_info (bool): If True, additional processing info is produced.
 
         Returns:
-            type: description
+            int: 0, if everythong was fine.
 
         Raises:
-            Exception: description
+            Exception: type depends on failing line of code.
 
         """
         # Preconfigured values depending on exptime
         if float(self._header['EXPTIME']) >= 0:
-            if 'FILTER' not in detect_params.keys():
-                detect_params['FILTER'] = 'N'
-            if 'CLEAN' not in detect_params.keys():
-                detect_params['CLEAN'] = 'N'
-            if 'DETECT_MINAREA' not in detect_params.keys():
-                detect_params['DETECT_MINAREA'] = 13
-            if 'ANALYSIS_THRESH' not in detect_params.keys():
-                detect_params['ANALYSIS_THRESH'] = 1.0
-            if 'DETECT_THRESH' not in detect_params.keys():
-                detect_params['DETECT_THRESH'] = 1.0
-            if 'DEBLEND_MINCONT' not in detect_params.keys():
-                detect_params['DEBLEND_MINCONT'] = 0.1
+            detect_params['FILTER'] = detect_params.get('FILTER', 'N')
+            detect_params['CLEAN'] = detect_params.get('CLEAN', 'N')
+            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 13)
+            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 1.0)
+            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 1.0)
+            detect_params['DEBLEND_MINCONT'] = detect_params.get('DEBLEND_MINCONT', 0.1)
+        
         if float(self._header['EXPTIME']) >= 0.2:
             # spurious detections for Y_IMAGE = 1 (lower border)
-            if 'CLEAN' not in detect_params.keys():
-                detect_params['CLEAN'] = 'Y'
-            if 'DEBLEND_MINCONT' not in detect_params.keys():
-                detect_params['DEBLEND_MINCONT'] = 0.005
+            detect_params['CLEAN'] = detect_params.get('CLEAN', 'Y')
+            detect_params['DEBLEND_MINCONT'] = detect_params.get('DEBLEND_MINCONT', 0.005)
+            
         if float(self._header['EXPTIME']) >= 1:
-            if 'FILTER' not in detect_params.keys():
-                detect_params['FILTER'] = 'Y'
-            if 'CLEAN' not in detect_params.keys():
-                detect_params['CLEAN'] = 'Y'
-            if 'DETECT_MINAREA' not in detect_params.keys():
-                detect_params['DETECT_MINAREA'] = 9
-            if 'ANALYSIS_THRESH' not in detect_params.keys():
-                detect_params['ANALYSIS_THRESH'] = 1.0
-            if 'DETECT_THRESH' not in detect_params.keys():
-                detect_params['DETECT_THRESH'] = 1.0
+            detect_params['FILTER'] = detect_params.get('FILTER', 'Y')
+            detect_params['CLEAN'] = detect_params.get('CLEAN', 'Y')
+            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 9)
+            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 1.0)
+            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 1.0)
+            
         if float(self._header['EXPTIME']) >= 80:
-            if 'DETECT_MINAREA' not in detect_params.keys():
-                detect_params['DETECT_MINAREA'] = 13
-            if 'ANALYSIS_THRESH' not in detect_params.keys():
-                detect_params['ANALYSIS_THRESH'] = 2.5
-            if 'DETECT_THRESH' not in detect_params.keys():
-                detect_params['DETECT_THRESH'] = 2.5
-        if float(self._header['EXPTIME']) >= 100:
-            pass
-        if float(self._header['EXPTIME']) >= 120:
-            pass
+            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 13)
+            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 2.5)
+            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 2.5)
+        
         if float(self._header['EXPTIME']) >= 180:
-            if 'DETECT_MINAREA' not in detect_params.keys():
-                detect_params['DETECT_MINAREA'] = 9
-            if 'ANALYSIS_THRESH' not in detect_params.keys():
-                detect_params['ANALYSIS_THRESH'] = 1.6
-            if 'DETECT_THRESH' not in detect_params.keys():
-                detect_params['DETECT_THRESH'] = 1.6
+            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 9)
+            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 1.6)
+            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 1.6)
 
         com = ["sex"]
 
-        out_dirs = list()  # detection products directory
+        out_dirs = list()
 
         # Mandatory KEYWORDS
         mandatory_keywords = ['CONFIG_FILE', 'CATALOG_NAME']
@@ -524,7 +527,7 @@ class mcFits:
                 return 1
 
         if os.path.exists(detect_params['CATALOG_NAME']) and not overwrite:
-            print('INFO: Aborting execution. Output catalog "%s" already found' %
+            print('INFO: Output catalog "%s" already found. Nothing done.' %
                   detect_params['CATALOG_NAME'])
             return 0
 
@@ -538,52 +541,50 @@ class mcFits:
         values = list()
 
         for k, v in detect_params.items():
-            if k in ['CATALOG_NAME', 'CONFIG_FILE']:
-                continue # yet considered before as mandatory parameters
             # Special format keywords
             if k in ['BACKGROUND', 'SEGMENTATION', 'APERTURES']:
                 keys.append(k)
                 values.append(v)
-                d, n = os.path.split(v)
-                if len(d) and not os.path.exists(d):
-                    out_dirs.append(d)
+                dire = os.path.split(v)[0]
+                if len(dire) and not os.path.exists(dire):
+                    out_dirs.append(dire)
             else:
                 # The others
-                com.append("-%s %s" % (k, str(v)))
+                com.append(f"-{k} {v}")
 
         # Keywords that may be present in header
         if 'PIXEL_SCALE' not in detect_params.keys():
             if 'INSTRSCL' in self._header:
-                com.append("-PIXEL_SCALE %(ps)s " % {
-                    'ps': str(self._header['INSTRSCL'])})
+                com.append(f"-PIXEL_SCALE {str(self._header['INSTRSCL'])} ")
         if 'SEEING_FWHM' not in detect_params.keys():
             if 'FWHM' in self._header:  # in arcsecs
-                com.append("-SEEING_FWHM %(fw)4.2f " % {
-                    'fw': float(self._header['FWHM']) * float(self._header['INSTRSCL'])})
+                fw = float(self._header['FWHM']) * float(self._header['INSTRSCL'])
+                com.append(f"-SEEING_FWHM {fw} ")
         if 'MAG_ZEROPOINT' not in detect_params.keys():
             if 'MAGZPT' in self._header:
-                com.append("-MAG_ZEROPOINT %(zp)4.2f " % {
-                    'zp': str(self._header['MAGZPT'])})
+                com.append(f"-MAG_ZEROPOINT {self._header['MAGZPT']}")
         # Adding special format keyword:value pairs
         if keys:
             com.append("%s %s" % (detection_keywords, ','.join(keys)))
             com.append("%s %s" % (detection_values, ','.join(values)))
 
-        # Create product directories
-        for directory in out_dirs:
-            if not os.path.exists(directory):
+        # Create directories for SExtractor output files
+        for odir in out_dirs:
+            if not os.path.exists(odir):
                 try:
-                    os.makedirs(directory)
+                    os.makedirs(odir)
                 except IOError:
-                    print("ERROR: Couldn't create output directory '%s'" % directory)
+                    print(f"ERROR: Couldn't create output directory '{odir}'")
                     raise
 
-        com.append(self._path)  # Final SExtractor command
+        com.append(self._path)  # Last SExtractor parameter
+
+        str_com = ' '.join(com)
         if show_info:
-            print(' '.join(com))
+            print(str_com)
 
         # Executing SExtractor call
-        subprocess.Popen(' '.join(com), shell=True).wait()
+        subprocess.Popen(str_com, shell=True).wait()
 
         return 0
 
@@ -694,18 +695,30 @@ class mcFits:
     def compute_fwhm(self, detect_params, save=True, overwrite=True,
                      show_info=True):
         """
-        A short description.
+        It computes Full Width and Half Maximum value for FITS image.
 
-        A bit longer description.
+        It executes SExtractor, filter best detections taking into account
+           - ellipticity,
+           - far from border and isolated 
+           - and star flux profile 
+        and compute statistics for getting image FWHM.
+
+        Ellipticity and flags are output SExtractor parameters than change if
+        minimum number of sources is not reached.
 
         Args:
-            variable (type): description
+            detect_params (dict): valid SExtractor parameters.
+            save (bool): If True, FWHM parameters are written into FITS header.
+            overwrite (bool): If True, SExtractor is executed again, even 
+                previous detection was done.
+            show_info (bool): If True, aditional processing info is printed by console.
 
         Returns:
-            type: description
+            dict: As keywords (referred to FWHM) are
+                ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN', 'MAX_ELLIP', 'FLAG']
 
         Raises:
-            Exception: description
+            Exception: type depends on failing line of code.
 
         """
         self._save = save  # This property is used for overwriting FITS info
@@ -1007,18 +1020,18 @@ class mcFits:
 
     def rotate(self, overwrite=False):
         """
+        FITS image rotation.
+
         It rotates image 90 degrees counter clockwise.
 
-        A bit longer description.
-
         Args:
-            variable (type): description
+            overwrite (bool): If True, FITS data is rotated and overwritten.
 
         Returns:
-            type: description
+            fits.PrimaryHDU: object with header and rotated data.
 
         Raises:
-            Exception: description
+            Exception: type depending on failing line of code.
 
         """
         # matrix rotation
@@ -1094,7 +1107,7 @@ class mcFits:
         # self.plot_pix_sources(detect_params=detect_params, number_brigthest_sources=40,
         #                            overwrite=False)
 
-        # MAPCAT pointing sources File
+        # Blazar sources file
         mc_sources = self.mc_pointing_sources(mc_sources_file)
         # Getting pointing coordinates
         obj = self.header['OBJECT'].split()[0]
@@ -1106,7 +1119,7 @@ class mcFits:
                 source = mc_sources.iloc[index]
                 break
         if source is not None:
-            print('%s: Changing RA,DEC from FITS (%s, %s) to MAPCAT Catalog (%s, %s)' % (
+            print('%s: Changing RA,DEC from FITS (%s, %s) to blazar Catalog (%s, %s)' % (
                 source['IAU Name'], str(self.header['RA']), str(self.header['DEC']),
                 str(source['RADEG']), str(source['DECDEG'])))
             right_ascencion, declination = source['RADEG'], source['DECDEG']
@@ -1155,12 +1168,12 @@ class mcFits:
             if show_info:
                 print('INFO: Not enough sources used for good calibration results.')
                 print('\tTrying MAPCAT coordinates for this OBJECT')
-            com = f'imwcs -v -e -d {cat_sort} -w -y 2 '
-            com += '-p %s ' % str(self.header['INSTRSCL'])
-            com += f'-j {right_ascencion} {declination} -c tmc -t {tol_arcs} '
-            com += f'-o {calfits} {self.path}'
+            com = f"imwcs -v -e -d {cat_sort} -w -y 2 -p {self.header['INSTRSCL']} "
+            com += f"-j {right_ascencion} {declination} -c tmc -t {tol_arcs} "
+            com += f"-o {calfits} {self.path}"
 
-            print('Executing astrometric calibration command:', com, sep='\n\t')
+            print('Executing astrometric calibration command:')
+            print(f"\t{com}")
             print('-' * 60)
             # Registering result in log files
             stderr_cal_log_file = self.path.replace('.fits', '_imwcs_stderr_2.log')
@@ -1227,604 +1240,455 @@ class mcFits:
         res = re.findall(r"dxy=\s+([\d.]+)", text_out)
         fit_params['DISTARCS'] = res[0]
 
-        res = re.findall(r'nmatch=\s+(\d+)\s+nstars=\s+(\d+) between tmc and \S+\s+niter=\s+(\d+)', text_out)
+        res = re.findall(r'nmatch=\s+(\d+)\s+nstars=\s+(\d+) between tmc and \S+\s+niter=\s+(\d+)', \
+            text_out)
         fit_params['NMATCH'], fit_params['NSTARS'], fit_params['NITER'] = [int(r) for r in res[0]]
 
         # ---------------------------- Second file (imwcs STDERR) ---------------------------
         text_err = open(log_stderr).read()
-        fit_params['CTYPE1'] = re.findall(r'CTYPE1\s+=\s+(\S+)', text_err)[-1]
-        fit_params['CTYPE2'] = re.findall(r'CTYPE2\s+=\s+(\S+)', text_err)[-1]
-        fit_params['CRVAL1'] = float(re.findall(r'CRVAL1\s+=\s+([\d.-]+)',
-                                                text_err)[-1])
-        fit_params['CRVAL2'] = float(re.findall(r'CRVAL2\s+=\s+([\d.-]+)',
-                                                text_err)[-1])
-        fit_params['CRPIX1'] = float(re.findall(r'CRPIX1\s+=\s+([\d.-]+)',
-                                                text_err)[-1])
-        fit_params['CRPIX2'] = float(re.findall(r'CRPIX2\s+=\s+([\d.-]+)',
-                                                text_err)[-1])
-        fit_params['CD1_1'] = float(re.findall(r'CD1_1\s+=\s+([\d.-]+)',
-                                               text_err)[-1])
-        fit_params['CD1_2'] = float(re.findall(r'CD1_2\s+=\s+([\de.-]+)',
-                                               text_err)[-1])
-        fit_params['CD2_1'] = float(re.findall(r'CD2_1\s+=\s+([\de.-]+)',
-                                               text_err)[-1])
-        fit_params['CD2_2'] = float(re.findall(r'CD2_2\s+=\s+([\d.-]+)',
-                                               text_err)[-1])
 
+        patterns = {
+            'CTYPE1': r'CTYPE1\s+=\s+(\S+)',
+            'CTYPE2': r'CTYPE2\s+=\s+(\S+)',
+            'CRVAL1': r'CRVAL1\s+=\s+([\d.-]+)',
+            'CRVAL2': r'CRVAL2\s+=\s+([\d.-]+)',
+            'CRPIX1': r'CRPIX1\s+=\s+([\d.-]+)',
+            'CRPIX2': r'CRPIX2\s+=\s+([\d.-]+)',
+            'CD1_1': r'CD1_1\s+=\s+([\d.-]+)',
+            'CD1_2': r'CD1_2\s+=\s+([\d.-]+)',
+            'CD2_1': r'CD2_1\s+=\s+([\d.-]+)',
+            'CD2_2': r'CD2_2\s+=\s+([\d.-]+)'
+        }
+        for key, pattern in patterns.items():
+            if key in ['CTYPE1', 'CTYPE2']:
+                fit_params[key] = re.findall(pattern, text_err)[-1]
+            else:
+                fit_params[key] = float(re.findall(pattern, text_err)[-1])
+        
         return fit_params
 
-    # def parse_calibration_logs(self, stderr_log, stdout_log):
-    #     """
-    #     A short description.
-    #
-    #     A bit longer description.
-    #
-    #     Args:
-    #         variable (type): description
-    #
-    #     Returns:
-    #         type: description
-    #
-    #     Raises:
-    #         Exception: description
-    #
-    #     """
-    #     # stderr_log = self.path.replace('.fits', '_imwcs_stderr_%d.log' % ntry)
-    #     if not os.path.exists(stderr_log):
-    #         print('ERROR: No calibration log file "%s" available.' %
-    #               stderr_log)
-    #         return None
-    #
-    #     # stdout_log = self.path.replace('.fits', '_imwcs_sdtout_%d.log' % ntry)
-    #     if not os.path.exists(stdout_log):
-    #         print('ERROR: No calibration log file "%s" available.' %
-    #               stdout_log)
-    #         return None
-    #
-    #     fitting_parameters = dict()  # output parameters
-    #
-    #     # -------------------------- stderr log file -----------------------------
-    #     lines = open(stderr_log).read().split('\n')
-    #     index = -1
-    #     for index, line in enumerate(lines):
-    #         if line.startswith('first solution'):
-    #             index += 1
-    #             break
-    #     # Line model: 'cra= 17:43:45.087 cdec= -06:56:01.88 del=-0.5412, 0.4643 rot= 8.1360 (  512.50,  512.50)'
-    #     # print('Processing line = ', lines[ind])
-    #     res = re.findall(r"\s*cra=\s+([0-9.:\-+]+)\s*cdec=\s*([0-9:.\-+]+)\s*del=([0-9.\-+]+),\s*([0-9.\-+]+)\s+rot=\s*([0-9\-+.]+)\s*[(]\s*([0-9.\-+]+),\s*([0-9.\-+]+)", lines[index])
-    #     if len(res) == 0:
-    #         print('ERROR: Parsing line... ')
-    #         print(lines[index])
-    #         return None
-    #     # print('\tResult:', res)
-    #     fitting_parameters['RACAL'], fitting_parameters['DECCAL'], fitting_parameters['CDELT1CAL'], fitting_parameters['CDELT2CAL'], fitting_parameters['ROTDEGCAL'], fitting_parameters['CRPIX1CAL'], fitting_parameters['CRPIX2CAL'] = res[0]
-    #     index += 2
-    #     for line in lines[index:index+10]:
-    #         # print('Processing line = ', l)
-    #         if line.startswith('CTYPE1'):
-    #             fitting_parameters['CTYPE1CAL'] = line.split('=')[1].strip()
-    #         elif line.startswith('CRVAL1'):
-    #             fitting_parameters['CRVAL1CAL'] = float(line.split('=')[1].strip())
-    #         elif line.startswith('CRPIX1'):
-    #             fitting_parameters['CRPIX1CAL'] = float(line.split('=')[1].strip())
-    #         elif line.startswith('CTYPE2'):
-    #             fitting_parameters['CTYPE2CAL'] = line.split('=')[1].strip()
-    #         elif line.startswith('CRVAL2'):
-    #             fitting_parameters['CRVAL2CAL'] = float(line.split('=')[1].strip())
-    #         elif line.startswith('CRPIX2'):
-    #             fitting_parameters['CRPIX2CAL'] = float(line.split('=')[1].strip())
-    #         elif line.startswith('CD1_1'):
-    #             fitting_parameters['CD1_1'] = float(line.split('=')[1].strip())
-    #         elif line.startswith('CD1_2'):
-    #             fitting_parameters['CD1_2'] = float(line.split('=')[1].strip())
-    #         elif line.startswith('CD2_1'):
-    #             fitting_parameters['CD2_1'] = float(line.split('=')[1].strip())
-    #         elif line.startswith('CD2_2'):
-    #             fitting_parameters['CD2_2'] = float(line.split('=')[1].strip())
-    #     index += 14
-    #     # ---------------------------- stdout log file ---------------------------
-    #
-    #     lines2 = [l for l in open(stdout_log).read().split('\n') if len(l) > 0]
-    #     """
-    #     /media/cesar/datos/Ivan_Agudo/MAPCAT_160604/object_reduction_last/calibration/caf-20160605-02:03:23-sci-agui_masked_rotated.fits:
-    #     # Arcsec/Pixel= -0.541210 0.464260  Rotation= 8.135959 degrees
-    #     # Optical axis= 17:43:45.087  -06:56:01.88 J2000 x= 512.50 y= 512.50
-    #     # Optical axis= 17:41:03.207  -06:54:45.03 B1950  x= 512.50 y= 512.50
-    #     # MagJ ra2000       dec2000    2mass_id          X      Y     magi    dra   ddec   sep
-    #     0830.132153 17:43:46.207 -06:58:59.92 12.15 525.95 123.37  -7.30  -1.69   1.82   2.48
-    #     0830.132276 17:43:58.527 -06:58:07.55 11.84 177.42 185.66  -6.67  -0.88  -1.14   1.44
-    #     0830.132323 17:44:02.269 -06:57:56.15 11.54  78.77 193.54  -6.48   2.49  -0.92   2.66
-    #     0830.132296 17:44:00.403 -06:57:44.74 12.82 124.20 223.35  -6.17   1.02   0.26   1.05
-    #     0830.132276 17:43:58.527 -06:58:07.55 11.84 185.85 178.84  -5.78   3.19   2.64   4.13
-    #     0830.132296 17:44:00.403 -06:57:44.74 12.82 126.44 226.38  -5.77   2.41  -0.96   2.60
-    #     # Mean  dx= -2.0672/4.3053  dy= 0.2704/3.4885  dxy= 4.6778
-    #     # Mean dra= 1.0897/2.3177  ddec= 0.2828/1.6373 sep= 2.3944/2.8376
-    #     # nmatch= 6 nstars= 40 between tmc and /media/cesar/datos/Ivan_Agudo/MAPCAT_160604/object_reduction_last/calibration/caf-20160605-02:03:23-sci-agui_masked_rotated_sorted.cat  niter= 1
-    #     """
-    #     for index2, lines2 in enumerate(lines2):
-    #         if lines2.startswith('# MagJ ra2000       dec2000'):
-    #             break
-    #     sources = ['2mass_id,ra2000,dec2000,MagJ,X,Y,magi,dra,ddec,sep']
-    #     index2 += 1
-    #     while lines2[index2][0] != '#':
-    #         sources.append(','.join(lines2[index2].split()))
-    #         index2 += 1
-    #     data2 = StringIO('\n'.join(sources))
-    #     fitting_parameters['SOURCESCAL'] = pd.read_csv(data2, sep=",")
-    #
-    #     res = re.findall(r"\s+dxy= ([0-9.]+)", lines2[index2])
-    #     if len(res) == 0:
-    #         print('ERROR: Parsing line... ')
-    #         print(lines2[index2])
-    #         return None
-    #     # print('\tResult:', res)
-    #     fitting_parameters['distance_xYCAL'] = res[0]
-    #     index2 += 2
-    #     res = re.findall(r'\s+nmatch=\s+(\d+)\s+nstars=\s+(\d+) between tmc and \S+\s+niter=\s+(\d+)', lines2[index2][1:])
-    #     if len(res) == 0:
-    #         print('ERROR: Parsing line... ')
-    #         print(lines2[index2])
-    #         return None
-    #     fitting_parameters['NMATCHCAL'], fitting_parameters['NSTARSCAL'], fitting_parameters['NITERCAL'] = res[0]
-    #
-    #
-    #     # # Sources employed for fitting
-    #     # #print('header ->', lines[ind])
-    #     # sources = ['2mass_id,ra2000,dec2000,MagJ,X,Y,magi,dra,ddec,sep']
-    #     # ind += 1
-    #     # while lines[ind][0] != '#':
-    #     #     sources.append(','.join(lines[ind].split()))
-    #     #     ind += 1
-    #     # data = StringIO('\n'.join(sources))
-    #     # #print('data ->', data.getvalue())
-    #     # fitting_parameters['SOURCESCAL'] = pd.read_csv(data, sep=",")
-    #     # #print('Type of SOURCES ->', type(fitting_parameters['SOURCES']))
-    #     # #print('Columns of SOURCES ->', fitting_parameters['SOURCES'].columns)
-    #     # # Mean pix distances
-    #     # #print('Processing line = ', lines[ind])
-    #     # res = re.findall(r"\s+dxy= ([0-9.]+)", lines[ind])
-    #     # if len(res) == 0:
-    #     #     print('ERROR: Parsing line... ')
-    #     #     print(lines[ind])
-    #     #     return None
-    #     # #print('\tResult:', res)
-    #     # fitting_parameters['distance_xYCAL'] = res[0]
-    #     # ind += 2
-    #     # # Mean arcs distances
-    #     # #print('Processing line = ', lines[ind])
-    #     # res = re.findall(r'\s+nmatch=\s+(\d+)\s+nstars=\s+(\d+) between tmc and \S+\s+niter=\s+(\d+)', lines[ind][1:])
-    #     # if len(res) == 0:
-    #     #     print('ERROR: Parsing line... ')
-    #     #     print(lines[ind])
-    #     #     return None
-    #     # print('\tResult:', res)
-    #     # fitting_parameters['NMATCHCAL'], fitting_parameters['NSTARSCAL'], fitting_parameters['NITERCAL'] = res[0]
-    #
-    #     return fitting_parameters
+#     def get_sources(self, source="2MASS", format='csv', show_info=True):
+#         """
+#         A short description.
 
-    def get_sources(self, source="2MASS", format='csv', show_info=True):
-        """
-        A short description.
+#         A bit longer description.
 
-        A bit longer description.
+#         Args:
+#             variable (type): description
 
-        Args:
-            variable (type): description
+#         Returns:
+#             type: description
 
-        Returns:
-            type: description
+#         Raises:
+#             Exception: description
 
-        Raises:
-            Exception: description
+#         """
+#         viz_params = None
+#         if source.upper() == "SDSS":
+#             viz_params = """<<====End
+# -c=%(ra)s %(dec)s
+# -c.bm=8.4x8.4
+# -out.max=unlimited
+# -source=V/139/sdss9
+# -c.eq=J2000
+# -out=q_mode
+# -out=cl
+# -out=SDSS9
+# -out=m_SDSS9
+# -out=Im
+# -out=RA_ICRS
+# -out=DE_ICRS
+# -out=ObsDate
+# -out=Q
+# -out=umag
+# -out=e_umag
+# -out=gmag
+# -out=e_gmag
+# -out=rmag
+# -out=e_rmag
+# -out=imag
+# -out=e_imag
+# -out=zmag
+# -out=e_zmag
+# -out=zsp
+# -oc.form=d
+# ====End""" % {'ra': self._header['CRVAL1'], 'dec': self._header['CRVAL2']}
+#         elif source.upper() == "USNO":
+#             viz_params = """<<====End
+# -c=%(ra)s %(dec)s
+# -oc.form=dec
+# -out.max=unlimited
+# -order=I
+# -c.eq=J2000
+# -c.r=8
+# -c.u=arcmin
+# -c.geom=r
+# -out.src=I/252/out
+# -source=I/252/out
+# -out.orig=standard
+# -out=USNO-A2.0
+# -out=RAJ2000
+# -out=DEJ2000
+# -out=ACTflag
+# -out=Mflag
+# -out=Bmag
+# -out=Rmag
+# -out=Epoch
+# ====End""" % {'ra': self._header['CRVAL1'], 'dec': self._header['CRVAL2']}
+#         elif source.upper() == "2MASS":
+#             viz_params = """<<====End
+# -c=%(ra)s %(dec)s
+# -oc.form=dec
+# -out.max=unlimited
+# -order=I
+# -out.src=II/246/out
+# -c.eq=J2000
+# -c.r=8
+# -c.u=arcmin
+# -c.geom=r
+# -source=II/246/out
+# -out.orig=standard
+# -out=RAJ2000
+# -out=DEJ2000
+# -out=2MASS
+# -out=Jmag
+# -out=e_Jmag
+# -out=Hmag
+# -out=e_Hmag
+# -out=Kmag
+# -out=e_Kmag
+# -out=Qflg
+# -out=Rflg
+# -out=Bflg
+# -out=Cflg
+# -out=Xflg
+# -out=Aflg
+# ====End""" % {'ra': self._header['CRVAL1'], 'dec': self._header['CRVAL2']}
+#         else:
+#             print(f"Unknown catalog name '{source}'")
+#             return None
 
-        """
-        viz_params = None
-        if source.upper() == "SDSS":
-            viz_params = """<<====End
--c=%(ra)s %(dec)s
--c.bm=8.4x8.4
--out.max=unlimited
--source=V/139/sdss9
--c.eq=J2000
--out=q_mode
--out=cl
--out=SDSS9
--out=m_SDSS9
--out=Im
--out=RA_ICRS
--out=DE_ICRS
--out=ObsDate
--out=Q
--out=umag
--out=e_umag
--out=gmag
--out=e_gmag
--out=rmag
--out=e_rmag
--out=imag
--out=e_imag
--out=zmag
--out=e_zmag
--out=zsp
--oc.form=d
-====End""" % {'ra': self._header['CRVAL1'], 'dec': self._header['CRVAL2']}
-        elif source.upper() == "USNO":
-            viz_params = """<<====End
--c=%(ra)s %(dec)s
--oc.form=dec
--out.max=unlimited
--order=I
--c.eq=J2000
--c.r=8
--c.u=arcmin
--c.geom=r
--out.src=I/252/out
--source=I/252/out
--out.orig=standard
--out=USNO-A2.0
--out=RAJ2000
--out=DEJ2000
--out=ACTflag
--out=Mflag
--out=Bmag
--out=Rmag
--out=Epoch
-====End""" % {'ra': self._header['CRVAL1'], 'dec': self._header['CRVAL2']}
-        elif source.upper() == "2MASS":
-            viz_params = """<<====End
--c=%(ra)s %(dec)s
--oc.form=dec
--out.max=unlimited
--order=I
--out.src=II/246/out
--c.eq=J2000
--c.r=8
--c.u=arcmin
--c.geom=r
--source=II/246/out
--out.orig=standard
--out=RAJ2000
--out=DEJ2000
--out=2MASS
--out=Jmag
--out=e_Jmag
--out=Hmag
--out=e_Hmag
--out=Kmag
--out=e_Kmag
--out=Qflg
--out=Rflg
--out=Bflg
--out=Cflg
--out=Xflg
--out=Aflg
-====End""" % {'ra': self._header['CRVAL1'], 'dec': self._header['CRVAL2']}
-        else:
-            print(f"Unknown catalog name '{source}'")
-            return None
+#         com = 'vizquery -mime={format} {viz_params}'
 
-        com = 'vizquery -mime={format} {viz_params}'
+#         out_catalog = self._path.replace('.fits', f'_{source}.{format}')
+#         fout = open(out_catalog, 'w')
+#         subprocess.Popen(com, shell=True, stdout=fout, stderr=fout).wait()
+#         fout.close()
+#         if show_info:
+#             print(com)
+#             print('Output catalog available in "%s"' % out_catalog)
 
-        out_catalog = self._path.replace('.fits', f'_{source}.{format}')
-        fout = open(out_catalog, 'w')
-        subprocess.Popen(com, shell=True, stdout=fout, stderr=fout).wait()
-        fout.close()
-        if show_info:
-            print(com)
-            print('Output catalog available in "%s"' % out_catalog)
+#         return 0
 
-        return 0
+#     def read_viz_cat(self, source='2MASS', format='csv', show_info=True):
+#         """
+#         A short description.
 
-    def read_viz_cat(self, source='2MASS', format='csv', show_info=True):
-        """
-        A short description.
+#         A bit longer description.
 
-        A bit longer description.
+#         Args:
+#             variable (type): description
 
-        Args:
-            variable (type): description
+#         Returns:
+#             type: description
 
-        Returns:
-            type: description
+#         Raises:
+#             Exception: description
 
-        Raises:
-            Exception: description
+#         """
+#         sources_catalog = self._path.replace('.fits', f'_{source}.{format}')
+#         if not os.path.exists(sources_catalog):
+#             self.get_sources(source=source, show_info=show_info)
 
-        """
-        sources_catalog = self._path.replace('.fits', f'_{source}.{format}')
-        if not os.path.exists(sources_catalog):
-            self.get_sources(source=source, show_info=show_info)
+#         # defining primary variables...
+#         skip_header = None
+#         delimiter = ';'
 
-        # defining primary variables...
-        skip_header = None
-        delimiter = ';'
+#         if source.upper() == '2MASS':
+#             # Region file for 2MASS catalog
+#             head = "RAJ2000;DEJ2000;2MASS;Jmag;e_Jmag;Hmag;e_Hmag;"
+#             head += "Kmag;e_Kmag;Qflg;Rflg;Bflg;Cflg;Xflg;Aflg"
+#             skip_header = 66
+#         elif source.upper() == 'SDSS':
+#             head = "q_mode;cl;SDSS9;m_SDSS9;Im;RA_ICRS;DE_ICRS;ObsDate;Q;umag;"
+#             head += "e_umag;gmag;e_gmag;rmag;e_rmag;v;e_imag;zmag;e_zmag;zsp"
+#             skip_header = 69
+#         elif source.upper() == 'USNO':
+#             head = "USNO-A2.0;RAJ2000;DEJ2000;ACTflag;Mflag;Bmag;Rmag;Epoch"
+#             skip_header = 52
+#         else:
+#             print("Unknown catalog name '%s'" % source)
+#             return 1
 
-        if source.upper() == '2MASS':
-            # Region file for 2MASS catalog
-            head = "RAJ2000;DEJ2000;2MASS;Jmag;e_Jmag;Hmag;e_Hmag;"
-            head += "Kmag;e_Kmag;Qflg;Rflg;Bflg;Cflg;Xflg;Aflg"
-            skip_header = 66
-        elif source.upper() == 'SDSS':
-            head = "q_mode;cl;SDSS9;m_SDSS9;Im;RA_ICRS;DE_ICRS;ObsDate;Q;umag;"
-            head += "e_umag;gmag;e_gmag;rmag;e_rmag;v;e_imag;zmag;e_zmag;zsp"
-            skip_header = 69
-        elif source.upper() == 'USNO':
-            head = "USNO-A2.0;RAJ2000;DEJ2000;ACTflag;Mflag;Bmag;Rmag;Epoch"
-            skip_header = 52
-        else:
-            print("Unknown catalog name '%s'" % source)
-            return 1
+#         # fnames = head.replace(delimiter, ',')
+#         # out_cat = self._path.replace(f'_{source}', '')
+#         vizdata = np.genfromtxt(sources_catalog, skip_header=skip_header,
+#                                 skip_footer=1,
+#                                 names=head.replace(delimiter, ','),
+#                                 delimiter=delimiter, missing_values="-999",
+#                                 comments='#', autostrip=True)
+#         # Location keywords homogeneization
+#         if source == 'SDSS':
+#             vizdata['RAJ2000'] = copy.deepcopy(vizdata['RA_ICRS'])
+#             vizdata['DEJ2000'] = copy.deepcopy(vizdata['DE_ICRS'])
+#             del(vizdata['RA_ICRS'])
+#             del(vizdata['DE_ICRS'])
 
-        # fnames = head.replace(delimiter, ',')
-        # out_cat = self._path.replace(f'_{source}', '')
-        vizdata = np.genfromtxt(sources_catalog, skip_header=skip_header,
-                                skip_footer=1,
-                                names=head.replace(delimiter, ','),
-                                delimiter=delimiter, missing_values="-999",
-                                comments='#', autostrip=True)
-        # Location keywords homogeneization
-        if source == 'SDSS':
-            vizdata['RAJ2000'] = copy.deepcopy(vizdata['RA_ICRS'])
-            vizdata['DEJ2000'] = copy.deepcopy(vizdata['DE_ICRS'])
-            del(vizdata['RA_ICRS'])
-            del(vizdata['DE_ICRS'])
+#         return vizdata
 
-        return vizdata
+#     def make_vizquery_region(self, source="2MASS", format='csv',
+#                              number_brigthest_sources=50, color='magenta',
+#                              show_info=True):
+#         """
+#         A short description.
 
-    def make_vizquery_region(self, source="2MASS", format='csv',
-                             number_brigthest_sources=50, color='magenta',
-                             show_info=True):
-        """
-        A short description.
+#         A bit longer description.
 
-        A bit longer description.
+#         Args:
+#             variable (type): description
 
-        Args:
-            variable (type): description
+#         Returns:
+#             type: description
 
-        Returns:
-            type: description
+#         Raises:
+#             Exception: description
 
-        Raises:
-            Exception: description
+#         """
+#         vizdata = self.read_viz_cat(source=source, format='csv',
+#                                     show_info=show_info)
+#         if not vizdata.size:
+#             print(f'Input source "{source}" not valid.')
+#             return 1
 
-        """
-        vizdata = self.read_viz_cat(source=source, format='csv',
-                                    show_info=show_info)
-        if not vizdata.size:
-            print(f'Input source "{source}" not valid.')
-            return 1
+#         key_mag = None
+#         if source.upper() == '2MASS':
+#             key_mag = 'Jmag'
+#         elif source.upper() == 'SDSS':
+#             key_mag = 'rmag'
+#         elif source.upper() == 'USNO':
+#             key_mag = 'Rmag'
 
-        key_mag = None
-        if source.upper() == '2MASS':
-            key_mag = 'Jmag'
-        elif source.upper() == 'SDSS':
-            key_mag = 'rmag'
-        elif source.upper() == 'USNO':
-            key_mag = 'Rmag'
+#         if vizdata['RAJ2000'].size > 0:
+#             # sorting sources catalog by magnitude
+#             index = vizdata[key_mag].argsort()
+#             if vizdata['RAJ2000'].size > number_brigthest_sources:
+#                 brightest_ra = vizdata['RAJ2000'][index[:number_brigthest_sources]]
+#                 brightest_dec = vizdata['DEJ2000'][index[:number_brigthest_sources]]
+#             else:
+#                 brightest_ra = vizdata['RAJ2000']
+#                 brightest_dec = vizdata['DEJ2000']
+#             lines_out = ['# Region file format: DS9 version 4.0']
+#             lines_out.append('global color="%s" ' % color +
+#                              'font="helvetica 10 normal roman" edit=1 ' +
+#                              'move=1 delete=1 highlite=1 include=1 wcs=wcs')
+#             for right_ascension, declination in zip(brightest_ra, brightest_dec):
+#                 lines_out.append(f'fk5;circle({right_ascension},{declination},5")')
+#             # writing ouptu region file
+#             sources_catalog = self._path.replace('.fits',
+#                                                  f'_{source}.{format}')
+#             out_reg = sources_catalog.replace('.csv', '.reg')
+#             with open(out_reg, 'w') as fout:
+#                 fout.write("\n".join(lines_out))
+#             print(f'INFO: Output region file in "{out_reg}"')
+#         else:
+#             return 2
 
-        if vizdata['RAJ2000'].size > 0:
-            # sorting sources catalog by magnitude
-            index = vizdata[key_mag].argsort()
-            if vizdata['RAJ2000'].size > number_brigthest_sources:
-                brightest_ra = vizdata['RAJ2000'][index[:number_brigthest_sources]]
-                brightest_dec = vizdata['DEJ2000'][index[:number_brigthest_sources]]
-            else:
-                brightest_ra = vizdata['RAJ2000']
-                brightest_dec = vizdata['DEJ2000']
-            lines_out = ['# Region file format: DS9 version 4.0']
-            lines_out.append('global color="%s" ' % color +
-                             'font="helvetica 10 normal roman" edit=1 ' +
-                             'move=1 delete=1 highlite=1 include=1 wcs=wcs')
-            for right_ascension, declination in zip(brightest_ra, brightest_dec):
-                lines_out.append(f'fk5;circle({right_ascension},{declination},5")')
-            # writing ouptu region file
-            sources_catalog = self._path.replace('.fits',
-                                                 f'_{source}.{format}')
-            out_reg = sources_catalog.replace('.csv', '.reg')
-            with open(out_reg, 'w') as fout:
-                fout.write("\n".join(lines_out))
-            print(f'INFO: Output region file in "{out_reg}"')
-        else:
-            return 2
+#         return 0
 
-        return 0
+#     #  ---------------- PHOTOMETRIC CALIBRACION -------------------
+#     def photometric_calibration(self, mapcat_catalog, detect_params,
+#                                 max_dist_arcs=5, overwrite=True,
+#                                 show_info=True):
+#         """
+#         A short description.
 
-    #  ---------------- PHOTOMETRIC CALIBRACION -------------------
-    def photometric_calibration(self, mapcat_catalog, detect_params,
-                                max_dist_arcs=5, overwrite=True,
-                                show_info=True):
-        """
-        A short description.
+#         A bit longer description.
 
-        A bit longer description.
+#         Args:
+#             variable (type): description
 
-        Args:
-            variable (type): description
+#         Returns:
+#             type: description
 
-        Returns:
-            type: description
+#         Raises:
+#             Exception: description
 
-        Raises:
-            Exception: description
+#         """
+#         self.extract_sources(detect_params=detect_params,
+#                              overwrite=overwrite, show_info=show_info)
 
-        """
-        self.extract_sources(detect_params=detect_params,
-                             overwrite=overwrite, show_info=show_info)
+#         # # Plotting detected SExtractor sources
+#         # dire, astro_fits_name = os.path.split(astrom_out_fits)
+#         # aper_image_png = aper_image.replace('.fits', '_aper.png')
+#         # detections_png = os.path.join(metafiles_dir, astro_png_name)
+#         # plot(aper_image, aper_image_png,
+#         #          title='Apertures image for %s' % input_name, colorBar=False)
 
-        # # Plotting detected SExtractor sources
-        # dire, astro_fits_name = os.path.split(astrom_out_fits)
-        # aper_image_png = aper_image.replace('.fits', '_aper.png')
-        # detections_png = os.path.join(metafiles_dir, astro_png_name)
-        # plot(aper_image, aper_image_png,
-        #          title='Apertures image for %s' % input_name, colorBar=False)
+#         # SExtractor catalog
+#         if os.path.splitext(detect_params['CATALOG_NAME'])[1] == '.fits':
+#             hdul = fits.open(detect_params['CATALOG_NAME'])
+#             # assuming the first extension is a table
+#             data_sextractor = hdul[2].data
+#             # cols = hdul[2].columns
+#             # cols.info()
+#         else:
+#             lines = open(detect_params['CATALOG_NAME'], 'r').readlines(size=50)
+#             fields = list()
+#             for line in lines:
+#                 if line.startswith('#'):
+#                     fields.append(line.split()[2])
+#                 else:
+#                     break
+#             data_sextractor = np.genfromtxt(detect_params['CATALOG'],
+#                                             names=fields)
+#         # data_sextractor = data_sextractor[data_sextractor['FLAGS'] == 0]
+#         # data_sextractor['MAG_AUTO']
+#         # print("Clean SExtractor detections = ", data_sextractor['MAG_AUTO'].size)
 
-        # SExtractor catalog
-        if os.path.splitext(detect_params['CATALOG_NAME'])[1] == '.fits':
-            hdul = fits.open(detect_params['CATALOG_NAME'])
-            # assuming the first extension is a table
-            data_sextractor = hdul[2].data
-            # cols = hdul[2].columns
-            # cols.info()
-        else:
-            lines = open(detect_params['CATALOG_NAME'], 'r').readlines(size=50)
-            fields = list()
-            for line in lines:
-                if line.startswith('#'):
-                    fields.append(line.split()[2])
-                else:
-                    break
-            data_sextractor = np.genfromtxt(detect_params['CATALOG'],
-                                            names=fields)
-        # data_sextractor = data_sextractor[data_sextractor['FLAGS'] == 0]
-        # data_sextractor['MAG_AUTO']
-        # print("Clean SExtractor detections = ", data_sextractor['MAG_AUTO'].size)
+#         # ---------- Reading MAPCAT sources -----------------
+#         mapcat_data = pd.read_csv(mapcat_catalog, comment="#")
 
-        # ---------- Reading MAPCAT sources -----------------
-        mapcat_data = pd.read_csv(mapcat_catalog, comment="#")
+#         # Transforming astronomical coordinates: from sexagesimal to decimal degrees
+#         dra2000 = list()
+#         ddec2000 = list()
+#         for right_ascencion, declination in zip(mapcat_data['ra2000'], mapcat_data['dec2000']):
+#             coordinates = SkyCoord('%s %s' % (right_ascencion, declination),
+#                                    unit=(u.hourangle, u.deg))
+#             dra2000.append(coordinates.ra.deg)
+#             ddec2000.append(coordinates.dec.deg)
 
-        # Transforming astronomical coordinates: from sexagesimal to decimal degrees
-        dra2000 = list()
-        ddec2000 = list()
-        for right_ascencion, declination in zip(mapcat_data['ra2000'], mapcat_data['dec2000']):
-            coordinates = SkyCoord('%s %s' % (right_ascencion, declination),
-                                   unit=(u.hourangle, u.deg))
-            dra2000.append(coordinates.ra.deg)
-            ddec2000.append(coordinates.dec.deg)
+#         # Creating arrays of coordinates
+#         mapcat_data['dra2000'] = np.array(dra2000)
+#         mapcat_data['ddec2000'] = np.array(ddec2000)
 
-        # Creating arrays of coordinates
-        mapcat_data['dra2000'] = np.array(dra2000)
-        mapcat_data['ddec2000'] = np.array(ddec2000)
+#         # Cross-matching catalogs
+#         coo_photoCat = SkyCoord(mapcat_data['dra2000'] * u.deg,
+#                                 mapcat_data['ddec2000'] * u.deg)
+#         coo_sexCat = SkyCoord(data_sextractor['ALPHA_J2000'] * u.deg,
+#                               data_sextractor['DELTA_J2000'] * u.deg)
+#         if show_info:
+#             print("Size of BLAZARs catalog = ", mapcat_data['dra2000'].size)
+#             print("Size of SExtractor catalog = ",
+#                   data_sextractor['ALPHA_J2000'].size)
 
-        # Cross-matching catalogs
-        coo_photoCat = SkyCoord(mapcat_data['dra2000'] * u.deg,
-                                mapcat_data['ddec2000'] * u.deg)
-        coo_sexCat = SkyCoord(data_sextractor['ALPHA_J2000'] * u.deg,
-                              data_sextractor['DELTA_J2000'] * u.deg)
-        if show_info:
-            print("Size of BLAZARs catalog = ", mapcat_data['dra2000'].size)
-            print("Size of SExtractor catalog = ",
-                  data_sextractor['ALPHA_J2000'].size)
+#         idx, d2d, d3d = coo_sexCat.match_to_catalog_sky(coo_photoCat)
+#         # idx = Indices into coo_photoCat to get the matched points for each
+#         #    of this object’s coordinates.
+#         # d2d = The on-sky separation between the closest match for each
+#         #    element in this object in coo_photoCat.
+#         # d3d = The 3D distance between the closest match for each element in
+#         #    this object in coo_photoCat
 
-        idx, d2d, d3d = coo_sexCat.match_to_catalog_sky(coo_photoCat)
-        # idx = Indices into coo_photoCat to get the matched points for each
-        #    of this object’s coordinates.
-        # d2d = The on-sky separation between the closest match for each
-        #    element in this object in coo_photoCat.
-        # d3d = The 3D distance between the closest match for each element in
-        #    this object in coo_photoCat
+#         if show_info:
+#             print('Minimum distance sources = %6.2f arcsec (%6.2f armin)' %
+#                   (d2d.arcsec.min(), d2d.arcsec.min() / 60))
+#         # Checking closest sources
+#         if (d2d.arcsec <= max_dist_arcs).sum() == 0:
+#             print("$" * 100)
+#             print("WARNING: There are no calibration sources close enough" +
+#                   " to image detections.\nImpossible photometric calibration!!")
+#             print("\t- Closest source found at %f arcsecs -" % d2d.arcsec.min())
+#             print("$" * 100)
+#             return 1
 
-        if show_info:
-            print('Minimum distance sources = %6.2f arcsec (%6.2f armin)' %
-                  (d2d.arcsec.min(), d2d.arcsec.min() / 60))
-        # Checking closest sources
-        if (d2d.arcsec <= max_dist_arcs).sum() == 0:
-            print("$" * 100)
-            print("WARNING: There are no calibration sources close enough" +
-                  " to image detections.\nImpossible photometric calibration!!")
-            print("\t- Closest source found at %f arcsecs -" % d2d.arcsec.min())
-            print("$" * 100)
-            return 1
+#         if show_info:
+#             print("Size of matching sources result = ", idx.size)
 
-        if show_info:
-            print("Size of matching sources result = ", idx.size)
+#         png_hist_match = self._path.replace('.fits', '_histMatchSources.png')
+#         plt.hist(d2d.arcsec, histtype='step', range=(0, max_dist_arcs))
+#         plt.xlabel('Distance [arcsec]')
+#         plt.ylabel('Sources number [#]')
+#         plt.tight_layout()
+#         plt.savefig(png_hist_match, dpi=300)
+#         plt.close()
 
-        png_hist_match = self._path.replace('.fits', '_histMatchSources.png')
-        plt.hist(d2d.arcsec, histtype='step', range=(0, max_dist_arcs))
-        plt.xlabel('Distance [arcsec]')
-        plt.ylabel('Sources number [#]')
-        plt.tight_layout()
-        plt.savefig(png_hist_match, dpi=300)
-        plt.close()
+#         # print(SkyCoord(data['dra2000'][0]*u.deg, data['ddec2000'][0]*u.deg))
+#         # print(SkyCoord(data['dra2000'][0], data['ddec2000'][0], unit=u.deg))
 
-        # print(SkyCoord(data['dra2000'][0]*u.deg, data['ddec2000'][0]*u.deg))
-        # print(SkyCoord(data['dra2000'][0], data['ddec2000'][0], unit=u.deg))
+#         # Filtering closest matches between photometrical reference stars
+#         # and SExtractor detections (distance lower than 5 arsec)
+#         index_sextractor = list()
+#         index_photo_cal = list()
+#         blazar_rmag = mapcat_data['Rmag'].values
+#         blazar_rmagerr = mapcat_data['Rmagerr'].values
+#         for index, value in enumerate(zip(idx, d2d)):
+#             # print(val[0])
+#             if (value[1].arcsec < max_dist_arcs) and (blazar_rmag[value[0]] >= 0):
+#                 print(value[0], blazar_rmag[value[0]], value[1].arcsec)
+#                 index_sextractor.append(index)
+#                 index_photo_cal.append(value[0])
+#                 print("\t(SExtractor index, Blazard index) = (%d, %d)" % (index, value[0]))
+#             # Plotting MAPCAT sources
+#         # Checking plot
+#         png_photo_cal_sources = self.path.replace('.fits', '_MAPCAT_photoCal_sources.png')
+#         print('Cross-matching catalogs in PNG ->', png_photo_cal_sources)
+#         self.plot('MAPCAT Sources',
+#                  coords=(mapcat_data['dra2000'][index_photo_cal],
+#                          mapcat_data['ddec2000'][index_photo_cal]),
+#                  parameters={'aspect': 'auto', 'invert': 'True'})
 
-        # Filtering closest matches between photometrical reference stars
-        # and SExtractor detections (distance lower than 5 arsec)
-        index_sextractor = list()
-        index_photo_cal = list()
-        blazar_rmag = mapcat_data['Rmag'].values
-        blazar_rmagerr = mapcat_data['Rmagerr'].values
-        for index, value in enumerate(zip(idx, d2d)):
-            # print(val[0])
-            if (value[1].arcsec < max_dist_arcs) and (blazar_rmag[value[0]] >= 0):
-                print(value[0], blazar_rmag[value[0]], value[1].arcsec)
-                index_sextractor.append(index)
-                index_photo_cal.append(value[0])
-                print("\t(SExtractor index, Blazard index) = (%d, %d)" % (index, value[0]))
-            # Plotting MAPCAT sources
-        # Checking plot
-        png_photo_cal_sources = self.path.replace('.fits', '_MAPCAT_photoCal_sources.png')
-        print('Cross-matching catalogs in PNG ->', png_photo_cal_sources)
-        self.plot('MAPCAT Sources',
-                 coords=(mapcat_data['dra2000'][index_photo_cal],
-                         mapcat_data['ddec2000'][index_photo_cal]),
-                 parameters={'aspect': 'auto', 'invert': 'True'})
+#         mag_sex = data_sextractor['MAG_AUTO'][index_sextractor].astype(np.float)
+#         magerr_sex = data_sextractor['MAGERR_AUTO'][index_sextractor].astype(np.float)
+#         mag_cal = blazar_rmag[index_photo_cal].astype(np.float)
+#         magerr_cal = blazar_rmagerr[index_photo_cal].astype(np.float)
+#         if show_info:
+#             keywords = ['MAG_AUTO', 'MAGERR_AUTO', 'MAG_CAL', 'magerr_cal']
+#             print('  '.join(keywords))
+#             for index in mag_sex.size:
+#                 print(mag_sex[index], magerr_sex[index], mag_cal[index],
+#                       magerr_cal[index])
+#         magerr_cal[magerr_cal < 0] = 0  # if no error available, it's set to zero
 
-        mag_sex = data_sextractor['MAG_AUTO'][index_sextractor].astype(np.float)
-        magerr_sex = data_sextractor['MAGERR_AUTO'][index_sextractor].astype(np.float)
-        mag_cal = blazar_rmag[index_photo_cal].astype(np.float)
-        magerr_cal = blazar_rmagerr[index_photo_cal].astype(np.float)
-        if show_info:
-            keywords = ['MAG_AUTO', 'MAGERR_AUTO', 'MAG_CAL', 'magerr_cal']
-            print('  '.join(keywords))
-            for index in mag_sex.size:
-                print(mag_sex[index], magerr_sex[index], mag_cal[index],
-                      magerr_cal[index])
-        magerr_cal[magerr_cal < 0] = 0  # if no error available, it's set to zero
+#         # Fitting photometric measures for calibrating input_fits
+#         # linear fitting with slope = 1
+#         popt, pcov = optimize.curve_fit(_linear_fit, mag_sex, mag_cal)
+#         if show_info:
+#             print('SLOPE 1 linear fitting results', popt, pcov)
 
-        # Fitting photometric measures for calibrating input_fits
-        # linear fitting with slope = 1
-        popt, pcov = optimize.curve_fit(_linear_fit, mag_sex, mag_cal)
-        if show_info:
-            print('SLOPE 1 linear fitting results', popt, pcov)
+#         # Add FITS keyword for ZEROPOINT photometric calibration
+#         # Now copy header to reducted FITS
+#         new_cards = [('MAGZPT', popt[0], 'MAGNITUDE ZEROPOINT')]
+#         self._header.extend(new_cards, strip=False, end=True)
+#         self._save = True
 
-        # Add FITS keyword for ZEROPOINT photometric calibration
-        # Now copy header to reducted FITS
-        new_cards = [('MAGZPT', popt[0], 'MAGNITUDE ZEROPOINT')]
-        self._header.extend(new_cards, strip=False, end=True)
-        self._save = True
+#         # Plotting fit
+#         plt.errorbar(mag_sex, mag_cal, xerr=magerr_sex, yerr=magerr_cal,
+#                      fmt="r.")
+#         plt.xlabel('MAG SExtractor')
+#         plt.ylabel('MAG R filter')
+#         plt.title('MAG R = MAG SEXTRACTOR + %6.2f' % popt[0])
+#         png_photo_calibration = self._path.replace('.fits', '_photoFit.png')
+#         plt.savefig(png_photo_calibration, dpi=300)
+#         plt.close()
 
-        # Plotting fit
-        plt.errorbar(mag_sex, mag_cal, xerr=magerr_sex, yerr=magerr_cal,
-                     fmt="r.")
-        plt.xlabel('MAG SExtractor')
-        plt.ylabel('MAG R filter')
-        plt.title('MAG R = MAG SEXTRACTOR + %6.2f' % popt[0])
-        png_photo_calibration = self._path.replace('.fits', '_photoFit.png')
-        plt.savefig(png_photo_calibration, dpi=300)
-        plt.close()
+#         # Other fitting routines
+#         # Fitting routines
+#         print('Other fitting routines (linear with y-axis magnitude errors)')
+#         xfit = smapi.add_constant(mag_sex)
+#         yfit = mag_cal
+#         weights = 1. / (magerr_cal ** 2)
+#         print(xfit.shape, yfit.shape, weights.shape)
+#         wls = smapi.WLS(yfit, xfit, weights)
+#         results = wls.fit(cov_type='fixed scale')
+#         print('Summary fitting:', results.summary())
+#         print('\t\tp-values:', results.pvalues)
+#         print('\t\tt-values:', results.tvalues)
+#         print('\t\tResulting parameters:', results.params)
+#         print('\t\tConfidence intervals:', results.conf_int())
+#         print('\t\t-' * 30)
 
-        # Other fitting routines
-        # Fitting routines
-        print('Other fitting routines (linear with y-axis magnitude errors)')
-        xfit = smapi.add_constant(mag_sex)
-        yfit = mag_cal
-        weights = 1. / (magerr_cal ** 2)
-        print(xfit.shape, yfit.shape, weights.shape)
-        wls = smapi.WLS(yfit, xfit, weights)
-        results = wls.fit(cov_type='fixed scale')
-        print('Summary fitting:', results.summary())
-        print('\t\tp-values:', results.pvalues)
-        print('\t\tt-values:', results.tvalues)
-        print('\t\tResulting parameters:', results.params)
-        print('\t\tConfidence intervals:', results.conf_int())
-        print('\t\t-' * 30)
+#         # Plotting linear fit
+#         png_plotfit2 = self._path.replace('.fits', '_photoFit_method2.png')
+#         plt.errorbar(mag_sex, mag_cal, xerr=magerr_sex, yerr=magerr_cal,
+#                      fmt="r.", label='Exp. mags')
+#         # plt.plot(mag_sex, results.params.const + results.params.x1 * mag_sex,
+#         # 'g-', label='linear fit')
+#         plt.plot(mag_sex, results.predict(), 'g-', label='linear fit')
+#         plt.xlabel('MAG SExtractor')
+#         plt.ylabel('MAG R filter')
+#         plt.legend()
+#         plt.title('$R^2=%4.3f$' % results.rsquared)
+#         plt.savefig(png_plotfit2, dpi=300)
+#         plt.close()
 
-        # Plotting linear fit
-        png_plotfit2 = self._path.replace('.fits', '_photoFit_method2.png')
-        plt.errorbar(mag_sex, mag_cal, xerr=magerr_sex, yerr=magerr_cal,
-                     fmt="r.", label='Exp. mags')
-        # plt.plot(mag_sex, results.params.const + results.params.x1 * mag_sex,
-        # 'g-', label='linear fit')
-        plt.plot(mag_sex, results.predict(), 'g-', label='linear fit')
-        plt.xlabel('MAG SExtractor')
-        plt.ylabel('MAG R filter')
-        plt.legend()
-        plt.title('$R^2=%4.3f$' % results.rsquared)
-        plt.savefig(png_plotfit2, dpi=300)
-        plt.close()
-
-        return 0
+#         return 0

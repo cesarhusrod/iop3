@@ -12,13 +12,11 @@ VERSION:
 
 
 # ---------------------- IMPORT SECTION ----------------------
+from datetime import datetime
 import os
 import argparse
 import glob
 import re
-
-import pandas as pd
-import jinja2 # HTML templates packages for documentation and logging
 
 from mcFits import *
 
@@ -52,21 +50,23 @@ def main():
     # Pattern for directories structure in IOP3 pipeline
     # Directory structure...
     # INPUT
-    # [root_data]/data/raw/MAPCAT_yyyy-mm-dd
+    # [root_data]/data/raw/[project]/yymmdd
     # OUTPUT reduction
-    # [root_data]/data/reduction/MAPCAT_yyyy-mm-dd
+    # [root_data]/data/reduction/[project]/yymmdd
     # OUTPUT calibration
-    # [root_data]/data/calibration/MAPCAT_yyyy-mm-dd
+    # [root_data]/data/calibration/[project]/yymmdd
     # OUTPUT polarization
-    # [root_data]/data/final/MAPCAT_yyyy-mm-dd
+    # [root_data]/data/final/[project]/yymmdd
+    #
+    # where [project] could be MAPCAT
 
     input_dir = os.path.abspath(args.input_dir) # absolute path
     config_dir = os.path.abspath(args.config_dir) # absolute path
 
     # Does input verify pattern given above?
-    pattern = re.findall('(/data/raw/MAPCAT_\d{4}-\d{2}-\d{2})', input_dir)
+    pattern = re.findall('(/data/raw/\w+/\d{6})', input_dir)
     if not len(pattern):  # pattern not found
-        print('ERROR: Input directory pattern "[root_data]/data/raw/MAPCAT_yyyy-mm-dd" not verified.')
+        print('ERROR: Input directory pattern "[root_data]/data/raw/*/yymmdd" not verified.')
         return 2
     if not os.path.isdir(input_dir):
         str_err = 'ERROR: Input directory "{}" not available'
@@ -74,15 +74,16 @@ def main():
         return 3
 
     # Getting run date (input directory must have pattern like *MAPCAT_YYYY-MM-DD)
-    date_run = re.findall('MAPCAT_(\d{4}-\d{2}-\d{2})', input_dir)[0]
+    dt_run = re.findall('(\d{6})', input_dir)[0]
+    date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
 
     path_line = input_dir.split('/')
-    reduction_dir = '/'.join(path_line[:-2] + ['reduction', path_line[-1]])
-    calibration_dir = '/'.join(path_line[:-2] + ['calibration', path_line[-1]])
-    polarization_dir = '/'.join(path_line[:-2] + ['final', path_line[-1]])
+    reduction_dir = input_dir.replace('raw', 'reduction')
+    calibration_dir = input_dir.replace('raw', 'calibration')
+    polarization_dir = input_dir.replace('raw', 'final')
     print(f"reduction_dir = {reduction_dir}")
     print(f"calibration_dir = {calibration_dir}")
-    print(f"final_dir (polarization calculations) = {polarization_dir}")
+    print(f"final_dir (polarization) = {polarization_dir}")
     # root_dir, input_dirname = os.path.split(input_dir)
     # reduction_dir = os.path.join(root_dir, os.path.join(input_dirname, "_reduction"))
     if not os.path.exists(reduction_dir):
@@ -109,22 +110,28 @@ def main():
     print(com_reduction)
     subprocess.Popen(com_reduction, shell=True).wait()
 
-    return -1
+    # return -1
 
     # 2nd STEP: Input reduced images calibration
-    reduced_fits = glob.glob(os.path.join(reduction_dir, 'caf-*-sci-agui.fits'))
+    reduced_fits = glob.glob(os.path.join(reduction_dir, '*.fits'))
     reduced_fits.sort()
     for rf in reduced_fits:
-        im_time = re.findall('caf-(\d{8}-\d{2}:\d{2}:\d{2})-sci-agui.fits', rf)[0]
-        im_time = im_time.replace(':', '')
+        r_fits = mcFits(rf)
+        obj = r_fits.header['OBJECT']
+        if obj == 'Master BIAS' or obj == 'Master FLAT':
+            continue 
+        dt_obj = datetime.fromisoformat(r_fits.header['DATE-OBS'])
+        im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
         cal_dir = os.path.join(calibration_dir, im_time)
         com_calibration = f"python iop3_calibration.py {args.config_dir} {cal_dir} {rf}"
-        # print('+' * 100)
-        # print(com_calibration)
-        # print('+' * 100)
+        print('+' * 100)
+        print(com_calibration)
+        print('+' * 100)
         # subprocess.Popen(com_calibration, shell=True).wait()
-        # Alternative command
-        """"
+        
+        # Alternative command: calibration process console output to file
+        # (for diagnostic/debuging purposes)
+        # """"
         if not os.path.isdir(cal_dir):
             try:
                 os.makedirs(cal_dir)
@@ -133,7 +140,7 @@ def main():
                 raise
         with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
             subprocess.Popen(com_calibration, shell=True, stdout=log_file).wait()
-        """
+        # """
 
     # return -1
 
@@ -143,7 +150,7 @@ def main():
     print(com_polarimetry)
     subprocess.Popen(com_polarimetry, shell=True).wait()
 
-    return -1
+    # return -1
 
     # 4th STEP: Inserting results in database
     # raw_csv = os.path.join(reduction_dir, 'input_data_raw.csv')
@@ -164,10 +171,7 @@ def main():
     with open(os.path.join(polarization_dir, 'db.log'), 'w') as log_file:
         subprocess.Popen(com_insertdb, shell=True, stdout=log_file).wait()
 
-
     return 0
-
-    #
 
 if __name__ == '__main__':
     if not main():

@@ -229,12 +229,39 @@ def polarimetry(df):
     # print(str_out.format('Ord', o_0, o_22, o_45, o_67))
     # print(str_out.format('Ext', e_0, e_22, e_45, e_67))
 
-    RQ = math.sqrt((o_0 / e_0) / (o_45 / e_45))
-    dRQ = RQ * math.sqrt((oe_0/o_0) ** 2 + (ee_0 / e_0) ** 2 +
-                         (oe_45 / o_45) ** 2 + (ee_45 / e_45) ** 2)
-    RU = math.sqrt((o_22 / e_22) / (o_67 / e_67))
-    dRU = RU * math.sqrt((oe_22 / o_22) ** 2 + (ee_22 / e_22) ** 2 +
-                         (oe_67 / o_67) ** 2 + (ee_67 / e_67) ** 2)
+    try:
+        RQ = math.sqrt((o_0 / e_0) / (o_45 / e_45))
+    except:
+        print(f"ERROR: computing RQ = math.sqrt((o_0 / e_0) / (o_45 / e_45))")
+        print(f"(o_0, e_0, o_45, e_45) = ({o_0}, {e_0}, {o_45}, {e_45})")
+        raise
+    
+    try:
+        dRQ = RQ * math.sqrt((oe_0/o_0) ** 2 + (ee_0 / e_0) ** 2 + \
+            (oe_45 / o_45) ** 2 + (ee_45 / e_45) ** 2)
+    except:
+        print(f"ERROR: computing dRQ = RQ * math.sqrt((oe_0/o_0) ** 2 + (ee_0 / e_0) ** 2 + \
+            (oe_45 / o_45) ** 2 + (ee_45 / e_45) ** 2)")
+        print(f"(oe_0, o_0, ee_0, e_0) = ({oe_0}, {o_0}, {ee_0}, {e_0})")
+        print(f"(oe_45, o_45, ee_45, e_45) = ({oe_45}, {o_45}, {ee_45}, {e_45})")
+        raise
+    
+    try:
+        RU = math.sqrt((o_22 / e_22) / (o_67 / e_67))
+    except:
+        print(f"ERROR:computing RU = math.sqrt((o_22 / e_22) / (o_67 / e_67))")
+        print(f"(o_22, e_22, o_67, e_67) = ({o_22}, {e_22}, {o_67}, {e_67})")
+        raise
+    
+    try:
+        dRU = RU * math.sqrt((oe_22 / o_22) ** 2 + (ee_22 / e_22) ** 2 + \
+            (oe_67 / o_67) ** 2 + (ee_67 / e_67) ** 2)
+    except:
+        print(f"ERROR: computing dRU = RU * math.sqrt((oe_22 / o_22) ** 2 + (ee_22 / e_22) ** 2 + \
+            (oe_67 / o_67) ** 2 + (ee_67 / e_67) ** 2)")
+        print(f"(oe_22, o_22, ee_22, e_22) = ({oe_22}, {o_22}, {ee_22}, {e_22})")
+        print(f"(oe_67, o_67, ee_67, e_67) = ({oe_67}, {o_67}, {ee_67}, {e_67})")
+        raise
 
     val_str = '(RQ+-dRQ, RU+-dRU) = ({}+-{}, {}+-{})'
     # print(val_str.format(RQ, dRQ, RU, dRU))
@@ -305,7 +332,10 @@ def main():
             return 2
     
 
-    date_run = re.findall('MAPCAT_(\d{4}-\d{2}-\d{2})', args.calib_base_dir)[0]
+    # Getting run date (input directory must have pattern like *MAPCAT_yyyy-mm-dd)
+    dt_run = re.findall('(\d{6})', args.calib_base_dir)[-1]
+    date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
+    
     # Getting data from every VALID *_final.csv file into a new dataframe
     data_res = pd.concat([pd.read_csv(r) for r in results])
     # print(data_res.info())
@@ -339,7 +369,9 @@ def main():
             try:
                 res_pol = compute_polarimetry(data_object)
             except ZeroDivisionError:
-                continue
+                print("EXCEPTON: Found Zero Division Error")
+            except ValueError:
+                print("EXCEPTON: Found Value Error")
 
             res_pol['DATE_RUN'] = date_run
             res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
@@ -356,7 +388,6 @@ def main():
             # pprint.pprint(pol_rows)
 
     # writing output night polarimetry file
-    date_run = re.findall('(\d{4}-\d{2}-\d{2})', results[0])[0]  # yyyymmdd
     name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)

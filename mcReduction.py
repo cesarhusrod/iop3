@@ -24,44 +24,17 @@ VERSION:
 
 # ---------------------- IMPORT SECTION ----------------------
 import os
-import argparse
 import glob
 import subprocess
-import math
-import pickle
-import pprint
 import datetime
 import re
-
-#import warnings
+from collections import defaultdict
 
 # Numerical packages
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm # Linear fitting module
-from scipy import optimize
 
-# Plotting packages
-import matplotlib
-matplotlib.use('Agg')
-from matplotlib import pyplot as plt
-#import seaborn
-
-# HTML templates packages for documentation and logging
-import jinja2 # templates module
-
-# Astronomical packages
-import aplpy # FITS plotting library
 from astropy.io import fits # FITS library
-from astropy.io.fits import Header
-
-# Coordinate system transformation package and modules
-from astropy.coordinates import SkyCoord  # High-level coordinates
-from astropy.coordinates import ICRS, Galactic, FK4, FK5  # Low-level frames
-from astropy.coordinates import Angle, Latitude, Longitude  # Angles
-import astropy.units as u
-import astropy.wcs as wcs
-#from PyAstronomy import pyasl # for changing coordinates format
 
 from mcFits import mcFits
 
@@ -71,7 +44,8 @@ class mcReduction:
         self.input_dir = input_dir
         self.out_dir = out_dir
         self.border = border # image border not considered
-        self.date = re.findall('MAPCAT_(\d{4}-\d{2}-\d{2})', self.input_dir)[0]
+        dt_run = re.findall('(\d{6})', self.input_dir)[-1]
+        self.date = f'20-{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
         self.path_info_fits = None
         self.info_fits = None
         self.bias = None
@@ -108,7 +82,7 @@ class mcReduction:
         filelist.sort()
         pathFileList = os.path.join(self.input_dir, 'Filelist.txt')
         if len(filelist) > 0:
-            print("Number of FITS files to process =", len(filelist))
+            print(f"Number of FITS files to process = {len(filelist)}")
             with open(pathFileList, 'w') as fout:
                 fout.write("\n".join(filelist) + "\n")
         else:
@@ -128,10 +102,10 @@ class mcReduction:
         infoFitsFile = os.path.join(self.input_dir, strDate + '.cat')
         com = 'gethead -jh -n 10 -t @%(fl)s @%(kl)s > %(inf)s' % {
             'fl': pathFileList, 'kl': keyFile, 'inf': infoFitsFile}
-        print("File with information about each FITS file ->", infoFitsFile)
         print(com)
         # Executing command
         subprocess.Popen(com, shell=True).wait()
+        print(f"File with information about each FITS -> {infoFitsFile}")
         self.path_info_fits = infoFitsFile
 
         return 0
@@ -154,20 +128,48 @@ class mcReduction:
         """
 
         df = pd.read_csv(self.path_info_fits, sep='\t')[1:]
-        # sorting by field 'FILENAME'
-        self.info_fits = df.sort_values('FILENAME') # FILENAME contains image date
+        print(f"Initial number of FITS = {len(df)}")
+
+        #############################################################
+        ## STEP 1: In order to avoid problems, FITS whose dimensions 
+        ##     NAXIS1 x NAXIS2
+        ## are out of common values for this run are discarded.
+        #############################################################
+
+        # checking unique image NAXIS1 value/s
+        s_n1 = df['NAXIS1'].value_counts()
+        # filter using more repeated naxis1 value
+        if len(s_n1) > 1:
+            df = df[df['NAXIS1'] == s_n1.index[s_n1.argmax()]]
+        
+        # same procedure for NAXIS2 keyword
+        s_n2 = df['NAXIS2'].value_counts()
+        # filter using more repeated naxis1 value
+        if len(s_n2) > 1:
+            df = df[df['NAXIS1'] == s_n2.index[s_n2.argmax()]]
+
+        #############################################################
+        ## STEP 2: Getting FITS info
+        #############################################################
+
+        print(f"Final number of FITS = {len(df)}")
+        print(f"\t(after filtering non standard FITS dimensions)")
+
+        # sorting by observation datetime
+        self.info_fits = df.sort_values('DATE-OBS')
 
         # Adding absolute route for FILENAME field
-        filenames = list()
-        for fn in self.info_fits['FILENAME'].values:
-            filenames.append(os.path.join(self.input_dir, fn))
-        self.info_fits['FILENAME'] = filenames
+        self.info_fits['FILENAME'] = [os.path.join(self.input_dir, fn) \
+            for fn in self.info_fits['FILENAME'].values]
+
         # Raw input images classification by their OBJECT names
         procOBJ = list()
         for index, row in self.info_fits.iterrows():
-            if row['OBJECT'].find('bias') != -1:
+            if row['OBJECT'].lower().find('bias') != -1 or \
+                row['IMAGETYP'].strip().lower() == 'dark':
                 procOBJ.append('bias')
-            elif row['OBJECT'].find('flat') != -1:
+            elif row['OBJECT'].lower().find('flat') != -1 or \
+                row['IMAGETYP'].strip().lower() == 'dome':
                 procOBJ.append('flat')
             else:
                 toks = row['OBJECT'].split()
@@ -175,87 +177,81 @@ class mcReduction:
                     procOBJ.append(toks[0])
                 else:
                     procOBJ.append(row['OBJECT'])
+        
+        # appending a new column to original dataframe
+        self.info_fits['procOBJ'] = pd.array(procOBJ)
+        
         # compute statistics for each FITS file
         stat_keys = ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']
-        stats = {k:list() for k in stat_keys}
+        stats = defaultdict(list)
         for fn in self.info_fits['FILENAME'].values:
             ofits = mcFits(fn, border=self.border)
             inf = ofits.stats()
             for k in stat_keys:
                 stats[k].append(inf[k])
-        # appending a new column to original dataframe
-        self.info_fits['procOBJ'] = pd.array(procOBJ)
+        
+        # and adding FITS data statistics also
         for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']:
             self.info_fits[k] = pd.array(stats[k])
 
+        #############################################################
+        ## STEP 2: Classification according to FITS content
+        #############################################################
+        
         # Classifying
-        self.bias = self.info_fits[self.info_fits['procOBJ'] == 'bias']
-        self.flats = self.info_fits[self.info_fits['procOBJ'] == 'flat']
         bflats = self.info_fits['procOBJ'] == 'flat'
         bbias = self.info_fits['procOBJ'] == 'bias'
-        dfbool = ~(bflats | bbias)
-        self.science = self.info_fits[dfbool]
+        bscience = ~(bflats | bbias)
+
+        self.bias = self.info_fits[bbias]
+        self.flats = self.info_fits[bflats]
+        self.science = self.info_fits[bscience]
 
         return
 
     def createMasterBIAS(self, show_info=True):
         """
-        A short description.
+        Class method for generating MasterBIAS.
 
-        A bit longer description.
+        It takes FITS classified as 'bias' and combine them using
+        median operation over data to get masterBIAS.
 
         Args:
-            variable (type): description
+            show_info (bool): If True, information during process is printed.
 
         Returns:
-            type: description
+            int: 0, if everything was fine.
 
         Raises:
-            Exception: description
+            Exception: any king depending on failing line of code.
 
         """
 
-        """Function for Master BIAS generation. If operation='mean', mean BIAS
-        will be computed. Median BIAS in other case.
-        It returns 0 if everything was fine. An Exception in the other case."""
         bias_data = list()
         for fn in self.bias['FILENAME'].values:
             ofits = mcFits(fn, border=self.border)
-            print('Bias file "%s" INFO -> (Min, Max, Mean, Std, Median, dtype) ='
-                  % fn, ofits.stats())
+            if show_info:
+                print('Bias file "%s" INFO -> (Min, Max, Mean, Std, Median, dtype) =' \
+                    % fn, ofits.stats())
             bias_data.append(ofits.data)
 
         matrix_bias = np.array(bias_data)
         if show_info:
-            print("Number of input images ->", len(bias_data))
-            print("Internal matrix shape ->", matrix_bias.shape)
+            print(f"Number of input images -> {len(bias_data)}")
+            print(f"Internal matrix shape -> {matrix_bias.shape}")
 
         # Median BIAS computation
         mmat = np.median(matrix_bias, axis=0)
+        inner_mat = mmat
         if self.border > 0:
             # Area out of borders given by 'borderSize' are set to zero
             mmat[:self.border, :] = 0
             mmat[-self.border:, :] = 0
             mmat[:, :self.border] = 0
             mmat[:, -self.border:] = 0
-
-        if show_info:
-            print("final matrix shape ->", mmat.shape)
-
-        # new header tags
-        #hbias['DATAMAX'] = mmat.astype(np.int32).max()
-        #hbias['DATAMIN'] = mmat.astype(np.int32).min()
-        #hbias['DATAMEAN'] = mmat.astype(np.int32).mean()
-
-        #hbias.remove('BLANK', ignore_missing=True, remove_all=False)
-        #hbias['BZERO'] = '0.0'
-        #hbias['OBJECT'] = 'Master BIAS'
-        #hbias['BITPIX'] = 32 # 32-bit twos-complement binary integer
-        if self.border > 0:
             inner_mmat = mmat[self.border:-self.border, self.border:-self.border]
-        else:
-            inner_mmat = mmat
         
+        # FITS header
         newCards = [('SOFT', 'IOP^3 Pipeline v1.0', 'Software used'),
                     ('PROCDATE', datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                                  'Master BIAS writing date'),
@@ -271,18 +267,15 @@ class mcReduction:
                     ('OBJECT', 'Master BIAS', '')
                    ]
         for ind, val in enumerate(self.bias['FILENAME'].values):
-            newCards.append(('BIAS%d' % ind, os.path.split(val)[1],
-                             'FITS combined in MasterBIAS'))
-        #hbias.extend(newCards, strip=False, end=True)
-
+            newCards.append((f'BIAS{ind}', os.path.split(val)[1], \
+                'FITS combined in MasterBIAS'))
+        
         hdr = fits.Header()
         hdr.extend(newCards, strip=False, end=True)
 
-        #mmat2 = mmat - int(hbias['BZERO'])
-        #hdu = fits.PrimaryHDU(data=mmat2.astype(np.int16), header=hbias)
+        # Creating and saving new MasterBIAS FITS
         hdu = fits.PrimaryHDU(data=mmat.astype(np.uint16), header=hdr)
-        dateOBS = self.input_dir.split('_')[-1]
-        self.masterBIAS = os.path.join(self.out_dir, 'masterBIAS_{}.fits'.format(self.date))
+        self.masterBIAS = os.path.join(self.out_dir, f'masterBIAS_{self.date}.fits')
         hdu.writeto(self.masterBIAS, overwrite=True)
 
         return 0
@@ -290,49 +283,50 @@ class mcReduction:
 
     def createMasterFLAT(self, show_info=True):
         """
-        A short description.
+        Class method for creating MasterFLAT.
 
-        A bit longer description.
+        It takes and combines (mean pixel values) reduced FITS of flat 
+        type taking into account polarization angle (INSPOROT keyword).
 
         Args:
-            variable (type): description
+            show_info (bool): If True, process information is printed.
 
         Returns:
-            type: description
+            int: 0, if everything was fine.
 
         Raises:
-            Exception: description
+            Exception: Any exception type depending on failing line of code.
 
         """
 
-        """Function for creating MasterFlat image.
-        Return 0 if everything was fine. Raise exception in the other case."""
         if show_info:
-            print('\tNumber of flats =', len(self.flats['FILENAME'].values))
+            print(f"\tNumber of flats = {len(self.flats['FILENAME'].values)}")
 
         # Getting Master BIAS data
         oMB = mcFits(self.masterBIAS, border=self.border)
 
         if show_info:
-            print("\tMaster BIAS info -> (Min, Max, Mean, Std, Median, dtype) =",
-                  oMB.stats())
+            print("\tMaster BIAS info -> (Min, Max, Mean, Std, Median, dtype) =", \
+                oMB.stats())
 
         # getting polarization Angles
         pol_angles = self.flats['INSPOROT'].unique()
-        print('Polarization angle availables ->', pol_angles)
+        print(f'Polarization angle availables -> {pol_angles}')
 
         # One masterFLAT for each polarization angle
         for pa in pol_angles:
-            # filtering and combining FLATS for each polarization angle
-            print('\n+++++++++++++++ Working on polarization angle -> %s'
-                  % pa, "+" * 15, "\n")
+            if show_info:
+                # filtering and combining FLATS for each polarization angle
+                print(f'\n+++++++++++++++ Working on polarization angle -> {pa}', \
+                    "+" * 15, "\n")
             # selecting flats with this polarization angle
             dff = self.flats[self.flats['INSPOROT'] == pa]
             if len(dff.index) == 0:
-                print("WARNING: Not found FITS for polarization angle = %s" % pa)
+                print(f"WARNING: Not found FITS for polarization angle = {pa}")
                 continue
 
-            print('\tNumber of flats =', len(dff.index))
+            if show_info:
+                print(f'\tNumber of flats = {len(dff.index)}')
 
             #Collecting data FLATS...
             flat_data = list()
@@ -352,7 +346,9 @@ class mcReduction:
             # inner area of median flat matrix
             inner_mmat = mmat + 0 # deep matrix copying
             if self.border > 0:
+                # inner_mat contains only the center of the image (statistical purpose)
                 inner_mmat = mmat[self.border:-self.border, self.border:-self.border]
+
                 maxinner = inner_mmat.max()
                 # Area out of borders given by 'borderSize' are set to zero
                 mmat[:self.border, :] = maxinner
@@ -361,7 +357,7 @@ class mcReduction:
                 mmat[:, -self.border:] = maxinner
             
             if show_info:
-                print("\t\tfinal matrix shape ->", mmat.shape)
+                print(f"\t\tfinal matrix shape -> {mmat.shape}")
 
             # last flat: header will be used in masterFLAT
             oflat = mcFits(dff['FILENAME'].values[-1], border=self.border)
@@ -383,42 +379,44 @@ class mcReduction:
                         ('OBJECT', 'Master FLAT','')
                         ]
             for ind, val in enumerate(dff['FILENAME'].values):
-                newCards.append(('FLAT%d' % ind, os.path.split(val)[1],
-                                 'FITS combined in MasterFLAT'))
+                newCards.append((f'FLAT{ind}', os.path.split(val)[1], \
+                    'FITS combined in MasterFLAT'))
+            
             hdr = fits.Header()
             hdr.extend(newCards, strip=False, end=True)
+            
             # saving median array
-            hdures = fits.PrimaryHDU(data=mmat.astype(np.uint16), header=hdr)
+            hdu_res = fits.PrimaryHDU(data=mmat.astype(np.uint16), header=hdr)
+            
             # MasterFLAT path
-            nameFLAT = "flt_{}_{:03.1f}".format(self.date,float(pa))
-            masterFLATPath = os.path.join(self.out_dir, "{}.fits".format(nameFLAT))
-            self.masterFLAT[round(float(pa), 1)] = masterFLATPath
-            hdures.writeto(masterFLATPath, overwrite=True)
+            name_FLAT = "flt_{}_{:03.1f}".format(self.date,float(pa))
+            masterFLAT_path = os.path.join(self.out_dir, f"{name_FLAT}.fits")
+            self.masterFLAT[round(float(pa), 1)] = masterFLAT_path
+            hdu_res.writeto(masterFLAT_path, overwrite=True)
 
         return 0
 
 
     def reduce(self, show_info=True):
         """
-        A short description.
+        Class method for FITS reduction process.
 
-        A bit longer description.
+        This function reduce each classified as 'science' FITS in
+        directory using masterBIAS and masterFLAT images. 
+        
+        There are several masterFLAT so it is used the one whose 
+        INSPOROT angle has the same value than 'science' image.
 
         Args:
-            variable (type): description
+            show_info (bool): if True, additional process info is printed.
 
         Returns:
-            type: description
+            int: 0, if everything was fine.
 
         Raises:
-            Exception: description
+            Exception: any type, according to failing line of code.
 
         """
-
-        """This function reduce 'image' using 'bias' and 'flat' images.
-        It returns an error code:
-            0 if everything was fine.
-        An Exception is raised any other case."""
 
         # bias
         oBIAS = mcFits(self.masterBIAS, border=0)
@@ -428,20 +426,17 @@ class mcReduction:
             print("{0} Working on '{1}' {0}".format('-' * 6, sciFITS))
             # image
             oSCIENCE = mcFits(sciFITS, border=0)
-            # External border of image
-            #frameOfImage = np.zeros(oSCIENCE.data.shape, dtype=np.bool)
-            # internal part mask
-            #frameOfImage[self.border:-self.border, self.border:-self.border] = True
 
+            pol_angle = oSCIENCE.header['INSPOROT']
             if show_info:
-                message = "Polarization angle set to -> {}"
-                print(message.format(oSCIENCE.header['INSPOROT']))
-            if float(oSCIENCE.header['INSPOROT']) > 70:
-                str_err = 'ERROR: filter value not valid'
-                print(str_err)
+                print(f"Polarization angle set to -> {pol_angle}")
+
+            if float(pol_angle) > 70:
+                print(f'ERROR: instrument angle value ({pol_angle}) is not valid')
                 continue
+            
             # flat
-            flat = self.masterFLAT[round(float(oSCIENCE.header['INSPOROT']), 1)]
+            flat = self.masterFLAT[round(float(pol_angle), 1)]
             oFLAT = mcFits(flat, border=0)
             data_flat_norm = 1.0 * oFLAT.data / oFLAT.data.max()
 
@@ -454,16 +449,10 @@ class mcReduction:
 
             # Negative values are not considered...
             scaled = np.where(data_final < 0, 0, data_final)
-
-            # scaling image to UINT16. Inner max value are considered.
-            #inner_max = data_final[self.border:-self.border, self.border:-self.border].max()
-            # scaled = (scaled * (np.iinfo(np.uint16).max)) / data_final.max()
             scaled = np.where(scaled > np.iinfo(np.uint16).max, np.iinfo(np.uint16).max, scaled)
 
             
             # Out of border zone is set to original science values
-            #scaled = np.where(frameOfImage, scaled, oSCIENCE.data)
-            #inner_mmat = scaled[self.border:-self.border, self.border:-self.border]
             newCards = [('SOFT', 'IOP^3 Pipeline v1.0', 'Software used'),
                         ('PROCDATE', datetime.datetime.now().isoformat(), 'Reduction process date'),
                         ('PXBORDER', self.border , 'Pixel border size'),
@@ -479,8 +468,6 @@ class mcReduction:
                         ]
 
             # ------------ WRITING REDUCED IMAGE ON DISK ---------------------
-            #hdr = fits.Header()
-            #hdr.extend(redCards + newCards, end=True)
             head = oSCIENCE.header
             head.extend(newCards, end=True)
             hdu = fits.PrimaryHDU(data=scaled.astype(np.uint16), header=head)
@@ -489,33 +476,23 @@ class mcReduction:
 
             if show_info:
                 print("*" * 50)
-                print("INPUT image stats({}): {}".format(oSCIENCE.path, oSCIENCE.stats()))
+                print(f"INPUT image stats({oSCIENCE.path}): {oSCIENCE.stats()}")
                 oBIAS = mcFits(self.masterBIAS, border=self.border)
-                print("BIAS stats ({}): {}".format(oBIAS.path, oBIAS.stats()))
+                print(f"BIAS stats ({oBIAS.path}): {oBIAS.stats()}")
                 oFLAT = mcFits(flat, border=self.border)
-                print("FLAT stats ({}): {}".format(oFLAT.path, oFLAT.stats()))
-                # if self.border > 0:
-                #     inner_norm_flat = data_flat_norm[self.border:-self.border,
-                #                                      self.border:-self.border]
-                # else:
-                #     inner_norm_flat = data_flat_norm
-                # print("NORMALIZED FLAT \n\t%6.2f, %6.2f, %6.2f, %6.2f, %6.2f %s"
-                #       % (inner_norm_flat.min(), inner_norm_flat.max(),
-                #          inner_norm_flat.mean(), inner_norm_flat.std(),
-                #          np.median(inner_norm_flat), inner_norm_flat.dtype.name))
+                print(f"FLAT stats ({oFLAT.path}): {oFLAT.stats()}")
                 oRED = mcFits(out_image, border=0)
-                print("OUT image stats ({})".format(out_image, oRED.stats()))
-                #inner_data = oRED.data[self.border:-self.border,
-                #                       self.border:-self.border]
+                print("OUT image stats ({out_image}): {oRED.stats()}")
+
                 print("Scaled (previous to uint casting) ->", scaled.min(),
                       scaled.max(), scaled.mean(), scaled.std(),
                       np.median(scaled), scaled.dtype.name)
                 print("Data previous scaling process ->", data_final.min(),
                       data_final.max(), data_final.mean(), data_final.std(),
                       np.median(data_final), data_final.dtype.name)
-                print("Num of negative pixel (reduced fits) -> {}".format((oRED.data < 0).sum()))
-                print("Num of negative pixels (scaled matrix) ->".format((scaled < 0).sum()))
-                print("Num of negative pixels (data_final matrix) ->".format((data_final < 0).sum()))
+                print(f"Num of negative pixel (reduced fits) -> {(oRED.data < 0).sum()}")
+                print(f"Num of negative pixels (scaled matrix) -> {(scaled < 0).sum()}")
+                print(f"Num of negative pixels (data_final matrix) -> {(data_final < 0).sum()}")
                 print("*" * 50)
 
         return 0
