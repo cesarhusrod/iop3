@@ -30,7 +30,7 @@ def object_measures(data, name):
     Returns:
         list: of valid subsets of observation for object called 'name'."""
     data_sets = []
-    print(f'***** Processing object called "{name}" ********')
+    print(f"***** Processing object called '{name}' ********")
     
     data_object = data[data['NAME'] == name]
     # checking EXPTIME keyword: every set of measurements in different angles must have same EXPTIME
@@ -42,7 +42,8 @@ def object_measures(data, name):
         angles_rot = subdata_object['ANGLE'].unique()
         print(f"\t\tangles_rot = {angles_rot}")
         if len(angles_rot) < 4:
-            print("\t\tERROR: Not all rotation instrument were measured.")
+            # TODO: Use other angles to get polarimetry measurement
+            print("\t\tERROR: Not all instrument rotation angles were measured.")
             print(f"\t{angles_rot}")
             continue
         # Data taken in every filter, so now goes check number of measurements

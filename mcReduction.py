@@ -138,22 +138,23 @@ class mcReduction:
 
         # checking unique image NAXIS1 value/s
         s_n1 = df['NAXIS1'].value_counts()
-        # filter using more repeated naxis1 value
+        # If more than one matrix dimension was found...
         if len(s_n1) > 1:
+            # filter using more repeated naxis1 value
             df = df[df['NAXIS1'] == s_n1.index[s_n1.argmax()]]
         
         # same procedure for NAXIS2 keyword
         s_n2 = df['NAXIS2'].value_counts()
-        # filter using more repeated naxis1 value
+        # If more than one matrix dimension was found...
         if len(s_n2) > 1:
-            df = df[df['NAXIS1'] == s_n2.index[s_n2.argmax()]]
+            # filter using more repeated naxis1 value
+            df = df[df['NAXIS2'] == s_n2.index[s_n2.argmax()]]
 
+        print(f"Final filtered number of FITS = {len(df)}")
+        
         #############################################################
         ## STEP 2: Getting FITS info
         #############################################################
-
-        print(f"Final number of FITS = {len(df)}")
-        print(f"\t(after filtering non standard FITS dimensions)")
 
         # sorting by observation datetime
         self.info_fits = df.sort_values('DATE-OBS')
@@ -201,13 +202,13 @@ class mcReduction:
         # Classifying
         bflats = self.info_fits['procOBJ'] == 'flat'
         bbias = self.info_fits['procOBJ'] == 'bias'
-        bscience = ~(bflats | bbias)
+        bscience = ~(bflats | bbias) # different to flat or bias = science
 
         self.bias = self.info_fits[bbias]
         self.flats = self.info_fits[bflats]
         self.science = self.info_fits[bscience]
 
-        return
+        return {'bias': self.bias, 'flats': self.flats, 'science': self.science}
 
     def createMasterBIAS(self, show_info=True):
         """
@@ -231,8 +232,8 @@ class mcReduction:
         for fn in self.bias['FILENAME'].values:
             ofits = mcFits(fn, border=self.border)
             if show_info:
-                print('Bias file "%s" INFO -> (Min, Max, Mean, Std, Median, dtype) =' \
-                    % fn, ofits.stats())
+                print(f'Bias file "{fn}"')
+                print(f'Bias statistics -> {ofits.stats()}')
             bias_data.append(ofits.data)
 
         matrix_bias = np.array(bias_data)
@@ -242,7 +243,7 @@ class mcReduction:
 
         # Median BIAS computation
         mmat = np.median(matrix_bias, axis=0)
-        inner_mat = mmat
+        inner_mmat = mmat
         if self.border > 0:
             # Area out of borders given by 'borderSize' are set to zero
             mmat[:self.border, :] = 0
@@ -306,19 +307,16 @@ class mcReduction:
         oMB = mcFits(self.masterBIAS, border=self.border)
 
         if show_info:
-            print("\tMaster BIAS info -> (Min, Max, Mean, Std, Median, dtype) =", \
-                oMB.stats())
+            print(f"\tMaster BIAS info -> {oMB.stats()}")
 
         # getting polarization Angles
         pol_angles = self.flats['INSPOROT'].unique()
-        print(f'Polarization angle availables -> {pol_angles}')
+        print(f'Available polarization angles -> {pol_angles}')
 
         # One masterFLAT for each polarization angle
         for pa in pol_angles:
             if show_info:
-                # filtering and combining FLATS for each polarization angle
-                print(f'\n+++++++++++++++ Working on polarization angle -> {pa}', \
-                    "+" * 15, "\n")
+                print('\n{0} Working on polarization angle -> {1} {0}\n'.format("+" * 15, pa))
             # selecting flats with this polarization angle
             dff = self.flats[self.flats['INSPOROT'] == pa]
             if len(dff.index) == 0:

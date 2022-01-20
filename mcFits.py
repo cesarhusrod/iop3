@@ -16,6 +16,7 @@ VERSION:
 """
 
 
+from collections import defaultdict
 import os
 import subprocess
 # import copy
@@ -1267,6 +1268,17 @@ class mcFits:
         
         return fit_params
 
+    def get_astroheader(self):
+
+        astro_keys = ['CRVAL1', 'CRVAL2', 'EPOCH', 'CRPIX1', 'CRPIX2', 'SECPIX', \
+            'SECPIX1', 'SECPIX2', 'CDELT1', 'CDELT2', 'CTYPE1', 'CTYPE2', \
+            'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2', 'WCSRFCAT', 'WCSIMCAT', \
+            'WCSMATCH', 'WCSNREF', 'WCSTOL', 'RA', 'DEC', 'EQUINOX', \
+            'CROTA1', 'CROTA2', 'WCSSEP', 'IMWCS']
+
+        return {k:self.header[k] for k in astro_keys if k in self.header}
+
+        
 #     def get_sources(self, source="2MASS", format='csv', show_info=True):
 #         """
 #         A short description.

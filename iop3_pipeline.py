@@ -17,8 +17,102 @@ import os
 import argparse
 import glob
 import re
+from collections import defaultdict
 
 from mcFits import *
+
+
+# ----------------------- FUNCTIONS SECTION ------------------------------
+
+def object_calibration(data, calibration_dir, config_dir):
+    print(f'Number of FITS for object {data["object"].iloc[0]} = {len(data.index)}')    
+    df_object_valid_first = None
+    df_object_valid_last = None
+    if len(data.index) >= 8: 
+        # selecting first angles ocurrences
+        df_object_valid_first = data.drop_duplicates(subset=['angle'], keep='first')
+        df_object_valid_last = data.drop_duplicates(subset=['angle'], keep='last')
+    else:
+        df_object_valid_last = data.drop_duplicates(subset=['angle'], keep='last')
+    
+    calibration_first = group_calibration(df_object_valid_first, calibration_dir, config_dir)
+    calibration_last = group_calibration(df_object_valid_last, calibration_dir, config_dir)
+
+    return calibration_first, calibration_last
+
+
+def group_calibration(data, calibration_dir, config_dir):
+    # Processing each group
+    calibration = {'CAL_IMWCS': [], 'CAL_NO-IMWCS': [], 'NO-CAL': []}
+    non_calibrated_group_commands =[]
+    non_calibrated_group_datetimes =[]
+    if data is None:
+        print('WARNING: Group has no information')
+        return calibration
+    
+    # print(type(data)) 
+    for index, row in data.iterrows():
+        print(row)
+        # print(row['dateobs'])
+        dt_obj = datetime.fromisoformat(row['dateobs'])
+        im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
+        cal_dir = os.path.join(calibration_dir, im_time)
+        
+        # generating calibration output directory
+        if not os.path.isdir(cal_dir):
+            try:
+                os.makedirs(cal_dir)
+            except IOError:
+                print(f"ERROR: Calibration directory '{cal_dir}' could no be generated.")
+                raise
+
+        # calibration command
+        com_calibration = f"python iop3_calibration.py {config_dir} {cal_dir} {row['path']}"
+        print('+' * 100)
+        print(com_calibration)
+        print('+' * 100)
+        with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
+            subprocess.Popen(com_calibration, shell=True, stdout=log_file).wait()
+        
+        # Checking for succesful calibration
+        calibrated = glob.glob(os.path.join(cal_dir, '*final.fits'))
+        if calibrated:
+            calibration['CAL_IMWCS'].append(calibrated[0])
+        else:
+            non_calibrated_group_commands.append(row['path'])
+            non_calibrated_group_datetimes.append(row['dateobs'])
+
+    # After al process, check for non-sucessful calibrated FITS in group
+    if calibration['CAL_IMWCS']: # if, at least one calibration was successful
+        for ncfits, nc_dt in zip(non_calibrated_group_commands, non_calibrated_group_datetimes):
+            dt_obj = datetime.fromisoformat(nc_dt)
+            im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
+            cal_dir = os.path.join(calibration_dir, im_time)
+            # rebuilding calibration command
+            # calibrated model group FITS
+            model_cal = calibration['CAL_IMWCS'][0] # TODO: choose lightly rotated better
+            try:
+                new_calibration_com = f"python iop3_calibration.py --fits_astrocal={model_cal} {config_dir} {cal_dir} {ncfits}"
+            except:
+                print(f"calibration['CAL_IMWCS'] = {calibration['CAL_IMWCS']}")
+                print(f'ncfits = {ncfits}')
+                # print(f'new_calibration_com = {new_calibration_com}')
+                raise
+            print('+' * 100)
+            print(new_calibration_com)
+            print('+' * 100)
+            with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
+                subprocess.Popen(new_calibration_com, shell=True, stdout=log_file).wait()
+        
+            # Checking for succesful calibration result
+            calibrated = glob.glob(os.path.join(cal_dir, '*final.fits'))
+            if calibrated:
+                calibration['CAL_NO-IMWCS'].append(calibrated[0])
+            else:
+                calibration['NO-CAL'].append(ncfits)
+
+    return calibration
+        
 
 # ------------------------ MAIN FUNCTION SECTION -----------------------------
 def main():
@@ -73,7 +167,7 @@ def main():
         print(str_err.format(input_dir))
         return 3
 
-    # Getting run date (input directory must have pattern like *MAPCAT_YYYY-MM-DD)
+    # Getting run date (input directory must have pattern like *YYMMDD)
     dt_run = re.findall('(\d{6})', input_dir)[0]
     date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
 
@@ -108,41 +202,48 @@ def main():
     # 1st STEP: Input raw image reduction
     com_reduction = f"python iop3_reduction.py --border_image={border_image} {config_dir} {reduction_dir} {input_dir}"
     print(com_reduction)
-    subprocess.Popen(com_reduction, shell=True).wait()
+    # subprocess.Popen(com_reduction, shell=True).wait()
 
     # return -1
 
     # 2nd STEP: Input reduced images calibration
+
+    # The idea is to do calibration grouping images close in time and
+    # referred to same object
     reduced_fits = glob.glob(os.path.join(reduction_dir, '*.fits'))
-    reduced_fits.sort()
+    d_red = defaultdict(list)
     for rf in reduced_fits:
         r_fits = mcFits(rf)
         obj = r_fits.header['OBJECT']
         if obj == 'Master BIAS' or obj == 'Master FLAT':
             continue 
-        dt_obj = datetime.fromisoformat(r_fits.header['DATE-OBS'])
-        im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
-        cal_dir = os.path.join(calibration_dir, im_time)
-        com_calibration = f"python iop3_calibration.py {args.config_dir} {cal_dir} {rf}"
-        print('+' * 100)
-        print(com_calibration)
-        print('+' * 100)
-        # subprocess.Popen(com_calibration, shell=True).wait()
-        
-        # Alternative command: calibration process console output to file
-        # (for diagnostic/debuging purposes)
-        # """"
-        if not os.path.isdir(cal_dir):
-            try:
-                os.makedirs(cal_dir)
-            except IOError:
-                print(f"ERROR: Calibration directory '{cal_dir}' could no be generated.")
-                raise
-        with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
-            subprocess.Popen(com_calibration, shell=True, stdout=log_file).wait()
-        # """
+        d_red['object'].append(obj.split(' ')[0])
+        d_red['path'].append(rf)
+        d_red['dateobs'].append(r_fits.header['DATE-OBS'])
+        d_red['angle'].append(r_fits.header['INSPOROT'])
 
-    # return -1
+    # transformation to numpy array for sorting files by DATE-OBS and OBJECT header keywords
+    # Target is creating groups of observations for the same OBJECT and four different 
+    # polarization angles
+    df_calib = pd.DataFrame(d_red)
+    # sort by ascending dateobs, object, and angle
+    df_calib = df_calib.sort_values(['dateobs', 'object', 'angle'], ascending=(True, True, True))
+    # A night of observation can monitorize an object several times. So it's convenient grouping and counting
+    # df_group_count = df_calib.groupby(['object']).size().reset_index(name='counts')
+
+    # print(type(df_group_count))
+
+    # now, select valid observations for each group
+    
+    for obj in np.unique(df_calib['object'].values):
+        df_object = df_calib[df_calib['object'] == obj]
+        print('********* Processing group:')
+        print(df_object)
+        res_calibration = object_calibration(df_object, calibration_dir, args.config_dir)
+        print("----------- Calibration results: ")
+        print(res_calibration)
+    
+    #return -1
 
     #  3rd STEP: Computing polarimetric parameters
     print("COMPUTING POLARIMETRY. Please wait...")
@@ -150,7 +251,7 @@ def main():
     print(com_polarimetry)
     subprocess.Popen(com_polarimetry, shell=True).wait()
 
-    # return -1
+    return -1
 
     # 4th STEP: Inserting results in database
     # raw_csv = os.path.join(reduction_dir, 'input_data_raw.csv')
