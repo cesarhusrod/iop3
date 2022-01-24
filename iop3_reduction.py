@@ -332,9 +332,9 @@ def main():
 
         # Plotting Science image...
         plotSCI = mcRED.path.replace('.fits', '.png')
-        title_pattern = "{} - {} - {:.2f} deg - {:.1f} s"
-        title = title_pattern.format(os.path.split(mcRED.path)[1][:-5], \
-            sci['procOBJ'], float(sci['INSPOROT']), float(sci['EXPTIME']))
+        title_pattern = "{} - {} - {:.1f} s"
+        title = title_pattern.format(sci['DATEOBS'], \
+            sci['OBJECT'], float(sci['EXPTIME']))
         mcRED.plot(title)
 
         # Plotting histogram

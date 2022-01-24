@@ -313,17 +313,17 @@ def main():
     args = parser.parse_args()
 
     # processing .res files
-    results = glob.glob(os.path.join(args.calib_base_dir, '*-*/*_final.csv'))
+    results = glob.glob(os.path.join(args.calib_base_dir, '*-*/*_photocal_res.csv'))
     # sort by name == sort by date (ASC)
     
     if not results:
-        str_err = 'ERROR: No *_final.csv files found.'
+        str_err = 'ERROR: No *_photocal_res.csv files found.'
         print(str_err)
         return 1
 
     results.sort()
     pprint.pprint(results)
-    print(f"Found {len(results)} '*_final.csv' files.")
+    print(f"Found {len(results)} '*_photocal_res.csv' files.")
 
     if not os.path.isdir(args.output_dir):
         try:
@@ -376,14 +376,22 @@ def main():
 
             res_pol['DATE_RUN'] = date_run
             res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
+            rp_sigma = res_pol['Sigma']
+            if rp_sigma < 0.01:
+                rp_sigma = 0.01
+            
             for k, v in res_pol.items():
+                if k == 'Sigma':
+                    pol_data[k].append(rp_sigma)
+                    continue
                 pol_data[k].append(v)
 
             obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[2]
             row = [date_run, obs_date - 50000, name]
+            
             row = row + [res_pol['P'], res_pol['dP'], \
                 res_pol['Theta'], res_pol['dTheta'], \
-                res_pol['R'], res_pol['Sigma']]
+                res_pol['R'], rp_sigma]
             pol_rows.append(row)
             # print('Lines to write down:')
             # pprint.pprint(pol_rows)
@@ -393,7 +401,7 @@ def main():
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f} {:8}{:>8}{:>7}{:>7}{:>7}{:>9}{:>6}'
+        str_out = '\n{:12s} {:9.4f} {:8}{:>8}{:>7}{:>7}{:>7}{:>9}{:>7}'
         header = 'DATE_RUN   RJD-50000 Object     P+-dP(%)  Theta+-dTheta(deg.)  R     Sigma '
         fout.write(header)
         for lines in pol_rows:

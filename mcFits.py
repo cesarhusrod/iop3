@@ -320,7 +320,7 @@ class mcFits:
         return 0
 
 
-    def plot(self, title=None, colorBar=True, regions=list(),
+    def plot(self, title=None, out_path=None, colorBar=True, regions=list(),
              coords=list(), coord_color='magenta', dpi=300,
              parameters={'aspect': 'auto'}):
         """
@@ -373,7 +373,10 @@ class mcFits:
         # gc.grid.set_yspacing('tick')
         gc.grid.show()
         gc.grid.set_alpha(0.7)
-        gc.save(self._path.replace('.fits', '.png'))
+        if out_path:
+            gc.save(out_path)
+        else:    
+            gc.save(self._path.replace('.fits', '.png'))
         gc.close()
 
         return 0
@@ -463,28 +466,21 @@ class mcFits:
 
         return 0
 
-    def extract_sources(self, detect_params, overwrite=False,
-                        show_info=True):
+    def fwhm_def_params(self):
         """
-        Source extraction from FITS file.
-
-        It parse input parameters and set best parameters depending on
-        FITS exposure time ('EXPTIME') in order to improve SExtractor 
-        source detection.
-
+        SExtractor default detection parameters for FWHM estimation.
+        
+        They depends on EXPTIME header keyword value.
+        
         Args:
-            detect_params (dict): valid SExtractor input parameters.
-            overwrite (bool): if True, ouput SExtractor catalog is overwritten.
-            show_info (bool): If True, additional processing info is produced.
-
+            None
+        
         Returns:
-            int: 0, if everythong was fine.
-
-        Raises:
-            Exception: type depends on failing line of code.
-
+            Dictionay with SExtractor relevant detection parameters and their values.
+            
         """
-        # Preconfigured values depending on exptime
+        detect_params = {}
+        
         if float(self._header['EXPTIME']) >= 0:
             detect_params['FILTER'] = detect_params.get('FILTER', 'N')
             detect_params['CLEAN'] = detect_params.get('CLEAN', 'N')
@@ -514,7 +510,40 @@ class mcFits:
             detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 9)
             detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 1.6)
             detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 1.6)
+            
+        return detect_params
+    
 
+    def extract_sources(self, detect_params, overwrite=False,
+                        show_info=True):
+        """
+        Source extraction from FITS file.
+
+        It parse input parameters and set best parameters depending on
+        FITS exposure time ('EXPTIME') in order to improve SExtractor 
+        source detection.
+
+        Args:
+            detect_params (dict): valid SExtractor input parameters.
+            overwrite (bool): if True, ouput SExtractor catalog is overwritten.
+            show_info (bool): If True, additional processing info is produced.
+
+        Returns:
+            int: 0, if everythong was fine.
+
+        Raises:
+            Exception: type depends on failing line of code.
+
+        """
+        
+        # Preconfigured values depending on exptime
+        def_params = self.fwhm_def_params()
+        
+        # If not explicitily set, they are append to input argument called 'detect_params'
+        for k, v in def_params.items():
+            if k not in detect_params:
+                detect_params[k] = v
+                
         com = ["sex"]
 
         out_dirs = list()
@@ -549,6 +578,8 @@ class mcFits:
                 dire = os.path.split(v)[0]
                 if len(dire) and not os.path.exists(dire):
                     out_dirs.append(dire)
+            elif k in mandatory_keywords:
+                pass # already processed
             else:
                 # The others
                 com.append(f"-{k} {v}")
@@ -569,7 +600,7 @@ class mcFits:
             com.append("%s %s" % (detection_keywords, ','.join(keys)))
             com.append("%s %s" % (detection_values, ','.join(values)))
 
-        # Create directories for SExtractor output files
+        # Creating directories for SExtractor output files
         for odir in out_dirs:
             if not os.path.exists(odir):
                 try:
@@ -752,7 +783,7 @@ class mcFits:
                             break
 
         if data_sextractor[cond].shape[0] == 0:
-            print('WARNING: No values after filter.')
+            print('WARNING: No values after filtering process.')
             print(f'Detection parameters = {detect_params}')
             return {'MEAN': None,
                     'STD': None,
@@ -761,10 +792,11 @@ class mcFits:
                     'MEDIAN': None,
                     'MAX_ELLIP': ellipticity,
                     'FLAG': flag_value}
-        # printing info
-        print("Original sources number ->", data_sextractor['X_IMAGE'].size)
-        print("Filtered sources number->", data_sextractor[cond]['X_IMAGE'].size)
+        
         if show_info:
+            # printing info
+            print("Original sources number ->", data_sextractor['X_IMAGE'].size)
+            print("Filtered sources number->", data_sextractor[cond]['X_IMAGE'].size)
             print("FWHM_IMAGE", "CLASS_STAR", "ELLIPTICITY")
             for fwhm, class_star, ellip in zip(data_sextractor[cond]['FWHM_IMAGE'],
                                                      data_sextractor[cond]['CLASS_STAR'],
@@ -788,6 +820,7 @@ class mcFits:
                 self._header[card[0]] = card[1]
             else:
                 new_cards.append(card)
+                
         # ------------ Writing FWHM computed ---------------------
         self._header.extend(new_cards, end=True)
         self._save = True
@@ -800,75 +833,6 @@ class mcFits:
                 'MAX_ELLIP': ellipticity,
                 'FLAG': flag_value
                 }
-
-    def mask_supersources(self, out_masked_fits, detect_params,
-                          min_area=400, square_size=180,
-                          overwrite=True, show_info=True):
-        """
-        A short description.
-
-        A bit longer description.
-
-        Args:
-            variable (type): description
-
-        Returns:
-            type: description
-
-        Raises:
-            Exception: description
-
-        """
-        if 'SEGMENTATION' not in detect_params:
-            detect_params['SEGMENTATION'] = self.path.replace('.fits', '_segment_supersources.fits')
-        # BACKGOUND is contaminated by original data values
-        # if 'BACKGROUND' not in detect_params:
-        #    detect_params['BACKGROUND'] = self.path.replace('.fits', '_back_supersources.fits')
-
-        if self.extract_sources(detect_params, overwrite=overwrite,
-                                show_info=show_info):
-            # TODO: Crear excepción propia
-            return 1
-
-        # SExtractor catalog
-        data_sextractor = _read_sextractor_catalog(self.path.replace('.fits',
-                                                                     '.cat'))
-
-        # segmentation image
-        mc_segment = mcFits(detect_params['SEGMENTATION'])
-        # mc_background = mcFits(detect_params['BACKGROUND'])
-
-        # masked detections counter
-        counter = 0
-        # print(data['NUMBER'])
-        for index, number in enumerate(data_sextractor['NUMBER'].tolist()):
-            # condition_segmented = mc_segment.data == int(number)
-            binary_segmented = np.where(mc_segment.data == int(number), 1, 0)
-            # print(int(d), 'num. pix =', binary_segmented.sum())
-            if binary_segmented.sum() > min_area:
-                # masking
-                x_image = int(data_sextractor['X_IMAGE'][index])
-                y_image = int(data_sextractor['Y_IMAGE'][index])
-                dist = int(square_size / 2)
-                # Replace supersource values for background ones
-                # self.data[x-dist:x+dist, y-dist:y+dist] = mc_background.data[x-dist:x+dist, y-dist:y+dist]
-                self.data[x_image - dist: x_image + dist,
-                          y_image - dist: y_image + dist] = 0
-                counter += 1
-
-        hdu = fits.PrimaryHDU(data=self.data)
-        hdu.header = self.header
-        hdul = fits.HDUList([hdu])
-        try:
-            hdul.writeto(out_masked_fits, overwrite=True, output_verify='ignore')
-        except IOError:
-            print("ERROR: Write output FITS file '%s'" % out_masked_fits)
-            raise
-
-        if show_info:
-            print('Masked %d super-sources in %s' % (counter, self.path))
-
-        return 0
 
     def _filter_duplicated(self, detect_params,
                            searching_params={'min_dist_x': 25, 'max_dist_x': 38,
@@ -1045,6 +1009,76 @@ class mcFits:
 
         return hdu
 
+    def mask_supersources(self, out_masked_fits, detect_params,
+                          min_area=400, square_size=180,
+                          overwrite=True, show_info=True):
+        """
+        A short description.
+
+        A bit longer description.
+
+        Args:
+            variable (type): description
+
+        Returns:
+            type: description
+
+        Raises:
+            Exception: description
+
+        """
+        if 'SEGMENTATION' not in detect_params:
+            detect_params['SEGMENTATION'] = self.path.replace('.fits', '_segment_supersources.fits')
+        # BACKGOUND is contaminated by original data values
+        # if 'BACKGROUND' not in detect_params:
+        #    detect_params['BACKGROUND'] = self.path.replace('.fits', '_back_supersources.fits')
+
+        if self.extract_sources(detect_params, overwrite=overwrite,
+                                show_info=show_info):
+            # TODO: Crear excepción propia
+            return 1
+
+        # SExtractor catalog
+        data_sextractor = _read_sextractor_catalog(self.path.replace('.fits',
+                                                                     '.cat'))
+
+        # segmentation image
+        mc_segment = mcFits(detect_params['SEGMENTATION'])
+        # mc_background = mcFits(detect_params['BACKGROUND'])
+
+        # masked detections counter
+        counter = 0
+        # print(data['NUMBER'])
+        for index, number in enumerate(data_sextractor['NUMBER'].tolist()):
+            # condition_segmented = mc_segment.data == int(number)
+            binary_segmented = np.where(mc_segment.data == int(number), 1, 0)
+            # print(int(d), 'num. pix =', binary_segmented.sum())
+            if binary_segmented.sum() > min_area:
+                # masking
+                x_image = int(data_sextractor['X_IMAGE'][index])
+                y_image = int(data_sextractor['Y_IMAGE'][index])
+                dist = int(square_size / 2)
+                # Replace supersource values for background ones
+                # self.data[x-dist:x+dist, y-dist:y+dist] = mc_background.data[x-dist:x+dist, y-dist:y+dist]
+                self.data[x_image - dist: x_image + dist,
+                          y_image - dist: y_image + dist] = 0
+                counter += 1
+
+        hdu = fits.PrimaryHDU(data=self.data)
+        hdu.header = self.header
+        hdul = fits.HDUList([hdu])
+        try:
+            hdul.writeto(out_masked_fits, overwrite=True, output_verify='ignore')
+        except IOError:
+            print("ERROR: Write output FITS file '%s'" % out_masked_fits)
+            raise
+
+        if show_info:
+            print('Masked %d super-sources in %s' % (counter, self.path))
+
+        return 0
+
+    
     # ---------------------- Astrometric calibration ----------------------
     @staticmethod
     def mc_pointing_sources(input_file):

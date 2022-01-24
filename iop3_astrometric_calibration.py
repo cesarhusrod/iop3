@@ -315,10 +315,8 @@ def main():
     fits_name = os.path.split(input_fits)[1][:-5]
 
     # Getting header informacion
-    hdul = fits.open(input_fits)
-    input_head = hdul[0].header
-    input_data = hdul[0].data
-    hdul.close()
+    i_fits = mcFits(input_fits)
+    input_head = i_fits.header
 
     text = 'OBJECT and Polarization angle = {}\nEXPTIME = {} s'
     print(text.format(input_head['OBJECT'], input_head['EXPTIME']))
@@ -362,7 +360,7 @@ def main():
     print(f"Blazar closest source name = {blz_name}")
     index_min = df_mapcat.index[df_mapcat['IAU_name_mc'] == blz_name].tolist()[0]
     
-    # closest blazar info
+    # closest blazar info. These blazar coordinates are useful for getting astrometric FITS calibration.
     alternative_ra = df_mapcat['ra2000_mc_deg'].values[index_min]
     alternative_dec = df_mapcat['dec2000_mc_deg'].values[index_min]    
 
@@ -902,330 +900,41 @@ def main():
 
     hdul_cal.close()
 
-    # Getting final FITS header
-    hdul_final = fits.open(final_fits)
-    header_final = hdul_final[0].header
-    hdul_final.close()
-
     # Plotting final calibrated FITS
     final_png = final_fits.replace('.fits', '_final.png')
     title = f'{fits_name} rotated astrocalib'
     plotFits(final_fits, final_png, title=title)
 
-    ################ WORKING ON ASTROMETRIC CALIBRATED FITS ################
-
-    # Getting data from ordinary-extraordinary sources in final FITS
-    # 1. SExtractor calling
-    fwhm_arcs = astro_header['FWHM'] * astro_header['INSTRSCL']
-    sex_conf = os.path.join(args.config_dir, 'sex.conf')
-    final_fits = copy_input_fits.replace('.fits', '_final.fits')
-    cat = final_fits.replace('.fits', '.cat')
-
-    com_str = "source-extractor -c {} -CATALOG_NAME {} -PIXEL_SCALE {} -SEEING_FWHM {} {}"
-    com = com_str.format(sex_conf, cat, input_head['INSTRSCL'], fwhm_arcs, final_fits)
-
-    # MAPCAT aperture
-    com += f" -PHOT_APERTURES {mc_aper}"
-
-    # more source-extractor parameters
-    additional_params = default_detection_params(input_head['EXPTIME'])
-
-    for k, v in additional_params.items():
-        com += ' -{} {}'.format(k, v)
-    print(com)
-    subprocess.Popen(com, shell=True).wait()
-
-    # RA,DEC limits...
-    sky_limits = get_skylimits(final_fits)
-    ra_min = sky_limits['ra_min']
-    ra_max = sky_limits['ra_max']
-    dec_min = sky_limits['dec_min']
-    dec_max = sky_limits['dec_max']
-
-    # Loading FITS_LDAC format SExtractor catalog
-    sext = fits.open(cat)
-    data = sext[2].data
-    
-    print ("Number of detections = {}".format(data['ALPHA_J2000'].size))
-    intervals = '(ra_min, ra_max, dec_min, dec_max) = ({}, {}, {}, {})'
-    print(intervals.format(ra_min, ra_max, dec_min, dec_max))
-
-    # Showing detailed info about detections
-    sources_sext_png = cat.replace('.cat', '.png')
-    print('Out PNG ->', sources_sext_png)
-    plotFits(final_fits, sources_sext_png, \
-        title=f'MAPCAT sources in {fits_name}', colorBar=True, \
-        coords=(data['ALPHA_J2000'], data['DELTA_J2000']), \
-        astroCal=True, color='red') # , \
-        # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
-
-    ##### ------ Searching for MAPCAT sources inside limits FITS coordinates ---- #####
-    df_mc = df_mapcat[df_mapcat['ra2000_mc_deg'] > ra_min]
-    df_mc = df_mc[df_mc['ra2000_mc_deg'] < ra_max]
-    df_mc = df_mc[df_mc['dec2000_mc_deg'] > dec_min]
-    df_mc = df_mc[df_mc['dec2000_mc_deg'] < dec_max]
-
-    print("MAPCAT filtered info...")
-    # print(df_mc.info())
-    print(f'Number of MAPCAT sources= {len(df_mc.index)}')
-
-    # Plotting MAPCAT sources
-    if len(df_mc.index) > 0:
-        sources_mapcat_png = final_fits.replace('.fits', '_mapcat_sources.png')
-        print('Out PNG ->', sources_mapcat_png)
-        plotFits(final_fits, sources_mapcat_png, \
-            title=f'MAPCAT sources in {fits_name}', colorBar=True, \
-            coords=(df_mc['ra2000_mc_deg'].values, df_mc['dec2000_mc_deg'].values), \
-            astroCal=True, color='orange', \
-            dictParams={'aspect':'auto', 'invert':'True'})
-
-    # Closest SExtractor detections
-    scatalog = SkyCoord(ra = df_mc['ra2000_mc_deg'].values * u.degree, \
-        dec = df_mc['dec2000_mc_deg'].values * u.degree)
-    pcatalog = SkyCoord(ra = data['ALPHA_J2000'] * u.degree, \
-        dec = data['DELTA_J2000'] * u.degree)
-
-    idx_o, d2d_o, d3d_o = match_coordinates_sky(scatalog, pcatalog, \
-        nthneighbor=1)
-
-    print(f'SExtractor closest ordinary detection indexes = {idx_o}')
-    print(f'SExtractor closest ordinary detection distances = {d2d_o}')
-
-    # Printing info about MAPCAT-SExtractor sources
-    str_match = " MAPCAT (name, ra, dec, Rmag, Rmagerr) = ({}, {}, {}, {}, {})"
-    str_match += "\nSExtractor (ra, dec, mag_auto, magerr_auto) = ({}, {}, {}, {})"
-    str_dist = "Distance = {}\n-----------------------"
-    for j in range(len(idx_o)):
-        print(str_match.format(df_mc['name_mc'].values[j], \
-            df_mc['ra2000_mc_deg'].values[j], df_mc['dec2000_mc_deg'].values[j], \
-            df_mc['Rmag_mc'].values[j], df_mc['Rmagerr_mc'].values[j], \
-            data['ALPHA_J2000'][idx_o[j]], data['DELTA_J2000'][idx_o[j]], \
-            data['MAG_AUTO'][idx_o[j]], data['MAGERR_AUTO'][idx_o[j]]))
-        print(str_dist.format(d2d_o[j]))
-
-    # Extraordinary counterparts location
-    # rough coordinates
-    ra_e = data['ALPHA_J2000'][idx_o]
-    dec_e = data['DELTA_J2000'][idx_o] - 0.0052
-
-    scatalog_e = SkyCoord(ra = ra_e * u.degree, dec = dec_e * u.degree)
-    idx_e, d2d_e, d3d_e = match_coordinates_sky(scatalog_e, pcatalog, \
-        nthneighbor=1)
-    print(f"pcatalog = {pcatalog}")
-    print(f"scatalog_e = {scatalog_e}")
-
-    print(f"SExtractor numbers for extraordinary counterparts = {idx_e}")
-    print(f"Distances = {d2d_e}")
-
-    # Source problem...
-    source_problem = None
-    if len(df_mc.index) == 1:
-        # If there is only source and it's R calibrated -> HD star
-        source_problem = np.ones(1, dtype=bool)
-    else:
-        # Source problem has no R filter magnitude
-        source_problem = df_mc['Rmag_mc'].values < 0
-
-    print(f'source_problem = {source_problem}')
-
-    # Printing SExtractor indexes
-    indexes = [idx_o[source_problem][0], idx_e[source_problem][0]]
-    print(f'[Ordinary, Extraordinary] SExtractor indexes = {indexes}')
-
-    # Plotting source problem
-    # Muestro el nivel de detalle de las detecciones de SExtractor en la imagen final
-    source_pair_png = sources_mapcat_png.replace('.png', '_source_pair.png')
-    print('Out PNG ->', source_pair_png)
-    plotFits(final_fits, source_pair_png, colorBar=True, \
-        title=f'SExtractor Pair Detections in {os.path.split(final_fits)[1]}', \
-        coords=(data['ALPHA_J2000'][indexes], data['DELTA_J2000'][indexes]), \
-        astroCal=True, color='red') # , \
-        # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
-
 
     # Parameters to store...
+    i_fits = mcFits(input_fits)
+    astro_header = i_fits.header
     # Getting useful info about calibrated fits
     some_calib_keywords = ['SOFT', 'PROCDATE', 'SOFTDET', 'MAX',  'MIN', \
         'MEAN', 'STD', 'MED', 'RA', 'DEC', 'CRVAL1', 'CRVAL2', 'EPOCH', \
         'CRPIX1', 'CRPIX2', 'SECPIX1', 'SECPIX2', 'CDELT1', 'CDELT2', 'CTYPE1', 'CTYPE2', \
         'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2', 'WCSRFCAT', 'WCSIMCAT', 'WCSMATCH', \
-        'WCSNREF', 'WCSTOL', 'CROTA1', 'CROTA2', 'WCSSEP', 'IMWCS', 'MAGZPT', \
-        'STDMAGZP', 'NSZPT', 'BLZRNAME']
+        'WCSNREF', 'WCSTOL', 'CROTA1', 'CROTA2', 'WCSSEP', 'IMWCS']
     
     cal_data = {}
-    header = hdul = fits.open(final_fits)[0].header
-    for key in some_calib_keywords:
-        cal_data[key] = [header.get(key, '')]
+    
     cal_data['PATH'] = [final_fits]
-    cal_data['RUN_DATE'] = [date_run]
-
-    # Photometric calibration
-    mag_zeropoint = None
-    std_mag_zeropoint = None
-    num_cal = None
-
-    # If there are MAPCAT calibrators in field covered by FITS
-    if len(df_mc[~source_problem].index) > 0:
-        # calibrators total flux (Ordinary + Extraordinary)
-        total_flux = data['FLUX_APER'][idx_o[~source_problem]] + \
-        data['FLUX_APER'][idx_e[~source_problem]]
-        zps = df_mc['Rmag_mc'][~source_problem].values + \
-        2.5 * np.log10(total_flux)
-
-        print(f'zps = {zps}')
-
-        mag_zeropoint = zps.mean()
-        std_mag_zeropoint = zps.std()
-        num_cal = zps.size
-
-        # Plotting calibrators
-        mc_calib_png = final_fits.replace('.fits', '_sources_mc_calib.png')
-        print('Out PNG ->', mc_calib_png)
-        plotFits(final_fits, mc_calib_png, colorBar=True, \
-            title=f'MAPCAT Calibration sources in {fits_name}', \
-            coords=(df_mc['ra2000_mc_deg'][~source_problem].values, \
-            df_mc['dec2000_mc_deg'][~source_problem].values), \
-            astroCal=True, color='green', \
-            dictParams={'aspect':'auto', 'invert':'True'})
-        cal_data['MC_CALIB_PNG'] = [mc_calib_png]
-    else:
-        # Dealing with HD calibrator
-        # because Mag = ZP - 2.5 * log10(Flux) => ZP = Mag + 2.5 * log10(Flux)
-        # Then, as HD is a polarized source, I'll take as FLUX the sum of both
-        # (Flux_o + Flux_e)
-        total_flux = (data['FLUX_AUTO'][indexes]).sum()
-        mag_zeropoint = df_mc[source_problem]['Rmag_mc'].values[0] + \
-        2.5 * np.log10(total_flux)
-        std_mag_zeropoint = 0
-        num_cal = 1
-
-
-    print(f"Photometric Zero-point = {round(mag_zeropoint, 2)}")
-    print(f"STD(Photometric Zero-point) = {round(std_mag_zeropoint, 2)}")
-
-    # Updating FITS header
-    if mag_zeropoint is not None:
-        # Writing new information as FITS header pairs (keyword, value)
-        hdul = fits.open(final_fits, mode='update')
-
-        if 'MAGZPT' not in hdul[0].header:
-            hdul[0].header.append(('MAGZPT', round(mag_zeropoint, 2), \
-                'MAPCAT Photometric zeropoint'))
-        else:
-            hdul[0].header['MAGZPT'] = round(mag_zeropoint, 2)
-
-        if 'STDMAGZP' not in hdul[0].header:
-            hdul[0].header.append(('STDMAGZP', round(std_mag_zeropoint, 2), \
-                'MAPCAT STD(Photometric zeropoint)'))
-        else:
-            hdul[0].header['STDMAGZP'] = round(std_mag_zeropoint, 2)
-
-        if 'NSZPT' not in hdul[0].header:
-            hdul[0].header.append(('NSZPT', num_cal, \
-                'MAPCAT sources used in MAGZPT estimation'))
-        else:
-            hdul[0].header['NSZPT'] = num_cal
-        
-        bz_name = df_mc[source_problem]['IAU_name_mc'].values[0]
-        if 'BLZRNAME' not in hdul[0].header:
-            hdul[0].header.append(('BLZRNAME', bz_name, \
-                'IAU name for BLAZAR object'))
-        else:
-            hdul[0].header['BLZRNAME'] = bz_name
-
-        hdul.flush()
-        hdul.close()
-
-        # Executing SExtractor again with MAG_ZEROPOINT info
-        com_str = "source-extractor -c {} -CATALOG_NAME {} -PIXEL_SCALE {} -SEEING_FWHM {} {}"
-        com = com_str.format(sex_conf, cat, input_head['INSTRSCL'], fwhm_arcs, final_fits)
-
-        # MAPCAT aperture
-        com += f" -PHOT_APERTURES {mc_aper}"
-
-        # Magnitude ZEROPOINT
-        com += f" -MAG_ZEROPOINT {mag_zeropoint}"
-
-        # more source-extractor parameters
-        additional_params = default_detection_params(input_head['EXPTIME'])
-
-        for k, v in additional_params.items():
-            com += ' -{} {}'.format(k, v)
-
-        print(com)
-        subprocess.Popen(com, shell=True).wait()
-
-        # Loading FITS_LDAC format SExtractor catalog
-        sext = fits.open(cat)
-        data = sext[2].data
+    cal_data['RUN_DATE'] = [date_run]    
+    
+    for key in some_calib_keywords:
+        if key in astro_header:
+            cal_data[key] = astro_header[key]
     
     cal_data['CLEAN_ROT_PNG'] = [clean_rotated_png]
     cal_data['INNER_SEXTDET_PNG'] = [inner_detect_sext_png]
     cal_data['OUT_SEXTDET_PNG'] = [out_detect_sext_png]
     for k, v in cat_out_pngs.items():
-        cal_data[f"CALIB_{k}_PNG"] = [v]
-    cal_data['FINAL_PNG'] = [final_png]
-    cal_data['SEXTDET_PNG'] = [sources_sext_png]
-    cal_data['MAPCAT_SOURCES_PNG'] = [sources_mapcat_png]
-    cal_data['SOURCE_PAIRS_PNG'] = [source_pair_png]
-    
-
+        cal_data[f"CALIB_{k}_PNG"] = v
+    cal_data['FINAL_PNG'] = final_png
     df = pd.DataFrame(cal_data)
-    csv_out = final_fits.replace('.fits', '_info.csv')
+    csv_out = final_fits.replace('.fits', '_astrocal_process_info.csv')
     df.to_csv(csv_out, index=False)
-
-
-    # Interesting parameters for polarimetric computation
-    keywords = ['ALPHA_J2000', 'DELTA_J2000', 'FWHM_IMAGE', 'CLASS_STAR', \
-        'FLAGS', 'ELLIPTICITY', 'FLUX_MAX', 'FLUX_APER', 'FLUXERR_APER', \
-        'FLUX_ISO', 'FLUXERR_ISO', 'FLUX_AUTO', 'FLUXERR_AUTO', 'MAG_APER', \
-        'MAGERR_APER', 'MAG_ISO', 'MAGERR_ISO', 'MAG_AUTO', 'MAGERR_AUTO']
-
-    pair_params = defaultdict(list)
-
-    pair_params['ID-MC'] = [df_mc[source_problem].iloc[0]['id_mc']] * 2
-    pair_params['ID-BLAZAR-MC'] = [df_mc['id_blazar_mc'].values[source_problem][0]] * 2
-    pair_params['TYPE'] = ['O', 'E']
-    angle = float(header_final['INSPOROT'])
-    pair_params['ANGLE'] = [round(angle, ndigits=1)] * 2
-    pair_params['OBJECT'] = [header_final['OBJECT']] * 2
-    pair_params['MJD-OBS'] = [header_final['MJD-OBS']] * 2
-    pair_params['DATE-OBS'] = [''] * 2
-    if 'DATE-OBS' in header_final:
-        pair_params['DATE-OBS'] = [header_final['DATE-OBS']] * 2
-    else:
-        pair_params['DATE-OBS'] = [header_final['DATE']] * 2
-    mc_name = df_mc['name_mc'].values[source_problem][0]
-    mc_iau_name = df_mc['IAU_name_mc'].values[source_problem][0]
-    pair_params['MC-NAME'] = [mc_name] * 2
-    pair_params['MC-IAU-NAME'] = [mc_iau_name] * 2
-    pair_params['MAGZPT'] = [mag_zeropoint] * 2
-    pair_params['RUN_DATE'] = [date_run] * 2
-    pair_params['EXPTIME'] = [header_final['EXPTIME']] * 2
-
-    # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
-    c3 = []
-    for ra, dec in zip(data['ALPHA_J2000'][indexes], data['DELTA_J2000'][indexes]):
-        c3.append(f"{ra} {dec}")
-
-    coords3 = SkyCoord(c3, frame=FK5, unit=(u.deg, u.deg), obstime="J2000")
-
-    pair_params['RA_J2000'] = coords3.ra.to_string(unit=u.hourangle, sep=' ', \
-    precision=4, pad=True)
-    pair_params['DEC_J2000'] = coords3.dec.to_string(unit=u.deg, sep=' ', \
-    precision=3, alwayssign=True, pad=True)
-
-    for k in keywords:
-        for i in indexes:
-            pair_params[k].append(data[k][i])
-
-    df = pd.DataFrame(pair_params)
-    csv_out = final_fits.replace('.fits', '.csv')
-    df.to_csv(csv_out, index=False)
-
-    # Imprimo el contenido del fichero
-    print('Useful parameters for polarimetric computations:')
-    print(df)
+    
 
     return 0
 

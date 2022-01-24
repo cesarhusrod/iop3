@@ -67,7 +67,7 @@ def group_calibration(data, calibration_dir, config_dir):
                 raise
 
         # calibration command
-        com_calibration = f"python iop3_calibration.py {config_dir} {cal_dir} {row['path']}"
+        com_calibration = f"python iop3_astrometric_calibration.py {config_dir} {cal_dir} {row['path']}"
         print('+' * 100)
         print(com_calibration)
         print('+' * 100)
@@ -78,6 +78,9 @@ def group_calibration(data, calibration_dir, config_dir):
         calibrated = glob.glob(os.path.join(cal_dir, '*final.fits'))
         if calibrated:
             calibration['CAL_IMWCS'].append(calibrated[0])
+            # Photometric calibration
+            com_photocal = f"python iop3_photometric_calibration.py {config_dir} {cal_dir} {calibrated[0]}"
+            subprocess.Popen(com_photocal, shell=True).wait()
         else:
             non_calibrated_group_commands.append(row['path'])
             non_calibrated_group_datetimes.append(row['dateobs'])
@@ -92,7 +95,7 @@ def group_calibration(data, calibration_dir, config_dir):
             # calibrated model group FITS
             model_cal = calibration['CAL_IMWCS'][0] # TODO: choose lightly rotated better
             try:
-                new_calibration_com = f"python iop3_calibration.py --fits_astrocal={model_cal} {config_dir} {cal_dir} {ncfits}"
+                new_calibration_com = f"python iop3_astrometric_calibration.py --fits_astrocal={model_cal} {config_dir} {cal_dir} {ncfits}"
             except:
                 print(f"calibration['CAL_IMWCS'] = {calibration['CAL_IMWCS']}")
                 print(f'ncfits = {ncfits}')
@@ -108,6 +111,9 @@ def group_calibration(data, calibration_dir, config_dir):
             calibrated = glob.glob(os.path.join(cal_dir, '*final.fits'))
             if calibrated:
                 calibration['CAL_NO-IMWCS'].append(calibrated[0])
+                # Photometric calibration
+                com_photocal = f"python iop3_photometric_calibration {config_dir} {cal_dir} {calibrated[0]}"
+                subprocess.Popen(com_photocal, shell=True).wait()
             else:
                 calibration['NO-CAL'].append(ncfits)
 
@@ -202,6 +208,7 @@ def main():
     # 1st STEP: Input raw image reduction
     com_reduction = f"python iop3_reduction.py --border_image={border_image} {config_dir} {reduction_dir} {input_dir}"
     print(com_reduction)
+    # Command execution
     # subprocess.Popen(com_reduction, shell=True).wait()
 
     # return -1
@@ -242,8 +249,9 @@ def main():
         res_calibration = object_calibration(df_object, calibration_dir, args.config_dir)
         print("----------- Calibration results: ")
         print(res_calibration)
+        break
     
-    #return -1
+    # return -1
 
     #  3rd STEP: Computing polarimetric parameters
     print("COMPUTING POLARIMETRY. Please wait...")
