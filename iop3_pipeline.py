@@ -112,7 +112,10 @@ def group_calibration(data, calibration_dir, config_dir):
             if calibrated:
                 calibration['CAL_NO-IMWCS'].append(calibrated[0])
                 # Photometric calibration
-                com_photocal = f"python iop3_photometric_calibration {config_dir} {cal_dir} {calibrated[0]}"
+                com_photocal = f"python iop3_photometric_calibration.py {config_dir} {cal_dir} {calibrated[0]}"
+                print('+' * 100)
+                print(com_photocal)
+                print('+' * 100)
                 subprocess.Popen(com_photocal, shell=True).wait()
             else:
                 calibration['NO-CAL'].append(ncfits)
@@ -218,6 +221,7 @@ def main():
     # The idea is to do calibration grouping images close in time and
     # referred to same object
     reduced_fits = glob.glob(os.path.join(reduction_dir, '*.fits'))
+    
     d_red = defaultdict(list)
     for rf in reduced_fits:
         r_fits = mcFits(rf)
@@ -242,14 +246,18 @@ def main():
 
     # now, select valid observations for each group
     
-    for obj in np.unique(df_calib['object'].values):
+    objects = sorted(np.unique(df_calib['object'].values).tolist())
+    
+    print(f'objects = {objects}')
+    
+    for obj in objects:
         df_object = df_calib[df_calib['object'] == obj]
         print('********* Processing group:')
         print(df_object)
         res_calibration = object_calibration(df_object, calibration_dir, args.config_dir)
         print("----------- Calibration results: ")
         print(res_calibration)
-        break
+        # break
     
     # return -1
 
@@ -259,7 +267,7 @@ def main():
     print(com_polarimetry)
     subprocess.Popen(com_polarimetry, shell=True).wait()
 
-    return -1
+    # return -1
 
     # 4th STEP: Inserting results in database
     # raw_csv = os.path.join(reduction_dir, 'input_data_raw.csv')

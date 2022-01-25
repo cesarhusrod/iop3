@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<!-- Latest compiled and minified CSS -->
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+	<!-- Sortable tables -->
+	<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.16.0/dist/bootstrap-table.min.css">
+	<script src="https://unpkg.com/bootstrap-table@1.16.0/dist/bootstrap-table.min.js"></script>
+
+        <!-- Optional theme -->
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+
+         <!-- Latest compiled and minified JavaScript -->
+         <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+	<title>{{ fechaObs }} </title>
+</head>
+<body>
+	<h1>Directories</h1>
+	<div class="table-responsive">
+	<table class="table table-striped">
+  		<thead>
+    		<tr>
+      			<th scope="col">Directory</th>
+      			<th scope="col">PATH</th>
+    		</tr>
+  		</thead>
+  		<tbody>
+  			<tr>
+      			<th scope="row">Configuration</th>
+      			<td>{{ dirConfig }}</td>
+    		</tr>
+    		<tr>
+      			<th scope="row">Templates</th>
+      			<td>{{ dirTemplates}}</td>
+    		</tr>
+    		<tr>
+      			<th scope="row">Root</th>
+      			<td>{{ dirBase  }}</td>
+    		</tr>
+    		<tr>
+      			<th scope="row">Reduction</th>
+      			<td>{{ dirRedFITS  }}</td>
+      		</tr>
+    		<tr>
+      			<th scope="row">Images</th>
+      			<td colspan="2">{{ dirRedPNGs  }}</td>
+    		</tr>
+    		<tr>
+      			<th scope="row">Calibration</th>
+      			<td colspan="2">{{ dirCalibration  }}</td>
+    		</tr>
+  		</tbody>
+	</table>
+	</div>
+	<h1>Images</h1>
+		Image list taken from root directory (nightly observing directory)
+		<div class="table-responsive">
+			<table class="table" style="font-size: 0.8em">
+				<caption>Image list (directory {{ dirBase }})</caption>
+				<thead>
+					<tr>
+						{% for key in ['INDEX','FILENAME', 'OBJECT', 'EXPTIME', 'INSPOROT', 'NAXIS1', 'NAXIS2', 'RA', 'DEC', 'MJD-OBS', 'DATE-OBS', 'IMAGETYP', 'procOBJ', 'MIN', 'MAX', 'MEAN', 
+						'STD', 'MEDIAN'] %}
+							<th scope="col">{{ key }}</th>
+						{% endfor %}
+					</tr>
+				</thead>
+				<tbody>
+					{% set ind = 0 %}
+					{% for key,value in dataframe.iterrows() %}
+						<tr>
+							<td>{{ key }}</td>
+							{% set ind = ind + 1 %}
+							{% for k in ['FILENAME', 'OBJECT', 'EXPTIME', 'INSPOROT', 'NAXIS1', 'NAXIS2', 'RA', 'DEC', 'MJD-OBS', 'DATE-OBS', 'IMAGETYP', 'procOBJ', 'MIN', 'MAX', 'MEAN', 'STD', 
+							'MEDIAN'] %}
+								<td>{{ value[k] }}</td>
+							{% endfor %}
+						</tr>
+					{% endfor %}
+				</tbody>
+			</table>
+		</div>
+	<h1>BIAS</h1>
+		<div class="table-responsive">
+		<table class="table table-striped"  style="font-size: 0.8em">
+  			<thead>
+    			<tr>
+      				<th scope="col" width="25%">MASTERBIAS</th>
+      				<th scope="col" width="25%">HISTOGRAM</th>
+      				<th scope="col" width="25%">BIAS USED</th>
+      				<th scope="col" width="25%">OTHER PARAMETERS|VALUES</th>
+    			</tr>
+  			</thead>
+  			<tbody>
+  				<tr>
+    			{% for k in ['PLOT', 'HIST', 'BIAS', 'MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN'] %}
+					{% if k in ['PLOT'] %}
+						<td><a href="{{ dictBias[k] }}" target="_BLANK"><img src="{{ dictBias[k] }}" width="200" class="img-fluid"></a><br/>{{ dictBias['FITS'] }}</td>
+					{% elif k in ['HIST'] %}
+						<td><a href="{{ dictBias[k] }}" target="_BLANK"><img src="{{ dictBias[k] }}" width="200" class="img-fluid"></a><br/>{{ dictBias[k] }}</td>
+					{% elif k in ['BIAS'] %}
+						<td><ul>
+						{% for f in dictBias[k] %}
+							<li>{{ f }}</li>
+						{% endfor %}
+						</ul></td>
+					{% else %}
+						{% if k in ['MIN'] %}
+							<td><ul><li><strong> {{ k|upper }} </strong> : {{ dictBias[k] }} </li>
+						{% elif k in ['MEDIAN'] %}
+							<li><strong> {{ k|upper }} </strong> : {{ dictBias[k] }} </li></ul></td>
+						{% else %}
+							<li><strong> {{ k|upper }} </strong> : {{ dictBias[k] }} </li>
+						{% endif %}
+					{% endif %}
+				{% endfor %}
+				</tr>
+  			</tbody>
+		</table>
+		</div>
+
+	<h1>FLATS</h1>
+	    <div class="table-responsive">
+		<table class="table table-striped"  style="font-size: 0.8em">
+  			<thead>
+    			<tr>
+      				<th scope="col" width="25%">MASTERFLAT</th>
+      				<th scope="col" width="25%">HIST</th>
+      				<th scope="col" width="25%">FLATS USED in COMPOSITION</th>
+      				<!-- <th scope="col">NEGPIX</th> -->
+      				<th width="25%">OTHER PARAMETERS|VALUES</th>
+      				<!-- <th scope="col">POL_ANGLE</th>
+      				<th scope="col">MIN</th>
+      				<th scope="col">MAX</th>
+      				<th scope="col">MEAN</th>
+      				<th scope="col">STD</th>
+      				<th scope="col">MEDIAN</th> -->
+    			</tr>
+  			</thead>
+  			<tbody>
+  				{% for ind in range(dictFlats['MEAN']|length) %}
+  					<tr>
+    					{% for k in ['PLOTS', 'HIST', 'FLATS',
+    										'POL_ANGLE', 'MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN'] %}
+							{% if k in ['PLOTS'] %}
+								<td><a href="{{ dictFlats[k][ind] }}" target="_BLANK"><img src="{{ dictFlats[k][ind] }}"  width="200" class="img-fluid"></a><br/>{{ dictFlats['MASTERFLATS'][ind] }}</td>
+							{% elif k in ['HIST'] %}
+								<td><a href="{{ dictFlats[k][ind] }}" target="_BLANK"><img src="{{ dictFlats[k][ind] }}" width="200" class="img-fluid"></a><br/>{{ dictFlats[k][ind] }}</td>
+							{% elif k in ['FLATS'] %}
+								<td><ul>
+								{% for f in dictFlats[k][ind] %}
+									<li>{{ f }}</li>
+								{% endfor %}
+								</ul></td>
+							{% else %}
+								{% if k in ['POL_ANGLE'] %} 
+									<td><ul><li><strong> {{ k|upper }} </strong> : {{ dictFlats[k][ind] }} </li>
+								{% elif k in ['MEDIAN'] %}
+									<li><strong> {{ k|upper }} </strong> : {{ dictFlats[k][ind] }} </li></ul></td>
+								{% else %}
+									<li><strong> {{ k|upper }} </strong> : {{ dictFlats[k][ind] }} </li>
+								{% endif %}		
+							{% endif %}		
+						{% endfor %}
+					</tr>
+				{% endfor %}
+  			</tbody>
+		</table>
+		</div>
+	<h1>SCIENCE IMAGES</h1>
+		<div class="table-responsive">
+			<table class="table table-striped" style="font-size: 0.8em">
+  				<thead>
+    				<tr>
+    					<th scope="col" width="20%">ORIGINAL FITS</th>
+    					<th scope="col" width="20%">REDUCED FITS</th>
+    					<th scope="col" width="20%">HIST</th>
+      					<!-- <th scope="col">NEGATIVE PIX</th> -->
+      					<th scope="col" width="20%">GT 40K PIX</th>
+      					<th scope="col" width="20%">OTHER PARAMETERS|VALUES</th>
+    					<!-- <th scope="col">MASTERBIAS</th>
+      					<th scope="col">MASTERFLAT</th>
+      					<th scope="col">POL_ANGLE</th>
+      					<th scope="col">MIN</th>
+      					<th scope="col">MAX</th>
+      					<th scope="col">MEAN</th>
+      					<th scope="col">STD</th>
+      					<th scope="col">MEDIAN</th> -->
+    				</tr>
+  				</thead>
+  				<tbody>
+  					{% for ind in range(dictScience['MEAN']|length) %}
+  						<tr>
+    						{% for k in ['ORIFILE', 'REDFILE', 'HIST', 'GT40K', 'MASTERBIAS', 'MASTERFLAT', 'POL_ANGLE', 'MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN'] %}
+								{% if k in ['ORIFILE'] %}
+									<td><a href="{{ dictScience['ORIPLOT'][ind] }}" target="_BLANK"><img src="{{ dictScience['ORIPLOT'][ind] }}" width="50%" class="img-fluid"></a><br/>{{ dictScience[k][ind] }}</td>
+								{% elif k in ['REDFILE'] %}
+									<td><a href="{{ dictScience['REDPLOT'][ind] }}" target="_BLANK"><img src="{{ dictScience['REDPLOT'][ind] }}" width="50%" class="img-fluid"></a><br/>{{ dictScience[k][ind] }}</td>
+								{% elif k in ['GT40K', 'HIST'] %}
+									<td><a href="{{ dictScience[k][ind] }}" target="_BLANK"><img src="{{ dictScience[k][ind] }}" width=70%" class="img-fluid"></a><br/>{{ dictScience[k][ind] }}</td>
+								{% else %}
+									{% if k in ['MASTERBIAS'] %}
+										<td><ul><li><strong> {{ k|upper }} </strong> : {{ dictScience[k][ind] }} </li>
+									{% elif k in ['MEDIAN'] %}
+										<li><strong> {{ k|upper }} </strong> : {{ dictScience[k][ind] }} </li></ul></td>
+									{% else %}
+										<li><strong> {{ k|upper }} </strong> : {{ dictScience[k][ind] }} </li>
+									{% endif %}
+								{% endif %}		
+							{% endfor %}
+						</tr>
+					{% endfor %}
+  				</tbody>
+			</table>
+		</div>
+</body>
+</html>

@@ -292,7 +292,7 @@ def closest_blazar(ra_fits, dec_fits, data):
     # Blazars subset...
     df_blazars = data[data['IAU_name_mc'].notna()]  # take target sources from data
     c  = []
-    for ra, dec in zip(data['ra2000_mc'], data['dec2000_mc']):
+    for ra, dec in zip(df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
         c.append("{} {}".format(ra, dec))
     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
     obstime="J2000")
@@ -305,8 +305,9 @@ def closest_blazar(ra_fits, dec_fits, data):
     i_min = distances.deg.argmin()
     blz_name = df_blazars['IAU_name_mc'].values[i_min]
     print(f"Blazar closest source name = {blz_name}")
-    cond = np.logical_and(data['IAU_name_mc'] == blz_name, \
-        data['Rmag_mc'] < 0)
+    cond = data['IAU_name_mc'] == blz_name
+    #cond = np.logical_and(data['IAU_name_mc'] == blz_name, \
+    #    data['Rmag_mc'] < 0)
     
     return data[cond], distances.deg.min()
 
@@ -401,6 +402,14 @@ def main():
 
     nearest_blazar, min_dist_deg = closest_blazar(astro_header['CRVAL1'], astro_header['CRVAL2'], df_mapcat)
     
+    
+    print(f'Distance = {min_dist_deg}')
+    if min_dist_deg > 0.5: # distance in degrees
+        print('!' * 100)
+        print('ERROR: Not enough close blazar or HD star found (distance <= 0.5 deg)')
+        print('!' * 100)
+        return 4
+
     # closest blazar info
     alternative_ra = nearest_blazar['ra2000_mc_deg'].values[0]
     alternative_dec = nearest_blazar['dec2000_mc_deg'].values[0]    
@@ -410,13 +419,6 @@ def main():
     print('(Rmag, Rmagerr) = ({}, {})'.format(df_mapcat['Rmag_mc'][0], \
         df_mapcat['Rmagerr_mc'][0]))
     
-    print(f'Distance = {min_dist_deg}')
-    if min_dist_deg > 0.5: # distance in degrees
-        print('!' * 100)
-        print('ERROR: Not enough close blazar or HD star found (distance <= 0.5 deg)')
-        print('!' * 100)
-        return 4
-
     mc_aper = nearest_blazar['aper_mc'].values[0]
     print(f'aperture = {mc_aper} pixels')
 
@@ -512,8 +514,8 @@ def main():
     scatalog_e = SkyCoord(ra = ra_e * u.degree, dec = dec_e * u.degree)
     idx_e, d2d_e, d3d_e = match_coordinates_sky(scatalog_e, pcatalog, \
         nthneighbor=1)
-    print(f"pcatalog = {pcatalog}")
-    print(f"scatalog_e = {scatalog_e}")
+    # print(f"pcatalog = {pcatalog}")
+    # print(f"scatalog_e = {scatalog_e}")
 
     print(f"SExtractor numbers for extraordinary counterparts = {idx_e}")
     print(f"Distances = {d2d_e}")
@@ -552,6 +554,7 @@ def main():
     num_cal = len(df_mc.index) - 1
     num_sat = 0
     zps = []
+    calibrators_png = ''
     
     # If there are MAPCAT calibrators in field covered by FITS
     if len(df_mc[~source_problem].index) > 0:
@@ -579,7 +582,7 @@ def main():
         if num_sat == sat_calibrator.size:
             # all calibrators are saturated, so no filtering operation will be applied
             print("----------- All calibrators are saturated. Non-saturation filter applied --------------------")
-            sat_calibrator = np.zeros(data['FLAGS'].size, dtype=bool)
+            sat_calibrator = np.zeros(sat_calibrator.size, dtype=bool) # no one saturated
             
         # plotting calibrators
         calibrators_png = input_fits.replace('.fits', '_photo-calibrators.png')
@@ -631,6 +634,15 @@ def main():
         cal_data['MC_CALIB_PNG'] = [mc_calib_png]
     else:
         # Dealing with HD calibrator
+        # Checking saturation
+        bin_flags = np.array([f"{format(flag, 'b') :0>8}" for flag in data['FLAGS'][indexes]])
+        sat_flags = np.array([bf[-3] == '1' for bf in bin_flags], dtype=bool)
+        
+        if sat_flags.sum() > 0: # saturated source
+            num_sat = 1
+        else:
+            num_sat = 0
+        
         # because Mag = ZP - 2.5 * log10(Flux) => ZP = Mag + 2.5 * log10(Flux)
         # Then, as HD is a polarized source, I'll take as FLUX the sum of both
         # (Flux_o + Flux_e)
@@ -771,7 +783,10 @@ def main():
         cal_data[key].append(value)
     cal_data['PATH'].append(input_fits)
     cal_data['RUN_DATE'].append(date_run)
-    cal_data['CALIBRATORS_PNG'] = [calibrators_png]
+    if calibrators_png and os.path.exists(calibrators_png):
+        cal_data['CALIBRATORS_PNG'] = [calibrators_png]
+    else:
+        cal_data['CALIBRATORS_PNG'] = ''
     cal_data['N_CALIBRATORS'] = [num_cal]
     cal_data['N_SAT_CALIBRATORS'] = [num_sat]
     cal_data['SEXTDET_PNG'] = [sources_sext_png]

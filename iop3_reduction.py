@@ -57,7 +57,7 @@ def report(csv_file, output_dir, template_file, title=''):
     if 'MJD-OBS' in results.columns:
         results['MJDOBS'] = results['MJD-OBS']
     if 'DATE-OBS' in results.columns:
-        results['DATEOBS'] = results['DATE-OBS']
+        results['DATE-OBS'] = results['DATE-OBS']
     
 
     if not os.path.exists(template_file):
@@ -333,7 +333,7 @@ def main():
         # Plotting Science image...
         plotSCI = mcRED.path.replace('.fits', '.png')
         title_pattern = "{} - {} - {:.1f} s"
-        title = title_pattern.format(sci['DATEOBS'], \
+        title = title_pattern.format(sci['DATE-OBS'], \
             sci['OBJECT'], float(sci['EXPTIME']))
         mcRED.plot(title)
 

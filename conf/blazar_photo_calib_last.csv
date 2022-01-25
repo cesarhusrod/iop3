@@ -1,4 +1,4 @@
-id_mc,id_blazar_mc,aper_mc,IAU_name_mc,ra2000_mc,dec2000_mc,name_mc,Rmag_mc,Rmagerr_mc,PolDeg_mc,ErrPolDev_mc,PolAngle_mc,ErrPolAngle_mc
+id_mc,id_blazar_mc,aper_mc,IAU_name_mc,ra2000_mc,dec2000_mc,name_mc,Rmag_mc,Rmagerr_mc,PolDeg_mc,ErrPolDeg_mc,PolAngle_mc,ErrPolAngle_mc
 1,1,16,"0219+428","02 22 39.6260","+43 02 07.181","3c66a",-99.0,-99.0,,,,
 2,1,16,"","02 22 30.8759","+43 03 14.031","3c66a-C2",13.58,0.01,,,,
 3,1,16,"","02 22 55.1337","+43 03 14.911","3c66a-C1",12.70,0.01,,,,

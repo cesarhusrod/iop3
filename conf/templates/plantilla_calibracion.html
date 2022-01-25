@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<!-- Latest compiled and minified CSS -->
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+	<!-- Sortable tables -->
+	<link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.16.0/dist/bootstrap-table.min.css">
+	<script src="https://unpkg.com/bootstrap-table@1.16.0/dist/bootstrap-table.min.js"></script>
+
+        <!-- Optional theme -->
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+
+         <!-- Latest compiled and minified JavaScript -->
+         <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+	<title>Astrometric calibration</title>
+</head>
+<body>
+	<h1>SCIENCE IMAGES</h1>
+	<div class="table-responsive">
+		<table class="table table-striped" style="font-size: 0.8em">
+				<thead>
+				<tr>
+					<th scope="col" width="20%">REDUCED</th>
+					<th scope="col" width="20%">MASKED</th>
+					<th scope="col" width="20%">ROTATED & CALIBRATED</th>    
+					<th scope="col" width="20%">ORIGINAL PARAMS</th>
+					<th scope="col" width="20%">CALIBRATED PARAMS</th>
+					
+				</tr>
+				</thead>
+				<tbody>
+					{% for ind in range(dirProc['REDUCED']|length) %}
+						<tr>
+						{% for k in ['REDUCED', 'MASKED', 'ROTATED', 'CALIBRATED', 'RA', 'DEC', 'OBJECT', 'EXPTIME', 'DATE-OBS', 'EQUINOX', 'MJD-OBS', 'FLAT', 'BIAS', 'DIRRAW', 'DIROUT', 'DATAMAX', 'DATAMIN', 'DATAMEAN', 'DATASTD', 'DATAMED', 'FWHM', 'CRVAL1', 'CRVAL2', 'CDELT1', 'CDELT2', 'ROTDEG', 'CRPIX1', 'CRPIX2', 'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2','DISTARCS', 'NMATCH', 'NSTARS', 'NITER'] %}
+							{% if k in ['REDUCED', 'MASKED', 'CALIBRATED'] %}
+								<td><a href="{{ dirProc[k][ind] }}" target="_BLANK"><img src="{{ dirProc[k][ind] }}" width=70%" class="img-fluid"></a><br/>{{ dirProc[k][ind] }}</td>
+							{% elif k in ['RA', 'DEC', 'OBJECT', 'EXPTIME', 'DATE-OBS', 'EQUINOX', 'MJD-OBS', 'FLAT', 'BIAS', 'DIRRAW', 'DIROUT', 'DATAMAX', 'DATAMIN', 'DATAMEAN', 'DATASTD', 'DATAMED', 'FWHM', 'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI', 'PIXSCALE'] %}
+								{% if k in ['RA'] %}
+									<td><ul><li><strong> {{ k|upper }} </strong> : {{ dirProc[k][ind] }} </li>
+								{% elif k in ['PIXSCALE'] %}
+									<li><strong> {{ k|upper }} </strong> : {{ dirProc[k][ind] }} </li></ul></td>
+								{% else %}
+									<li><strong> {{ k|upper }} </strong> : {{ dirProc[k][ind] }} </li>
+								{% endif %}
+							{% elif k in ['CRVAL1', 'CRVAL2', 'CDELT1', 'CDELT2', 'ROTDEG', 'CRPIX1', 'CRPIX2', 'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2', 'DISTARCS', 'NMATCH', 'NSTARS', 'NITER'] %}
+								{% if k in ['CRVAL1'] %}
+									<td><ul><li><strong> {{ k|upper }} </strong> : {{ dirProc[k][ind] }} </li>
+								{% elif k in ['NITER'] %}
+									<li><strong> {{ k|upper }} </strong> : {{ dirProc[k][ind] }} </li></ul></td>
+								{% else %}
+									<li><strong> {{ k|upper }} </strong> : {{ dirProc[k][ind] }} </li>
+								{% endif %}
+							{% endif %}		
+						{% endfor %}
+					</tr>
+				{% endfor %}
+				</tbody>
+		</table>
+	</div>
+</body>
+</html>

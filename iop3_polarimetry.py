@@ -412,7 +412,7 @@ def main():
     out_csv = os.path.join(args.output_dir, name_out_csv)
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', 'DATE_RUN', 'EXPTIME', \
-            'RJD-5000', 'ID-MC', 'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'NAME']
+            'RJD-50000', 'ID-MC', 'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'NAME']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")

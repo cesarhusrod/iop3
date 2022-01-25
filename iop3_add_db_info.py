@@ -37,7 +37,7 @@ def register_raw(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, MM is month and DD y day.
+        run_date (string): format given by pattern YYMMDD where YY is year, MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
     Returns:
@@ -48,7 +48,7 @@ def register_raw(data_dir, run_date, db_object):
         IOError: if raw FITS catalog file was not found.
     """
     new_registrations = 0
-    raw_dir = os.path.join(data_dir, f'raw/MAPCAT_{run_date}/')
+    raw_dir = os.path.join(data_dir, f'raw/MAPCAT/{run_date}/')
     try:
         catalog = os.path.join(raw_dir, f"{run_date}.cat")
         lines = [l for l in open(catalog).read().split('\n') if len(l) > 0]
@@ -129,7 +129,7 @@ def register_masterbias(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, MM is month and DD y day.
+        run_date (string): format given by pattern YYMMDD where YY is year, MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
     Returns:
@@ -140,7 +140,7 @@ def register_masterbias(data_dir, run_date, db_object):
         IOError: if masterBIAS catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT_{run_date}/')
+    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
     try:
         catalog = os.path.join(reduction_dir, "masterbias_data.csv")
         data = pd.read_csv(catalog)
@@ -215,7 +215,7 @@ def register_rawbias(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, 
+        run_date (string): format given by pattern YYMMDD where YY is year, 
             MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
@@ -229,7 +229,7 @@ def register_rawbias(data_dir, run_date, db_object):
             if masterBIAS catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT_{run_date}/')
+    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
     try:
         catalog = os.path.join(reduction_dir, "masterbias_data.csv")
         data = pd.read_csv(catalog)
@@ -310,7 +310,7 @@ def register_masterflats(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, MM is month and DD y day.
+        run_date (string): format given by pattern YYMMDD where YY is year, MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
     Returns:
@@ -321,7 +321,7 @@ def register_masterflats(data_dir, run_date, db_object):
         IOError: if masterFLAT catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT_{run_date}/')
+    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
     try:
         catalog = os.path.join(reduction_dir, "masterflats_data.csv")
         data = pd.read_csv(catalog)
@@ -351,7 +351,7 @@ def register_masterflats(data_dir, run_date, db_object):
             mf_stats = mf_fits.stats()
 
             # getting masterBIAS id
-            r_date = datetime.strptime(run_date, '%Y-%m-%d')
+            r_date = datetime.strptime(run_date, '%y%m%d')
             sql_search_mb = f"SELECT `id` FROM `master_bias` WHERE date_run = '{r_date}'"
             print(f"sql_search_mb = {sql_search_mb}")
             db_cursor.execute(sql_search_mb)
@@ -409,7 +409,7 @@ def register_rawflats(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, 
+        run_date (string): format given by pattern YYMMDD where YY is year, 
             MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
@@ -423,7 +423,7 @@ def register_rawflats(data_dir, run_date, db_object):
             if masterFLATs catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT_{run_date}/')
+    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
     try:
         catalog = os.path.join(reduction_dir, "masterflats_data.csv")
         data = pd.read_csv(catalog)
@@ -500,7 +500,7 @@ def register_reduced(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, MM is month and DD y day.
+        run_date (string): format given by pattern YYMMDD where YY is year, MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
     Returns:
@@ -511,7 +511,7 @@ def register_reduced(data_dir, run_date, db_object):
         IOError: if reduced FITS catalog file was not found.
     """
     new_registrations = 0
-    reduced_dir = os.path.join(data_dir, f'reduction/MAPCAT_{run_date}/')
+    reduced_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
     try:
         catalog = os.path.join(reduced_dir, "output_data_red.csv")
         data = pd.read_csv(catalog)
@@ -536,7 +536,7 @@ def register_reduced(data_dir, run_date, db_object):
                 red_fits = mcFits(red_path)
             except:
                 print(f"ERROR: processing {red_path}")
-                raise
+                continue
             red_header = red_fits.header
             red_stats = red_fits.stats()
 
@@ -631,7 +631,7 @@ def register_calibrated(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, MM is month and DD y day.
+        run_date (string): format given by pattern YYMMDD where YY is year, MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
     Returns:
@@ -642,7 +642,7 @@ def register_calibrated(data_dir, run_date, db_object):
         IOError: if reduced FITS catalog file was not found.
     """
     new_registrations = 0
-    calibration_dir = os.path.join(data_dir, f'calibration/MAPCAT_{run_date}/')
+    calibration_dir = os.path.join(data_dir, f'calibration/MAPCAT/{run_date}/')
 
     cal_directories = glob.glob(os.path.join(calibration_dir, '*-*'))
     cal_directories.sort()
@@ -656,7 +656,7 @@ def register_calibrated(data_dir, run_date, db_object):
             continue
         print(f"INFO: working in directory '{cal_dir}'\n")
         try:
-            searching = os.path.join(cal_dir, '*final_info.csv')
+            searching = os.path.join(cal_dir, '*final_photocal_process_info.csv')
             cal_info_path = glob.glob(searching)[0]
             data = pd.read_csv(cal_info_path)
         except:
@@ -701,7 +701,7 @@ def register_calibrated(data_dir, run_date, db_object):
                     blazar_name = row['BLZRNAME']
                 else: # blazar name empty
                     try:
-                        blazar_info_path = glob.glob(os.path.join(cal_dir, '*final.csv'))[0]
+                        blazar_info_path = glob.glob(os.path.join(cal_dir, '_photocal_res.csv'))[0]
                         bz_data = pd.read_csv(blazar_info_path)
                         blazar_name = data['MC-IAU-NAME'].values[0]
                     except:
@@ -797,7 +797,7 @@ def register_blazar_measure(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, 
+        run_date (string): format given by pattern YYMMDD where YY is year, 
             MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
@@ -810,7 +810,7 @@ def register_blazar_measure(data_dir, run_date, db_object):
             if blazar catalog file was not found.
     """
     new_registrations = 0
-    calibration_dir = os.path.join(data_dir, f'calibration/MAPCAT_{run_date}/')
+    calibration_dir = os.path.join(data_dir, f'calibration/MAPCAT/{run_date}/')
 
     cal_directories = glob.glob(os.path.join(calibration_dir, '*-*'))
     cal_directories.sort()
@@ -824,7 +824,7 @@ def register_blazar_measure(data_dir, run_date, db_object):
             continue
         print(f"INFO: working in directory '{cal_dir}'\n")
         try:
-            searching = os.path.join(cal_dir, '*_final.csv')
+            searching = os.path.join(cal_dir, '*_final_photocal_res.csv')
             blazar_info_path = glob.glob(searching)[0]
             blazar_data = pd.read_csv(blazar_info_path)
         except:
@@ -833,7 +833,7 @@ def register_blazar_measure(data_dir, run_date, db_object):
 
         # getting calibrated FITS
         dire, name = os.path.split(blazar_info_path)
-        cal_name = name.replace('_final.csv', '_final.fits')
+        cal_name = name.replace('_final_photocal_res.csv', '_final.fits')
 
         sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}'"
         db_cursor.execute(sql_search)
@@ -841,6 +841,8 @@ def register_blazar_measure(data_dir, run_date, db_object):
         if db_cursor.rowcount == 1:
             cal_id = res_search[0][0]
         else:
+            print(f'sql_search = {sql_search}')
+            print(f'query result = {res_search}')
             print('ERROR: No associated calibrated FITS for this catalog')
             return -2
         # Checking previous information on blazar in blazar_measure table...
@@ -852,7 +854,7 @@ def register_blazar_measure(data_dir, run_date, db_object):
             # Insert new register
 
             # getting calibrated FITS
-            cal_path = blazar_info_path.replace('_final.csv', '_final.fits')
+            cal_path = blazar_info_path.replace('_final_photocal_res.csv', '_final.fits')
             try:
                 cal_fits = mcFits(cal_path)
             except:
@@ -925,7 +927,7 @@ def register_polarimetry_data(data_dir, run_date, db_object):
 
     Args:
         data_dir (string): base directory. FITS are stored in data_dir/raw directory.
-        run_date (string): format given by pattern YYYY-MM-DD where YYYY is year, 
+        run_date (string): format given by pattern YYMMDD where YY is year, 
             MM is month and DD y day.
         db_object (mysql.connector.db object): it manages database connection.
 
@@ -941,10 +943,14 @@ def register_polarimetry_data(data_dir, run_date, db_object):
 
     # Create cursor for database operation
     db_cursor = db_object.cursor()
+    
+    dt = datetime.strptime(run_date, '%y%m%d')
 
-    catalog = os.path.join(data_dir, f'final/MAPCAT_{run_date}/MAPCAT_polR_{run_date}.csv')
+    catalog = os.path.join(data_dir, f'final/MAPCAT/{run_date}/MAPCAT_polR_{dt.strftime("%Y-%m-%d")}.csv')
     try:
         pol_data = pd.read_csv(catalog)
+        print(f'Number of polarimetry data = {len(pol_data.index)}')
+        print('*' * 60)
     except IOError:
         print(f"ERROR: polarimetry catalog '{catalog}' not found.")
         raise
@@ -954,28 +960,35 @@ def register_polarimetry_data(data_dir, run_date, db_object):
 
     str_params = ['name', 'date_run']
 
-    pol_keywords = ['DATE_RUN', 'RJD-5000', 'MC-IAU-NAME', \
+    pol_keywords = ['DATE_RUN', 'RJD-50000', 'MC-IAU-NAME', \
         'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma']
         
     # Checking previous information on blazar in blazar_measure table...
     for index, row in pol_data.iterrows():
+        print(f'index = {index}')
+        # print(f'row ------------\n {row}')
         # getting blazar_id
         blazar_name = row['MC-IAU-NAME']
         sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name_IAU` = '{blazar_name}'"
         print(f"sql_search = {sql_search_bl_id}")
         db_cursor.execute(sql_search_bl_id)
         res_search_bl_id = db_cursor.fetchall()
-        if db_cursor.rowcount == 1:
+        
+        blazar_id = None
+        if len(res_search_bl_id) == 1:
             blazar_id = res_search_bl_id[0][0]
         else:
             print(f"ERROR: No found blazar_id for blazar called '{blazar_name}' in polarimetry info row.")
             return -3 
-
-        sql_search_pol_data = f"SELECT `id` FROM `polarimetry_data` WHERE `blazar_id`={blazar_id} AND `date_run` = '{run_date}'"
+    
+        r_date = datetime.strptime(run_date, '%y%m%d').strftime("%Y-%m-%d")
+        sql_search_pol_data = f"SELECT * FROM `polarimetry_data` WHERE `blazar_id` = {blazar_id} AND `date_run` = '{r_date}' AND (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
+        print(f'sql_search = {sql_search_pol_data}')
         db_cursor.execute(sql_search_pol_data)
         res_search_pol_data = db_cursor.fetchall()
+        print(f'res_search_pol_data = {res_search_pol_data}')
 
-        if db_cursor.rowcount == 0:
+        if len(res_search_pol_data) == 0:
             # Insert new register
             values = [blazar_id] + \
                 [row[k] for k in pol_keywords]
@@ -994,10 +1007,7 @@ def register_polarimetry_data(data_dir, run_date, db_object):
             
             # Commiting insertion
             db_object.commit()
-
-            if db_cursor.rowcount > 0:
-                print(f"INFO: {db_cursor.rowcount} register/s inserted successfully.")
-            new_registrations += db_cursor.rowcount
+            new_registrations += 1
 
         # if new_registrations > 1:
         #     break
@@ -1014,7 +1024,7 @@ def main():
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
     # parser.add_argument("dbengine", help="Configuration parameter files directory")
     parser.add_argument("input_data_dir", help="Input data base directory")
-    parser.add_argument("run_date", help="Run date in format YYYY-MM-DD")
+    parser.add_argument("run_date", help="Run date in format YYMMDD")
     parser.add_argument("--db_server",
         action="store",
         dest="db_server",
@@ -1046,11 +1056,11 @@ def main():
         return 1
     
     dirs = ['raw', 'reduction', 'calibration', 'final']
-    directories = {k: os.path.join(args.input_data_dir, f'{k}/MAPCAT_{args.run_date}/') for k in dirs}
-    # raw_dir = os.path.join(args.input_data_dir, 'raw/MAPCAT_{args.run_date}/')
-    # red_dir = os.path.join(args.input_data_dir, 'reduction/MAPCAT_{args.run_date}/')
-    # cal_dir = os.path.join(args.input_data_dir, 'calibration/MAPCAT_{args.run_date}/')
-    # final_dir = os.path.join(args.input_data_dir, 'final/MAPCAT_{args.run_date}/')
+    directories = {k: os.path.join(args.input_data_dir, f'{k}/MAPCAT/{args.run_date}/') for k in dirs}
+    
+    print(f'Directories = {directories}')
+    
+   
     for k, v in directories.items():
         if not os.path.isdir(v):
             print(f"ERROR: Directory '{v}' not available.")
@@ -1073,43 +1083,63 @@ def main():
     my_cursor = my_db.cursor()
 
     # Selecting database for table creation
-    # my_cursor.execute(f"USE {args.db_name};")
+    my_cursor.execute(f"USE {args.db_name};")
+    
+    # return 1
 
     # Processing RAW images (image_raw table) from run date
-    res = register_raw(args.input_data_dir, args.run_date, my_db)
-    print(f"Raw image registration result -> {res}")
+    # res = register_raw(args.input_data_dir, args.run_date, my_db)
+    # print(f"Raw image registration result -> {res}")
+    
+    # return 1
 
     # Processing MASTERBIAS (master_bias table) from run date 
-    res = register_masterbias(args.input_data_dir, args.run_date, my_db)
-    print(f"MasterBIAS registration result -> {res}")
+    # res = register_masterbias(args.input_data_dir, args.run_date, my_db)
+    # print(f"MasterBIAS registration result -> {res}")
+
+    # return 1
 
     # Processing RAW-BIAS (raw_bias table) from run date
-    res = register_rawbias(args.input_data_dir, args.run_date, my_db)
-    print(f"Relation between raw and masterBIAS registration result -> {res}")
+    # res = register_rawbias(args.input_data_dir, args.run_date, my_db)
+    # print(f"Relation between raw and masterBIAS registration result -> {res}")
+
+    # return 1
 
     # Processing MASTERFLATS (master_flat table) from run date
-    res = register_masterflats(args.input_data_dir, args.run_date, my_db)
-    print(f"MasterFLATS registration result -> {res}")
+    # res = register_masterflats(args.input_data_dir, args.run_date, my_db)
+    # print(f"MasterFLATS registration result -> {res}")
+    
+    # return 1
 
     # Processing RAW-FLATS (raw_flat table) from run date
-    res = register_rawflats(args.input_data_dir, args.run_date, my_db)
-    print(f"Relation between raw and masterFLATS registration result -> {res}")
+    # res = register_rawflats(args.input_data_dir, args.run_date, my_db)
+    # print(f"Relation between raw and masterFLATS registration result -> {res}")
+    
+    # return 1
 
     # Processing REDUCED images (image_reduced table) from run date
-    res = register_reduced(args.input_data_dir, args.run_date, my_db)
-    print(f"Reduced image registration result -> {res}")
+    # res = register_reduced(args.input_data_dir, args.run_date, my_db)
+    # print(f"Reduced image registration result -> {res}")
+    
+    # return 1
 
     # Processing CALIBRATED images (image_calibrated table) from run date
-    res = register_calibrated(args.input_data_dir, args.run_date, my_db)
-    print(f"Calibrated image registration result -> {res}")
+    # res = register_calibrated(args.input_data_dir, args.run_date, my_db)
+    # print(f"Calibrated image registration result -> {res}")
+    
+    # return 1
 
     # Processing BLAZAR MEASURE (blazar_measure table) from run date
-    res = register_blazar_measure(args.input_data_dir, args.run_date, my_db)
-    print(f"blazar data registration result -> {res}")
+    # res = register_blazar_measure(args.input_data_dir, args.run_date, my_db)
+    # print(f"blazar data registration result -> {res}")
+    
+    # return 1
 
     # Processing POLARIMETRY DATA (polarimetry_data table) from run date
     res = register_polarimetry_data(args.input_data_dir, args.run_date, my_db)
     print(f"Polarimetry data registration result -> {res}")
+    
+    return 1
 
     # Unuseful table. Info can be get by querying...
     """SELECT 

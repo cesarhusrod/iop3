@@ -17,7 +17,7 @@ DROP TABLE IF EXISTS `blazar_source`;
 
 CREATE TABLE IF NOT EXISTS `blazar_source`(
   `id` int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT COMMENT 'Object identification',
-  `source_id` int unsigned NOT NULL COMMENT 'Associated Blazar identification for this object',
+  `source_id` int unsigned DEFAULT NULL COMMENT 'Associated Blazar identification for this object',
   `aper_pix_sext` int unsigned NOT NULL COMMENT 'Fotometry aperture for SExtractor (pixels)',
   `name` varchar(50) NOT NULL COMMENT 'Source name',
   `name_IAU` varchar(50) NOT NULL COMMENT 'IAU source name',
@@ -272,15 +272,15 @@ CREATE TABLE IF NOT EXISTS `polarimetry_data`(
   `dR` DECIMAL(15, 8) DEFAULT NULL COMMENT 'Computed error in magnitude (AB)',
   FOREIGN KEY (`blazar_id`) REFERENCES `blazar_source`(`id`) on delete cascade on update cascade,
   -- Only one measure for date_run and blazar
-  UNIQUE (`blazar_id`, `date_run`)
+  UNIQUE (`rjd-50000`)
 );
 
 
 -- This table set relation between blazar_measure for each image_calibrated and final P+-dP/Theta+-dTheta stored in polarimetry_data
-CREATE TABLE IF NOT EXISTS `blazar_polarimetry`(
-  `cal_id` int unsigned NOT NULL,
-  `pol_id` int unsigned NOT NULL,
-  FOREIGN KEY (`cal_id`) REFERENCES `image_calibrated`(`id`) on delete cascade on update cascade,
-  FOREIGN KEY (`pol_id`) REFERENCES `polarimetry_data`(`id`) on delete cascade on update cascade,
-  PRIMARY KEY (`cal_id`, `pol_id`)
-);
+-- CREATE TABLE IF NOT EXISTS `blazar_polarimetry`(
+--   `cal_id` int unsigned NOT NULL,
+--   `pol_id` int unsigned NOT NULL,
+--   FOREIGN KEY (`cal_id`) REFERENCES `image_calibrated`(`id`) on delete cascade on update cascade,
+--   FOREIGN KEY (`pol_id`) REFERENCES `polarimetry_data`(`id`) on delete cascade on update cascade,
+--   PRIMARY KEY (`cal_id`, `pol_id`)
+-- );

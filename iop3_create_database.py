@@ -81,9 +81,9 @@ def main():
     # Executing command for table creation in database
     with open(args.sql_file) as sql:
         print(f"INFO: Executing SQL commands given in '{args.sql_file}'")
-        for query in [q for q in sql.read().split(';').strip() if len(q)>0]:
-            print(query)
-            mycursor.execute(query + ';')
+        for query in [q for q in sql.read().split(';') if len(q.strip())>0]:
+            print(query.strip())
+            mycursor.execute(query.strip() + ';')
 
 
     # Disconnecting
