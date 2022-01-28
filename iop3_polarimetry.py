@@ -18,82 +18,154 @@ from collections import defaultdict
 
 from astropy.io import fits
 
+def subsets(data, num_angles=4):
+    """It analyzes data passed and maje subsets of observations according to date-obs
+    and rotator angle.
+    Args:
+        data (pandas.DataFrame): Data from objects taken from 4 polarization angles grism.
+        name (str): object name for subsetting
+
+    Returns:
+        list: of valid subsets of observation for object called 'name'.
+    """
+    sub_s = []
+    # taking angles
+    angles_rot = sorted(data['ANGLE'].unique().tolist())
+    print(f"ROTATED ANGLES = {angles_rot}")
+    if len(angles_rot) < 4:
+        message = 'WARNING,POLARIMETRY,"Not complete rotation angles (only {}) measurements for object {}"'
+        print(message.format(angles_rot, data['MC-IAU-NAME'].iloc[0]))
+    
+    if len(data.index) > 4:
+        message = 'INFO,POLARIMETRY,"More than 4 observations taken this run for object {}"'
+        print(message.format(data['MC-IAU-NAME'].iloc[0]))
+    
+    # sort by datetime
+    data.sort_values(by=['DATE-OBS', 'ANGLE', 'TYPE'], \
+        inplace=True, ascending=False)
+    
+    # search for duplicates
+    while len(data.index) > 0: # iterate until there is no more observations
+        index_dup = data.duplicated(['ANGLE', 'TYPE'], keep='last') # false for last duplicated (angle, type) item
+        sub_s.append(data[~index_dup])  # append last set of duplicated items to list
+        data = data[index_dup] # delete previous last repeated set of observations
+    
+    return sub_s
+        
+        
+        
 
 def object_measures(data, name):
-    """"Two params are keyword: grism angle and exptime. This function
-    return valid subsets of input data.
+    """"It returns a list of data subsets, according to object 'name'.
+    
+    The number of subsets depends on the number of series observation taken this 
+    night for this object called 'name'. The usual number of elements for each subset
+    is equal to number of angles set for the instrument (usually 4).
     
     Args:
         data (pandas.DataFrame): Data from objects taken from 4 polarization angles grism.
         name (str): object name for subsetting
 
     Returns:
-        list: of valid subsets of observation for object called 'name'."""
+        list: of valid subsets of observation for object called 'name'.
+    """
     data_sets = []
     print(f"***** Processing object called '{name}' ********")
     
+    # Filtering to 'name' object measurements
     data_object = data[data['NAME'] == name]
+    
     # checking EXPTIME keyword: every set of measurements in different angles must have same EXPTIME
-    exptimes = data_object['EXPTIME'].unique()
+    exptimes = sorted(data_object['EXPTIME'].unique().tolist())
     print(f"EXPTIMES = {exptimes}")
+    
+    # If several EXPTIMES where taken, then several groups must be processed
+    groups = []
     for et in exptimes:
-        print(f"\tAnalyzing EXPTIME = {et}")
-        subdata_object = data_object[data_object['EXPTIME'] == et]
-        angles_rot = subdata_object['ANGLE'].unique()
-        print(f"\t\tangles_rot = {angles_rot}")
-        if len(angles_rot) < 4:
-            # TODO: Use other angles to get polarimetry measurement
-            print("\t\tERROR: Not all instrument rotation angles were measured.")
-            print(f"\t{angles_rot}")
-            continue
-        # Data taken in every filter, so now goes check number of measurements
-        # print(subdata_object)
-        if len(subdata_object.index) >= 16:
-            # Maybe several exposures were taken
-            subdata_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
-                inplace=True, ascending=False)
-            index = subdata_object[['ANGLE', 'TYPE']].duplicated()
-            dt_object = subdata_object[index == False]
-            if len(dt_object.index) == 8:
-                data_sets.append(dt_object)            
-            elif len(dt_object.index) > 8:
-                # filtering by second time
-                dt_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
-                    inplace=True, ascending=False)
-                index = dt_object[['ANGLE', 'TYPE']].duplicated()
-                dt_object = dt_object[index == False]
-                data_sets.append(dt_object)
-            else: # low than 8 measurements (Ordinary/Extraordinary sources times 4 angles)
-                str_err = '\tERROR: Not enough polarization angle measurements (only {})'
-                str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
-                print(str_err.format(dt_object['NAME'].size))
-                print("\tDiscarded data\n\t----------------")
-                print(dt_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
-                continue
-        elif len(subdata_object.index) > 8:
-            subdata_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
-                inplace=True, ascending=False)
-            index = subdata_object[['ANGLE', 'TYPE']].duplicated()
-            dt_object = subdata_object[index == False]
-            if len(dt_object.index) == 8:
-                data_sets.append(dt_object)
-            else:
-                str_err = '\tERROR: Not enough polarization angle measurements (only {})'
-                str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
-                print(str_err.format(dt_object['NAME'].size))
-                print("\tDiscarded data\n\t----------------")
-                print(dt_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
-                continue
-        elif len(subdata_object.index) == 8:
-            data_sets.append(subdata_object)
-        else:
-            str_err = '\tERROR: Not enough polarization angle measurements (only {})'
-            str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
-            print(str_err.format(subdata_object['NAME'].size))
-            print("\tDiscarded data\n\t----------------")
-            print(subdata_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
+        groups.append(data_object[data['EXPTIME'] == et])
+        
+    for g in groups:
+        data_sets = data_sets + subsets(g)
+    
+    return data_sets        
 
-    return data_sets
+    
+
+# def object_measures(data, name):
+#     """"Two params are keyword: grism angle and exptime. This function
+#     return valid subsets of input data.
+    
+#     Args:
+#         data (pandas.DataFrame): Data from objects taken from 4 polarization angles grism.
+#         name (str): object name for subsetting
+
+#     Returns:
+#         list: of valid subsets of observation for object called 'name'."""
+#     data_sets = []
+#     print(f"***** Processing object called '{name}' ********")
+    
+#     data_object = data[data['NAME'] == name]
+#     # checking EXPTIME keyword: every set of measurements in different angles must have same EXPTIME
+#     exptimes = data_object['EXPTIME'].unique()
+#     print(f"EXPTIMES = {exptimes}")
+#     for et in exptimes:
+#         print(f"\tAnalyzing EXPTIME = {et}")
+#         subdata_object = data_object[data_object['EXPTIME'] == et]
+#         angles_rot = subdata_object['ANGLE'].unique()
+#         print(f"\t\tangles_rot = {angles_rot}")
+#         if len(angles_rot) < 4:
+#             # TODO: Use other angles to get polarimetry measurement
+#             print("\t\tERROR: Not all instrument rotation angles were measured.")
+#             print(f"\t{angles_rot}")
+#             continue
+#         # Data taken in every filter, so now goes check number of measurements
+#         # print(subdata_object)
+#         if len(subdata_object.index) >= 16:
+#             # Maybe several exposures were taken
+#             subdata_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
+#                 inplace=True, ascending=False)
+#             index = subdata_object[['ANGLE', 'TYPE']].duplicated()
+#             dt_object = subdata_object[index == False]
+#             if len(dt_object.index) == 8:
+#                 data_sets.append(dt_object)            
+#             elif len(dt_object.index) > 8:
+#                 # filtering by second time
+#                 dt_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
+#                     inplace=True, ascending=False)
+#                 index = dt_object[['ANGLE', 'TYPE']].duplicated()
+#                 dt_object = dt_object[index == False]
+#                 data_sets.append(dt_object)
+#             else: # low than 8 measurements (Ordinary/Extraordinary sources times 4 angles)
+#                 str_err = '\tERROR: Not enough polarization angle measurements (only {})'
+#                 str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
+#                 print(str_err.format(dt_object['NAME'].size))
+#                 print("\tDiscarded data\n\t----------------")
+#                 print(dt_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
+#                 continue
+#         elif len(subdata_object.index) > 8:
+#             subdata_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
+#                 inplace=True, ascending=False)
+#             index = subdata_object[['ANGLE', 'TYPE']].duplicated()
+#             dt_object = subdata_object[index == False]
+#             if len(dt_object.index) == 8:
+#                 data_sets.append(dt_object)
+#             else:
+#                 str_err = '\tERROR: Not enough polarization angle measurements (only {})'
+#                 str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
+#                 print(str_err.format(dt_object['NAME'].size))
+#                 print("\tDiscarded data\n\t----------------")
+#                 print(dt_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
+#                 continue
+#         elif len(subdata_object.index) == 8:
+#             data_sets.append(subdata_object)
+#         else:
+#             str_err = '\tERROR: Not enough polarization angle measurements (only {})'
+#             str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
+#             print(str_err.format(subdata_object['NAME'].size))
+#             print("\tDiscarded data\n\t----------------")
+#             print(subdata_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
+
+#     return data_sets
 
 def compute_polarimetry(data_object):
     """Given input data, it calls polarimetry function to get
@@ -174,7 +246,7 @@ def compute_polarimetry(data_object):
     result['Theta'] = round(Theta, 2)
     result['dTheta'] = round(dTheta, 2)
     result['R'] =  round(mags.mean(), 2)
-    result['Sigma'] = round(data_object['MAGERR_APER'].values.max(), 2)
+    result['Sigma'] = round(data_object['MAGERR_APER'].values.max(), 4)
     result['RJD-5000'] = round(obs_date - 50000, 4)
     result['ID-MC'] = data_object['ID-MC'].values[0]
     result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
@@ -347,7 +419,8 @@ def main():
 
     # Extract filter polarization angle and target name as new dataframe columns
     # data_res['ANGLE'] = data_res['OBJECT'].str.extract(r'\s([\d.]+)\s')
-    data_res['NAME'] = data_res['OBJECT'].str.extract(r'([a-zA-z0-9+-]+)\s')
+    data_res['NAME'] = np.array([' '.join(na.split(' ')[:-2]) for na in data_res['OBJECT'].values])
+    # data_res['NAME'] = data_res['OBJECT'].str.extract(r'([a-zA-z0-9+-]+)\s')
     #print(data_res)
     #print(data_res.info())
     #return -99
@@ -377,8 +450,8 @@ def main():
             res_pol['DATE_RUN'] = date_run
             res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
             rp_sigma = res_pol['Sigma']
-            if rp_sigma < 0.01:
-                rp_sigma = 0.01
+            # if rp_sigma < 0.01:
+            #     rp_sigma = 0.01
             
             for k, v in res_pol.items():
                 if k == 'Sigma':
@@ -387,6 +460,7 @@ def main():
                 pol_data[k].append(v)
 
             obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[2]
+            pol_data['RJD-50000'].append(obs_date - 50000)
             row = [date_run, obs_date - 50000, name]
             
             row = row + [res_pol['P'], res_pol['dP'], \
@@ -401,7 +475,7 @@ def main():
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f} {:8}{:>8}{:>7}{:>7}{:>7}{:>9}{:>7}'
+        str_out = '\n{:12s} {:9.4f} "{:8}"{:>8}{:>7}{:>7}{:>7}{:>9}{:>8}'
         header = 'DATE_RUN   RJD-50000 Object     P+-dP(%)  Theta+-dTheta(deg.)  R     Sigma '
         fout.write(header)
         for lines in pol_rows:
@@ -419,6 +493,7 @@ def main():
         for k, v in pol_data.items():
             print(f"{k} -> {len(v)}")
         raise
+    df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.4f}'.format(x))
     df.to_csv(out_csv, index=False)
 
     return 0

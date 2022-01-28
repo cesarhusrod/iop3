@@ -178,7 +178,7 @@ def main():
 
     # Getting run date (input directory must have pattern like *YYMMDD)
     dt_run = re.findall('(\d{6})', input_dir)[0]
-    date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
+    # date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
 
     path_line = input_dir.split('/')
     reduction_dir = input_dir.replace('raw', 'reduction')
@@ -212,7 +212,7 @@ def main():
     com_reduction = f"python iop3_reduction.py --border_image={border_image} {config_dir} {reduction_dir} {input_dir}"
     print(com_reduction)
     # Command execution
-    # subprocess.Popen(com_reduction, shell=True).wait()
+    subprocess.Popen(com_reduction, shell=True).wait()
 
     # return -1
 
@@ -235,20 +235,18 @@ def main():
 
     # transformation to numpy array for sorting files by DATE-OBS and OBJECT header keywords
     # Target is creating groups of observations for the same OBJECT and four different 
-    # polarization angles
+    #     polarization angles
     df_calib = pd.DataFrame(d_red)
     # sort by ascending dateobs, object, and angle
     df_calib = df_calib.sort_values(['dateobs', 'object', 'angle'], ascending=(True, True, True))
     # A night of observation can monitorize an object several times. So it's convenient grouping and counting
     # df_group_count = df_calib.groupby(['object']).size().reset_index(name='counts')
 
-    # print(type(df_group_count))
-
     # now, select valid observations for each group
     
     objects = sorted(np.unique(df_calib['object'].values).tolist())
     
-    print(f'objects = {objects}')
+    # print(f'objects = {objects}')
     
     for obj in objects:
         df_object = df_calib[df_calib['object'] == obj]
@@ -270,20 +268,8 @@ def main():
     # return -1
 
     # 4th STEP: Inserting results in database
-    # raw_csv = os.path.join(reduction_dir, 'input_data_raw.csv')
-    # red_csv = os.path.join(reduction_dir, 'output_data_red.csv')
-    # bias_csv = os.path.join(reduction_dir, 'masterbias_data.csv')
-    # flats_csv = os.path.join(reduction_dir, 'masterflats_data.csv')
-    
-    # info_files = glob.glob(os.path.join(calibration_dir, '*/*final_info.csv'))
-    # cal_df = pd.concat([pd.read_csv(p) for p in info_files], ignore_index=True)
-    # cal_csv = os.path.join(calibration_dir, 'output_data_cal.csv')
-    # cal_df.to_csv(cal_csv, index=False)
-    
-    # Inserting information on Database...
-    # com_insertdb = f"python iop3_add_db_info.py {raw_csv} {bias_csv} {flats_csv} {red_csv} {cal_csv}"
     data_dir = input_dir.split('data')[0] + 'data'
-    com_insertdb = f"python iop3_add_db_info.py {data_dir} {date_run}"
+    com_insertdb = f"python iop3_add_db_info.py {data_dir} {dt_run}"
     print(com_insertdb)
     with open(os.path.join(polarization_dir, 'db.log'), 'w') as log_file:
         subprocess.Popen(com_insertdb, shell=True, stdout=log_file).wait()
