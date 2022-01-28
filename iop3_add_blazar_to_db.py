@@ -103,14 +103,11 @@ def main():
     
     if values:
         query_insert = query_insert + ', '.join(values)
-    
-    print(query_insert.replace('), ', '), \n'))
-    
-    # Executing INSERT command
-    db_cursor.execute(query_insert)
+        print(query_insert.replace('), ', '), \n'))
+        # Executing INSERT command
+        db_cursor.execute(query_insert)
 
-
-    mydb.commit()
+        mydb.commit()
 
     # Disconnecting
     mydb.close()

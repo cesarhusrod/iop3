@@ -82,7 +82,7 @@ def object_measures(data, name):
     # If several EXPTIMES where taken, then several groups must be processed
     groups = []
     for et in exptimes:
-        groups.append(data_object[data['EXPTIME'] == et])
+        groups.append(data_object[data_object['EXPTIME'] == et])
         
     for g in groups:
         data_sets = data_sets + subsets(g)
@@ -395,7 +395,7 @@ def main():
 
     results.sort()
     pprint.pprint(results)
-    print(f"Found {len(results)} '*_photocal_res.csv' files.")
+    print(f"\nFound {len(results)} '*_photocal_res.csv' files.\n")
 
     if not os.path.isdir(args.output_dir):
         try:

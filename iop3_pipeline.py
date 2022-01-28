@@ -263,7 +263,7 @@ def main():
     print("COMPUTING POLARIMETRY. Please wait...")
     com_polarimetry = f"python iop3_polarimetry.py {calibration_dir} {polarization_dir}"
     print(com_polarimetry)
-    subprocess.Popen(com_polarimetry, shell=True).wait()
+    # subprocess.Popen(com_polarimetry, shell=True).wait()
 
     # return -1
 
