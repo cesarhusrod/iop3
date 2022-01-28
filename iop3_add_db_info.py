@@ -932,14 +932,18 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         db_object (mysql.connector.db object): it manages database connection.
 
     Returns:
-        int:
-            if int >= 0, it represents number of polarimetrical computations registered in database.
+        tuple: (num_insertions, num_updates)
+            where 
+                - 'num_insertions' represents number of polarimetrical computations 
+            registered in database.
+                - 'num_updates', is the number of updates registed in database.
     
     Exception:
         IOError, IndexError: 
             if polarimetry catalog file was not found.
     """
     new_registrations = 0
+    updates = 0
 
     # Create cursor for database operation
     db_cursor = db_object.cursor()
@@ -968,8 +972,8 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         print(f'index = {index}')
         # print(f'row ------------\n {row}')
         # getting blazar_id
-        blazar_name = row['MC-IAU-NAME']
-        sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name_IAU` = '{blazar_name}'"
+        blazar_name = row['MC-IAU-NAME'].strip()
+        sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name_IAU` like '{blazar_name}'"
         print(f"sql_search = {sql_search_bl_id}")
         db_cursor.execute(sql_search_bl_id)
         res_search_bl_id = db_cursor.fetchall()
@@ -988,6 +992,7 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         res_search_pol_data = db_cursor.fetchall()
         print(f'res_search_pol_data = {res_search_pol_data}')
 
+        sql = ''
         if len(res_search_pol_data) == 0:
             # Insert new register
             values = [blazar_id] + \
@@ -996,23 +1001,33 @@ def register_polarimetry_data(data_dir, run_date, db_object):
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
             # Inserting new register on database.image_raw
-            sql_insert = f"INSERT INTO `polarimetry_data` (`{'`,`'.join(params)}`) VALUES ({v})"
-            print(f"SQL command (blazar_measure) = '{sql_insert}'")
-
-            try:
-                db_cursor.execute(sql_insert)
-            except:
-                print(f"SQL ERROR: {sql_insert}")
-                raise
-            
-            # Commiting insertion
-            db_object.commit()
+            sql = f"INSERT INTO `polarimetry_data` (`{'`,`'.join(params)}`) VALUES ({v})"
             new_registrations += 1
+        else:
+            values = [row[k] for k in pol_keywords]
+            val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params[1:], values)]
+            
+            pairs = []
+            for k, v in zip(params[1:], val_fmt):
+                pairs.append(f'`{k}` = {v}')
+            sql = f"UPDATE `polarimetry_data` SET {','.join(pairs)} WHERE (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
+            updates += 1
+        
+        print(f'sql insert/update = {sql}')
+        try:
+            db_cursor.execute(sql)
+        except:
+            print(f"SQL ERROR: {sql}")
+            raise
+        
+        # Commiting insertion
+        db_object.commit()
+        
 
         # if new_registrations > 1:
         #     break
     
-    return new_registrations
+    return new_registrations, updates
 
 
 
