@@ -14,6 +14,7 @@ __author__ = 'Cesar Husillos'
 VERSION: 0.1
 """
 
+# ------------------------ Import section ------------------------ #
 import os
 import subprocess
 import copy
@@ -41,6 +42,137 @@ from astropy.coordinates import SkyCoord  # High-level coordinates
 
 from mcfits import MCFits
 
+
+# ----------------------------- Module variable ------------------------- #
+
+
+
+# ----------------------------- Module funtions ------------------------- #
+def default_detection_params(exptime):
+    """ Default values for some SExtractor detection parameters.
+
+    They depend on exptime.
+
+    Args:
+        exptime (float): Exposure time in seconds.
+
+    Return:
+        detect_params (dict): Best test parameters for source-extractor detection
+
+    Raises:
+        ValueError, if exptime can't be cast to float.
+    """
+    try:
+        et = float(exptime)
+    except ValueError:
+        raise
+
+    det_filter = 'N'
+    det_clean = 'N'
+    minarea = 13
+    an_thresh = 1.0
+    det_thresh = 1.0
+    deb_mincon = 0.1
+
+    if et > 0.2:
+        det_clean = 'N'
+        deb_mincon = 0.005
+    if et >= 1:
+        det_filter = 'Y'
+        det_clean = 'Y'
+        minarea = 9
+        an_thresh = 1.0
+        det_thresh = 1.0
+    # if et >= 80:
+    if et >= 20:
+        minarea = 13
+        an_thresh = 2.5
+        det_thresh = 2.5
+    # if et >= 100:
+    #     pass
+    # if et >= 120:
+    #     pass
+    # if et >= 180:
+    if et >= 120:
+        minarea = 9
+        an_thresh = 1.6
+        det_thresh = 1.6
+
+    detect_params = {}
+
+    # setting config parameters
+    detect_params['FILTER'] = det_filter
+    detect_params['CLEAN'] = det_clean
+    detect_params['DETECT_MINAREA'] = minarea
+    detect_params['ANALYSIS_THRESH'] = an_thresh
+    detect_params['DETECT_THRESH'] = det_thresh
+    detect_params['DEBLEND_MINCONT'] = deb_mincon
+
+    return detect_params
+
+def relaxed_detection_params(exptime):
+    """ Relaxed values for some SExtractor detection parameters.
+    
+        SExtractor used parameters are broader than for high exposure FITS.
+
+    Args:
+        exptime (float): Exposure time in seconds.
+
+    Return:
+        detect_params (dict): Best tested parameters for source-extractor detection.
+
+    Raises:
+        ValueError, if exptime can't be cast to float.
+    """
+    try:
+        et = float(exptime)
+    except ValueError:
+        raise
+
+    det_filter = 'N'
+    det_clean = 'N'
+    minarea = 10
+    an_thresh = 0.1
+    det_thresh = 0.1
+    deb_mincon = 0.1
+
+    # For these exptimes, values are set to given default_detection_params() function.
+    if et > 0.2:
+        det_clean = 'Y'
+        deb_mincon = 0.005
+    if et >= 1:
+        det_filter = 'Y'
+        det_clean = 'Y'
+        minarea = 9
+        an_thresh = 1.0
+        det_thresh = 1.0
+    if et >= 80:
+        minarea = 13
+        an_thresh = 2.5
+        det_thresh = 2.5
+    # if et >= 100:
+    #     pass
+    # if et >= 120:
+    #     pass
+    if et >= 180:
+        minarea = 9
+        an_thresh = 1.6
+        det_thresh = 1.6
+
+    detect_params = {}
+
+    # setting config parameters
+    detect_params['FILTER'] = det_filter
+    detect_params['CLEAN'] = det_clean
+    detect_params['DETECT_MINAREA'] = minarea
+    detect_params['ANALYSIS_THRESH'] = an_thresh
+    detect_params['DETECT_THRESH'] = det_thresh
+    detect_params['DEBLEND_MINCONT'] = deb_mincon
+
+    return detect_params
+
+
+# ----------------------------- Module clases --------------------------- #
 class NonvalidCatalog(Exception):
     pass
 
@@ -50,8 +182,9 @@ class NonvalidFITS(Exception):
 class MandatoryParam(Exception):
     pass
 
+
 class MCSExtractor():
-    def __init__(self, fits_path=None, cat_path=None, detect_params=None):
+    def __init__(self, config_file, fits_path=None, cat_path=None, detect_params=None):
         """Class Constructor.
 
         This class can be used for detect sources or read catalogs. Because of that,
@@ -63,8 +196,11 @@ class MCSExtractor():
 
         Parameters
         ----------
+        config_file: str
+            Path to SExtractor configuration file. It set main extraction parameters.
         fits_path : str
-            Path to FITS file (the default is None).
+            Path to FITS file (the default is None). Useful for reading 
+            output SExtractor catalogs.
         cat_path : str
             Path to existing SExtractor catalog (the default is None).
         detect_parameters : dict
@@ -102,7 +238,7 @@ class MCSExtractor():
         if self._cat_path is None:
             raise NonvalidCatalog(f"ERROR: SExtractor output catalog was not set!")
 
-        # Providing default values for SExtractor detection over MAPCAT FITS files
+        # Providing default values for SExtractor detection
         self.__config_default()
 
     @property
@@ -153,7 +289,8 @@ class MCSExtractor():
         # Preconfigured values depending on exptime
         # Getting FITS EXPTIME header value
         if 'EXPTIME' not in self.ofits._header:
-            raise NonvalidFITS(f"ERROR: Couldn't get access to 'EXPTIME' keyword on FITS '{self._fits_path}'")
+            message = "ERROR: Couldn't get access to 'EXPTIME' keyword on FITS '{}'"
+            raise NonvalidFITS(message.format(self._fits_path))
         
         exptime = int(self._ofits._header['EXPTIME'])
 
@@ -250,11 +387,13 @@ class MCSExtractor():
 
         return self._data
 
-    def extract(self, overwrite=True, show_info=True):
+    def extract(self, params={}, overwrite=True, show_info=True):
         """SExtractor program call for getting sources from FITS file.
 
         Parameters
         ----------
+        params: dict
+            Overwrite parameters given by 'conf_file'.
         overwrite : bool
             If True, previous catalog and images are overwritten (the default is True).
         show_info : bool
@@ -291,9 +430,13 @@ class MCSExtractor():
 
         # Mandatory KEYWORDS
         if 'CONFIG_FILE' not in self._detect_params:
-            raise MandatoryParam("ERROR: 'CONFIG_FILE' keyword not found in input dictionary.\nABORTING execution!!")
+            message = ["ERROR: 'CONFIG_FILE' keyword not found in input dictionary.", \
+                "ABORTING execution!!"]
+            raise MandatoryParam('\n'.join(message))
         if  self._cat_path is None:
-            raise MandatoryParam("ERROR: 'CATALOG_NAME' keyword not found in input dictionary.\nABORTING execution!!")
+            message = ["ERROR: 'CATALOG_NAME' keyword not found in input dictionary.", \
+                "ABORTING execution!!"]
+            raise MandatoryParam('\n'.join(message))
 
         if os.path.exists(self._cat_path) and not overwrite:
             print("INFO: Aborting execution.")
@@ -301,8 +444,8 @@ class MCSExtractor():
             return 0
 
         # Mandatory KEYWORDS
-        com.append(f'-c {self._detect_params["CONFIG_FILE"]}')
-        com.append(f'-CATALOG_NAME {self._cat_path}')
+        com.append(f"-c {self._detect_params['CONFIG_FILE']}")
+        com.append(f"-CATALOG_NAME {self._cat_path}")
 
         detection_keywords = "-CHECKIMAGE_TYPE "
         detection_values = "-CHECKIMAGE_NAME "

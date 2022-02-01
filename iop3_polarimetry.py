@@ -18,6 +18,7 @@ from collections import defaultdict
 
 from astropy.io import fits
 
+
 def subsets(data, num_angles=4):
     """It analyzes data passed and maje subsets of observations according to date-obs
     and rotator angle.
@@ -33,11 +34,11 @@ def subsets(data, num_angles=4):
     angles_rot = sorted(data['ANGLE'].unique().tolist())
     print(f"ROTATED ANGLES = {angles_rot}")
     if len(angles_rot) < 4:
-        message = 'WARNING,POLARIMETRY,"Not complete rotation angles (only {}) measurements for object {}"'
+        message = 'POLARIMETRY,WARNING,"Not complete rotation angles (only {}) measurements for object {}"'
         print(message.format(angles_rot, data['MC-IAU-NAME'].iloc[0]))
     
     if len(data.index) > 4:
-        message = 'INFO,POLARIMETRY,"More than 4 observations taken this run for object {}"'
+        message = 'POLARIMETRY,INFO,"More than 4 observations taken this run for object {}"'
         print(message.format(data['MC-IAU-NAME'].iloc[0]))
     
     # sort by datetime
@@ -46,6 +47,7 @@ def subsets(data, num_angles=4):
     
     # search for duplicates
     while len(data.index) > 0: # iterate until there is no more observations
+        print(f'data elements = {len(data.index)}')
         index_dup = data.duplicated(['ANGLE', 'TYPE'], keep='last') # false for last duplicated (angle, type) item
         sub_s.append(data[~index_dup])  # append last set of duplicated items to list
         data = data[index_dup] # delete previous last repeated set of observations
@@ -91,81 +93,7 @@ def object_measures(data, name):
 
     
 
-# def object_measures(data, name):
-#     """"Two params are keyword: grism angle and exptime. This function
-#     return valid subsets of input data.
-    
-#     Args:
-#         data (pandas.DataFrame): Data from objects taken from 4 polarization angles grism.
-#         name (str): object name for subsetting
 
-#     Returns:
-#         list: of valid subsets of observation for object called 'name'."""
-#     data_sets = []
-#     print(f"***** Processing object called '{name}' ********")
-    
-#     data_object = data[data['NAME'] == name]
-#     # checking EXPTIME keyword: every set of measurements in different angles must have same EXPTIME
-#     exptimes = data_object['EXPTIME'].unique()
-#     print(f"EXPTIMES = {exptimes}")
-#     for et in exptimes:
-#         print(f"\tAnalyzing EXPTIME = {et}")
-#         subdata_object = data_object[data_object['EXPTIME'] == et]
-#         angles_rot = subdata_object['ANGLE'].unique()
-#         print(f"\t\tangles_rot = {angles_rot}")
-#         if len(angles_rot) < 4:
-#             # TODO: Use other angles to get polarimetry measurement
-#             print("\t\tERROR: Not all instrument rotation angles were measured.")
-#             print(f"\t{angles_rot}")
-#             continue
-#         # Data taken in every filter, so now goes check number of measurements
-#         # print(subdata_object)
-#         if len(subdata_object.index) >= 16:
-#             # Maybe several exposures were taken
-#             subdata_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
-#                 inplace=True, ascending=False)
-#             index = subdata_object[['ANGLE', 'TYPE']].duplicated()
-#             dt_object = subdata_object[index == False]
-#             if len(dt_object.index) == 8:
-#                 data_sets.append(dt_object)            
-#             elif len(dt_object.index) > 8:
-#                 # filtering by second time
-#                 dt_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
-#                     inplace=True, ascending=False)
-#                 index = dt_object[['ANGLE', 'TYPE']].duplicated()
-#                 dt_object = dt_object[index == False]
-#                 data_sets.append(dt_object)
-#             else: # low than 8 measurements (Ordinary/Extraordinary sources times 4 angles)
-#                 str_err = '\tERROR: Not enough polarization angle measurements (only {})'
-#                 str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
-#                 print(str_err.format(dt_object['NAME'].size))
-#                 print("\tDiscarded data\n\t----------------")
-#                 print(dt_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
-#                 continue
-#         elif len(subdata_object.index) > 8:
-#             subdata_object.sort_values(by=['ANGLE', 'TYPE', 'DATE-OBS'], \
-#                 inplace=True, ascending=False)
-#             index = subdata_object[['ANGLE', 'TYPE']].duplicated()
-#             dt_object = subdata_object[index == False]
-#             if len(dt_object.index) == 8:
-#                 data_sets.append(dt_object)
-#             else:
-#                 str_err = '\tERROR: Not enough polarization angle measurements (only {})'
-#                 str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
-#                 print(str_err.format(dt_object['NAME'].size))
-#                 print("\tDiscarded data\n\t----------------")
-#                 print(dt_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
-#                 continue
-#         elif len(subdata_object.index) == 8:
-#             data_sets.append(subdata_object)
-#         else:
-#             str_err = '\tERROR: Not enough polarization angle measurements (only {})'
-#             str_err += ' 8 measurements are needed: 4 angles and Ordinary/Extraordinary sources.'
-#             print(str_err.format(subdata_object['NAME'].size))
-#             print("\tDiscarded data\n\t----------------")
-#             print(subdata_object[['DATE-OBS', 'MJD-OBS', 'TYPE', 'ANGLE', 'EXPTIME', 'OBJECT', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
-
-#     return data_sets
 
 def compute_polarimetry(data_object):
     """Given input data, it calls polarimetry function to get
@@ -180,7 +108,9 @@ def compute_polarimetry(data_object):
     """
     result = DefaultDict()
     name = data_object['NAME'].values[0]
-    obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[2] # 3rd observation
+    
+    dates = sorted(data_object['MJD-OBS'].unique().tolist())
+    obs_date = dates[2] # 3rd observation
     
     
     # Computing polarimetry parameters
@@ -204,42 +134,11 @@ def compute_polarimetry(data_object):
     try:
         mags = zps - 2.5 * np.log10(fluxes['FLUX_APER'].values)
     except ValueError:
-        print(f'\t---------ERROR processing data from {name}--------')
+        obs_datetimes = sorted(data_object['DATE-OBS'].unique().tolist())
+        print(f'POLARIMETRY,ERROR,"Processing data from {name}, date-obs ={obs_datetimes}')
         print(f'\tzps = {zps}')
         print(f'\tFlux_apers = {fluxes["FLUX_APER"].values}')
         raise
-    # mag_errs = zps - 2.5 * np.log10(flux_errs['FLUXERR_APER'].values)
-
-
-    # flux_o = data_object['FLUX_APER'][is_ord].values
-    # flux_e = data_object['FLUX_APER'][~is_ord].values
-    # print(flux_o, flux_e)
-    #
-    # print('Numero de flujos ordinarios = {}'.format(flux_o.size))
-    # print('Numero de flujos extraordinarios = {}'.format(flux_e.size))
-    # objects = data_object['OBJECT'].unique()
-    # # zps = np.array([zeropoints[o] for o in objects])
-    # # print("Numero de zeropoints = {}".format(zps.size))
-    # # print('Suma de flujos = {}'.format(flux_o + flux_e))
-    # # mags = zps - 2.5 * np.log10(flux_o + flux_e)
-    # row = row + [round(data_object['MAG_AUTO'][is_ord].values[0], 2), \
-    # round(data_object['MAGERR_AUTO'][is_ord].values[0], 2)] # [round(mags.mean(), 3), round(mags.std(), 3)]
-
-    # row += [round(mags.mean(), 2), round(mag_errs.max(), 2)]
-
-    # Data process pass all possble tests
-    # result['P'].append(round(P * 100, 3))
-    # result['dP'].append(round(dP * 100, 3))
-    # result['Theta'].append(round(Theta, 2))
-    # result['dTheta'].append(round(dTheta, 2))
-    # result['R'].append(round(mags.mean(), 2))
-    # result['Sigma'].append(round(data_object['MAGERR_APER'].values.max(), 2))
-    # result['RJD-5000'].append(round(obs_date - 50000, 4))
-    # result['ID-MC'].append(data_object['ID-MC'].values[0])
-    # result['ID-BLAZAR-MC'].append(data_object['ID-BLAZAR-MC'].values[0])
-    # result['MC-NAME'].append(data_object['MC-NAME'].values[0])
-    # result['MC-IAU-NAME'].append(data_object['MC-IAU-NAME'].values[0])
-    # result['NAME'].append(name)
 
     result['P'] = round(P * 100, 3)
     result['dP'] = round(dP * 100, 3)
@@ -401,7 +300,7 @@ def main():
         try:
             os.makedirs(args.output_dir)
         except IOError:
-            print(f"ERROR: Could not create output directory '{args.output_dir}'")
+            print(f'POLARIMETRY,ERROR,Could not create output directory {args.output_dir}"')
             return 2
     
 
@@ -440,12 +339,22 @@ def main():
         data_sets = object_measures(data_res, name)
             
         for data_object in data_sets:
+            print('group')
+            print('-' * 60)
+            print(data_object)
+        
             try:
                 res_pol = compute_polarimetry(data_object)
             except ZeroDivisionError:
-                print("EXCEPTON: Found Zero Division Error")
+                message = 'POLARIMETRY,ERROR,"EXCEPTION ZeroDivisionError: Found Zero Division Error in group processing; OBJECT={} DATE-OBS={}'
+                message = message.format(name, data_object['DATE-OBS'])
+                print(message)
+                continue
             except ValueError:
-                print("EXCEPTON: Found Value Error")
+                message = 'POLARIMETRY,ERROR,"EXCEPTION ValueError: Found Value Error in group processing; OBJECT={} DATE-OBS={}'
+                message = message.format(name, data_object['DATE-OBS'])
+                print(message)
+                continue
 
             res_pol['DATE_RUN'] = date_run
             res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
@@ -461,7 +370,7 @@ def main():
 
             obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[2]
             pol_data['RJD-50000'].append(obs_date - 50000)
-            row = [date_run, obs_date - 50000, name]
+            row = [date_run, obs_date - 50000, name.strip()]
             
             row = row + [res_pol['P'], res_pol['dP'], \
                 res_pol['Theta'], res_pol['dTheta'], \
@@ -475,7 +384,7 @@ def main():
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f} "{:8}"{:>8}{:>7}{:>7}{:>7}{:>9}{:>8}'
+        str_out = '\n{:12s} {:9.4f} {:8}{:>8}{:>7}{:>7}{:>7}{:>9}{:>8}'
         header = 'DATE_RUN   RJD-50000 Object     P+-dP(%)  Theta+-dTheta(deg.)  R     Sigma '
         fout.write(header)
         for lines in pol_rows:

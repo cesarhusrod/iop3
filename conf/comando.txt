@@ -1,1 +1,0 @@
-sextractor ../MAPCAT-test-data/1308-0007.fits -c sex.conf -CATALOG_NAME 1308-0007_sex.fits -checkimage_type APERTURES,BACKGROUND,SEGMENTATION -checkimage_name aper.fits,back.fits,segment.fits
