@@ -75,8 +75,9 @@ def object_measures(data, name):
     print(f"***** Processing object called '{name}' ********")
     
     # Filtering to 'name' object measurements
-    data_object = data[data['NAME'] == name]
-    
+    # data_object = data[data['NAME'] == name]
+    data_object = data[data['MC-IAU-NAME'] == name]
+
     # checking EXPTIME keyword: every set of measurements in different angles must have same EXPTIME
     exptimes = sorted(data_object['EXPTIME'].unique().tolist())
     print(f"EXPTIMES = {exptimes}")
@@ -107,7 +108,7 @@ def compute_polarimetry(data_object):
     
     """
     result = DefaultDict()
-    name = data_object['NAME'].values[0]
+    name = data_object['OBJECT'].values[0]
     
     dates = sorted(data_object['MJD-OBS'].unique().tolist())
     obs_date = dates[2] # 3rd observation
@@ -118,7 +119,7 @@ def compute_polarimetry(data_object):
     # print(data_object.info())
     # print(data_object)
     try:
-        P, dP, Theta, dTheta = polarimetry(data_object)
+        P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry(data_object)
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
         raise
@@ -146,12 +147,16 @@ def compute_polarimetry(data_object):
     result['dTheta'] = round(dTheta, 2)
     result['R'] =  round(mags.mean(), 2)
     result['Sigma'] = round(data_object['MAGERR_APER'].values.max(), 4)
+    result['Q'] = round(RQ, 4)
+    result['dQ'] = round(dRQ, 4)
+    result['U'] = round(RU, 4)
+    result['dU'] = round(dRU, 4)
     result['RJD-5000'] = round(obs_date - 50000, 4)
     result['ID-MC'] = data_object['ID-MC'].values[0]
     result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
     result['MC-NAME'] = data_object['MC-NAME'].values[0]
     result['MC-IAU-NAME'] = data_object['MC-IAU-NAME'].values[0]
-    result['NAME'] = name
+    result['OBJECT'] = data_object['OBJECT'].values[0].split()[0]
         
 
     return result
@@ -263,7 +268,7 @@ def polarimetry(df):
     pol_vals = 'P = {}, dP = {} \nTheta = {}, dTheta = {}'
     # print(pol_vals.format(P * 100, dP * 100, Theta, dTheta))
 
-    return P, dP, Theta, dTheta
+    return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU
 
 
 def main():
@@ -318,13 +323,13 @@ def main():
 
     # Extract filter polarization angle and target name as new dataframe columns
     # data_res['ANGLE'] = data_res['OBJECT'].str.extract(r'\s([\d.]+)\s')
-    data_res['NAME'] = np.array([' '.join(na.split(' ')[:-2]) for na in data_res['OBJECT'].values])
+    data_res['OBJECT'] = np.array([' '.join(na.split(' ')[:-2]) for na in data_res['OBJECT'].values])
     # data_res['NAME'] = data_res['OBJECT'].str.extract(r'([a-zA-z0-9+-]+)\s')
     #print(data_res)
     #print(data_res.info())
     #return -99
     #Getting unique names
-    object_names = data_res['NAME'].unique()
+    object_names = data_res['MC-IAU-NAME'].unique()
     print('^' * 100)
     print('OBJECTS = ', object_names)
     print('^' * 100)
@@ -342,7 +347,10 @@ def main():
             print('group')
             print('-' * 60)
             print(data_object)
-        
+
+            if len(data_object.index) < 8:
+                print(f'POLARIMETRY,WARNING,"Not enough observations for compute object \'{name}\' polarimetry"')
+                continue
             try:
                 res_pol = compute_polarimetry(data_object)
             except ZeroDivisionError:
@@ -358,6 +366,7 @@ def main():
 
             res_pol['DATE_RUN'] = date_run
             res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
+            res_pol['APERPIX'] = data_object['APERPIX'].values[0]
             rp_sigma = res_pol['Sigma']
             # if rp_sigma < 0.01:
             #     rp_sigma = 0.01
@@ -374,7 +383,10 @@ def main():
             
             row = row + [res_pol['P'], res_pol['dP'], \
                 res_pol['Theta'], res_pol['dTheta'], \
-                res_pol['R'], rp_sigma]
+                res_pol['Q'], res_pol['dQ'], \
+                res_pol['U'], res_pol['dU'], \
+                res_pol['R'], rp_sigma, \
+                res_pol['APERPIX']]
             pol_rows.append(row)
             # print('Lines to write down:')
             # pprint.pprint(pol_rows)
@@ -384,25 +396,37 @@ def main():
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f} {:8}{:>8}{:>7}{:>7}{:>7}{:>9}{:>8}'
-        header = 'DATE_RUN   RJD-50000 Object     P+-dP(%)  Theta+-dTheta(deg.)  R     Sigma '
+        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}'
+        header = 'DATE_RUN     RJD-50000   Object                P+-dP(%)         Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
 
-    # CSV file
+    # --------------------- CSV file
     name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
     try:
-        cols = ['P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', 'DATE_RUN', 'EXPTIME', \
-            'RJD-50000', 'ID-MC', 'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'NAME']
+        cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
+            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'ID-MC', \
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
         for k, v in pol_data.items():
             print(f"{k} -> {len(v)}")
         raise
+    # Formatting
     df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.4f}'.format(x))
+    df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
+    df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
+    df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))
+    df['dTheta'] = df['dTheta'].map(lambda x: '{0:.3f}'.format(x))
+    df['Q'] = df['Q'].map(lambda x: '{0:.4f}'.format(x))
+    df['dQ'] = df['dQ'].map(lambda x: '{0:.4f}'.format(x))
+    df['U'] = df['U'].map(lambda x: '{0:.4f}'.format(x))
+    df['dU'] = df['dU'].map(lambda x: '{0:.4f}'.format(x))
+    df['R'] = df['R'].map(lambda x: '{0:.3f}'.format(x))
+    df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df.to_csv(out_csv, index=False)
 
     return 0
