@@ -156,8 +156,7 @@ def compute_polarimetry(data_object):
     result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
     result['MC-NAME'] = data_object['MC-NAME'].values[0]
     result['MC-IAU-NAME'] = data_object['MC-IAU-NAME'].values[0]
-    result['OBJECT'] = data_object['OBJECT'].values[0].split()[0]
-        
+    result['OBJECT'] = data_object['OBJECT'].values[0].split()[0]        
 
     return result
 
@@ -290,6 +289,7 @@ def main():
 
     # processing .res files
     results = glob.glob(os.path.join(args.calib_base_dir, '*-*/*_photocal_res.csv'))
+    
     # sort by name == sort by date (ASC)
     
     if not results:
@@ -300,6 +300,9 @@ def main():
     results.sort()
     pprint.pprint(results)
     print(f"\nFound {len(results)} '*_photocal_res.csv' files.\n")
+
+    # getting photocalibration process info, in order to get useful FITS parameters
+    cal_process = [r.replace('_photocal_res.csv', '_photocal_process_info.csv') for r in results]
 
     if not os.path.isdir(args.output_dir):
         try:
@@ -315,6 +318,16 @@ def main():
     
     # Getting data from every VALID *_final.csv file into a new dataframe
     data_res = pd.concat([pd.read_csv(r) for r in results])
+    data_proc = pd.concat([pd.concat([pd.read_csv(cp), pd.read_csv(cp)])  for cp in cal_process])
+
+    # print(data_res.info())
+    # print(data_proc.info())
+
+    # return -99
+
+    # append seconds per pixel info
+    data_res['SECPIX1'] = data_proc['SECPIX1'].values
+    data_res['SECPIX2'] = data_proc['SECPIX2'].values
     # print(data_res.info())
     # return -9
 
@@ -351,6 +364,7 @@ def main():
             if len(data_object.index) < 8:
                 print(f'POLARIMETRY,WARNING,"Not enough observations for compute object \'{name}\' polarimetry"')
                 continue
+
             try:
                 res_pol = compute_polarimetry(data_object)
             except ZeroDivisionError:
@@ -367,6 +381,10 @@ def main():
             res_pol['DATE_RUN'] = date_run
             res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
             res_pol['APERPIX'] = data_object['APERPIX'].values[0]
+            # arcsec per pixel as mean values of astrometric calibration computaion in RA and DEC.
+            is_ord = data_object['TYPE'] == 'O'
+            mean_secpix = (data_object[is_ord]['SECPIX1'].mean() + data_object[is_ord]['SECPIX2'].mean()) / 2
+            res_pol['APERAS'] = res_pol['APERPIX'] * mean_secpix
             rp_sigma = res_pol['Sigma']
             # if rp_sigma < 0.01:
             #     rp_sigma = 0.01
@@ -386,7 +404,7 @@ def main():
                 res_pol['Q'], res_pol['dQ'], \
                 res_pol['U'], res_pol['dU'], \
                 res_pol['R'], rp_sigma, \
-                res_pol['APERPIX']]
+                res_pol['APERPIX'], res_pol['APERAS']]
             pol_rows.append(row)
             # print('Lines to write down:')
             # pprint.pprint(pol_rows)
@@ -396,8 +414,8 @@ def main():
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}'
-        header = 'DATE_RUN     RJD-50000   Object                P+-dP(%)         Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX'
+        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}'
+        header = 'DATE_RUN     RJD-50000   Object                 P+-dP(%)        Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
@@ -408,7 +426,7 @@ def main():
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX']
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
@@ -427,6 +445,7 @@ def main():
     df['dU'] = df['dU'].map(lambda x: '{0:.4f}'.format(x))
     df['R'] = df['R'].map(lambda x: '{0:.3f}'.format(x))
     df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
+    df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df.to_csv(out_csv, index=False)
 
     return 0
