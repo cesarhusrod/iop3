@@ -34,6 +34,8 @@ import pandas as pd
 
 # plotting package
 from matplotlib import pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
 
 # Coordinate system transformation package and modules
 from astropy import units as u
