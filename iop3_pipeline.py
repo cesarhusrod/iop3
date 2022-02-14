@@ -75,14 +75,28 @@ def create_dataframe(fits_paths, keywords=[]):
 
 def closest_blazar(blazar_data, path_fits):
     """"""
+    #Getting telescope type
+    tel_type=re.findall('(\w+/)', 
+                        path_fits)[len(re.findall('(\w+/)', 
+                                                  path_fits))-2][:-1]
     # Getting header informacion
     i_fits = mcFits(path_fits)
     input_head = i_fits.header
-    
     # Central FITS coordinates
-    icoords = "{} {}".format(input_head['RA'], input_head['DEC'])
-    input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
-    obstime="J2000")
+    if tel_type=='MAPCAT':
+        icoords = "{} {}".format(input_head['RA'], input_head['DEC'])
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
+                                    obstime="J2000")
+    else:
+        if 'OBJCTRA' in input_head:
+            icoords = "{} {}".format(input_head['OBJCTRA'], input_head['OBJCTDEC'])
+        else:
+            print('Object coordinates are missing from header of {}'.format(path_fits) )
+            icoords = "0 0"
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.hourangle, u.deg), \
+                                    obstime="J2000")
+    
+    
 
     # Blazars subset...
     df_blazars = blazar_data[blazar_data['IAU_name_mc'].notna()]
@@ -91,7 +105,6 @@ def closest_blazar(blazar_data, path_fits):
         c.append("{} {}".format(ra, dec))
     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
     obstime="J2000")
-    
     # Closest MAPCAT source to FITS central coordinates
     # Distance between this center FITS and MAPCAT targets (in degrees)
     distances = input_coords.separation(blazar_coords)
@@ -477,7 +490,7 @@ def main():
         message = 'CHECKING,ERROR,"Close calibrator was not found for \'{}\' (OBJECT = \'{}\')."'
         for path in far_calibrators:
             print(message.format(path, mcFits(path).header['OBJECT']))
-        return 4
+        #return 4
 
     # **************  1st STEP: Input raw image reduction  ******************** #
     com_reduction = "python iop3_reduction.py --border_image={} {} {} {}"
@@ -494,7 +507,7 @@ def main():
         print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
         return 1
 
-    # return -1
+    #return -1
 
     # ****************** 2nd STEP: Input reduced images calibration  ************* #
 

@@ -64,7 +64,7 @@ def _read_sextractor_catalog(catalog):
     """
     data_sextractor = None
     
-    if os.path.splitext(catalog)[1] == '.fits':
+    if os.path.splitext(catalog)[1] == '.fits' or os.path.splitext(catalog)[1] == '.fit':
         hdul = fits.open(catalog)
         data_sextractor = hdul[2].data  # assuming first extension is a table
     else:
@@ -391,8 +391,11 @@ class mcFits:
         gc.grid.set_alpha(0.7)
         if out_path:
             gc.save(out_path)
-        else:    
-            gc.save(self._path.replace('.fits', '.png'))
+        else:   
+            if 'fits' in self._path:
+                gc.save(self._path.replace('.fits', '.png'))
+            else:
+                gc.save(self._path.replace('.fit', '.png'))
         gc.close()
 
         return 0
@@ -822,16 +825,28 @@ class mcFits:
 
         # appending info to FITS Header
         new_cards = list()
-        candidateCards = [('SOFTDET', 'SExtractor', 'Source detection software'),
-                          ('FWHM', round(data_sextractor[cond]['FWHM_IMAGE'].mean(), 2),
-                           'Mean pix FWHM'),
-                          ('FWHMSTD', round(data_sextractor[cond]['FWHM_IMAGE'].std(), 2),
-                           'Std pix FWHM'),
-                          ('FWNSOURC', data_sextractor[cond]['FWHM_IMAGE'].size,
-                           'FWHM number of sources used'),
-                          ('FWHMFLAG', flag_value, 'SExtractor source FLAG'),
-                          ('FWHMELLI', round(ellipticity, 2), 'SExtractor max ELLIP'),
-                          ('PIXSCALE', self._header['INSTRSCL'], 'Scale [arcs/pix]')]
+        if 'MAPCAT' in detect_params['CATALOG_NAME']:
+            candidateCards = [('SOFTDET', 'SExtractor', 'Source detection software'),
+                              ('FWHM', round(data_sextractor[cond]['FWHM_IMAGE'].mean(), 2),
+                               'Mean pix FWHM'),
+                              ('FWHMSTD', round(data_sextractor[cond]['FWHM_IMAGE'].std(), 2),
+                               'Std pix FWHM'),
+                              ('FWNSOURC', data_sextractor[cond]['FWHM_IMAGE'].size,
+                               'FWHM number of sources used'),
+                              ('FWHMFLAG', flag_value, 'SExtractor source FLAG'),
+                              ('FWHMELLI', round(ellipticity, 2), 'SExtractor max ELLIP'),
+                              ('PIXSCALE', self._header['INSTRSCL'], 'Scale [arcs/pix]')]
+        
+        else:
+            candidateCards = [('SOFTDET', 'SExtractor', 'Source detection software'),
+                              ('FWHM', round(data_sextractor[cond]['FWHM_IMAGE'].mean(), 2),
+                               'Mean pix FWHM'),
+                              ('FWHMSTD', round(data_sextractor[cond]['FWHM_IMAGE'].std(), 2),
+                               'Std pix FWHM'),
+                              ('FWNSOURC', data_sextractor[cond]['FWHM_IMAGE'].size,
+                               'FWHM number of sources used'),
+                              ('FWHMFLAG', flag_value, 'SExtractor source FLAG'),
+                              ('FWHMELLI', round(ellipticity, 2), 'SExtractor max ELLIP')]
         for card in candidateCards:
             if card[0] in self._header:
                 self._header[card[0]] = card[1]

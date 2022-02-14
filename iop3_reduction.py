@@ -193,7 +193,7 @@ def main():
         data_raw_input['POLANGLE'].append(pol_ang)
         
         for s_key in some_raw_keys:
-            data_raw_input[s_key].append(ff.header.get(s_key, ''))
+            data_raw_input[s_key].append(ff.header.get(s_key, 'FILTER'))
         
         # adding FITS data statistics
         for key, value in ff.stats().items():
@@ -282,7 +282,10 @@ def main():
         data_masterflats_info['RUN_DATE'].append(date_run)
         pol_ang = ''
         if 'INSPOROT' in mcFLAT.header:
-            pol_ang = round(float(mcFLAT.header['INSPOROT']), 1)
+            if 'R' in mcFLAT.header['INSPOROT']:
+                pol_ang = mcFLAT.header['INSPOROT']
+            else:
+                pol_ang = round(float(mcFLAT.header['INSPOROT']), 1)
         data_masterflats_info['POLANGLE'].append(pol_ang)
         data_masterflats_info['PLOT'].append(plotFLAT)
         data_masterflats_info['HISTOGRAM'].append(plotFLATHist)
@@ -302,7 +305,8 @@ def main():
     # Saving masterbias data
     # Ouput CSV data file info
     csv_masterflats_data = os.path.join(args.reduction_dir, 'masterflats_data.csv')
-    df_masterflats_out = pd.DataFrame(data_masterflats_info)
+    df_masterflats_out = pd.DataFrame.from_dict(data_masterflats_info, orient='index')
+    df_masterflats_out=df_masterflats_out.transpose()
     df_masterflats_out.to_csv(csv_masterflats_data, index=False)
 
     # --------------- Making FITS set reduction operations --------------#
@@ -324,7 +328,10 @@ def main():
 
         # Estimating FWHM from extracted sources
         dictSEx = {}
-        dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
+        if 'MAPCAT' in mcRED.path:
+            dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
+        else:
+            dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fit', '.cat')
         dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
         mcRED.compute_fwhm(dictSEx)
         mcRED = 0 # Forcing to write FWHM dataSEX
@@ -338,7 +345,10 @@ def main():
         mcRED.plot(title)
 
         # Plotting histogram
-        plotSCIHist = mcRED.path.replace('.fits', '_histogram.png')
+        if 'fits' in mcRED.path:
+            plotSCIHist = mcRED.path.replace('.fits', '_histogram.png')
+        else:
+            plotSCIHist = mcRED.path.replace('.fit', '_histogram.png')
         mcRED.plot_histogram(plotSCIHist, title=title, histogram_params=histo_par)
 
         # Getting REDUCED FITS info
@@ -383,6 +393,7 @@ def main():
     
     # MasterFlats
     template = os.path.join(dir_templates, 'masterflat_fits.html')
+    print(csv_masterflats_data)
     rep_MF = report(csv_masterflats_data, \
         output_dir=args.reduction_dir, template_file=template, \
         title=f'{date_run} MASTERFLATS result')
