@@ -352,6 +352,12 @@ def main():
        type=int,
        default=15,
        help="True is input file is for clusters [default: %(default)s].")
+    parser.add_argument("--overwrite",
+       action="store",
+       dest="overwrite",
+       type=bool,
+       default=False,
+       help="If True photometric calibration is done [default: %(default)s].")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
@@ -389,7 +395,7 @@ def main():
     i_fits = mcFits(input_fits)
     astro_header = i_fits.header
     
-    if 'MAGZPT' in astro_header:
+    if 'MAGZPT' in astro_header and not args.overwrite:
         print(f'Input file "{input_fits}" already photo-calibrated. Nothing was done!')
         return 4
     
@@ -646,10 +652,14 @@ def main():
         # because Mag = ZP - 2.5 * log10(Flux) => ZP = Mag + 2.5 * log10(Flux)
         # Then, as HD is a polarized source, I'll take as FLUX the sum of both
         # (Flux_o + Flux_e)
-        total_flux = (data['FLUX_AUTO'][indexes]).sum()
-        mag_zeropoint = df_mc[source_problem]['Rmag_mc'].values[0] + \
-        2.5 * np.log10(total_flux)
-        std_mag_zeropoint = 0
+        try:
+            total_flux = (data['FLUX_AUTO'][indexes]).sum()
+            mag_zeropoint = df_mc[source_problem]['Rmag_mc'].values[0] + \
+                2.5 * np.log10(total_flux)
+            std_mag_zeropoint = 0
+        except ValueError:
+            print(f"Flujos ordinario y extraordinario = {data['FLUX_AUTO'][indexes]}")
+            raise
 
     print(f"Photometric Zero-point = {round(mag_zeropoint, 2)}")
     print(f"STD(Photometric Zero-point) = {round(std_mag_zeropoint, 2)}")
@@ -676,6 +686,12 @@ def main():
                 'MAPCAT sources used in MAGZPT estimation'))
         else:
             hdul[0].header['NSZPT'] = len(zps)
+        
+        if 'APERPIX' not in hdul[0].header:
+            hdul[0].header.append(('APERPIX', mc_aper, \
+                'Aperture in pixels for photometric calibration'))
+        else:
+            hdul[0].header['BLZRNAME'] = mc_aper
         
         bz_name = df_mc[source_problem]['IAU_name_mc'].values[0]
         if 'BLZRNAME' not in hdul[0].header:
@@ -741,6 +757,8 @@ def main():
     pair_params['MAGZPT'] = [mag_zeropoint] * 2
     pair_params['RUN_DATE'] = [date_run] * 2
     pair_params['EXPTIME'] = [astro_header['EXPTIME']] * 2
+    pair_params['APERPIX'] = [mc_aper] * 2
+
 
     # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
     c3 = []
@@ -773,7 +791,7 @@ def main():
         'CRPIX1', 'CRPIX2', 'SECPIX1', 'SECPIX2', 'CDELT1', 'CDELT2', 'CTYPE1', 'CTYPE2', \
         'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2', 'WCSRFCAT', 'WCSIMCAT', 'WCSMATCH', \
         'WCSNREF', 'WCSTOL', 'CROTA1', 'CROTA2', 'WCSSEP', 'IMWCS', 'MAGZPT', \
-        'STDMAGZP', 'NSZPT', 'BLZRNAME']
+        'STDMAGZP', 'NSZPT', 'APERPIX', 'BLZRNAME']
     
     # header = hdul = fits.open(final_fits)[0].header
     for key in some_calib_keywords:
