@@ -317,10 +317,17 @@ def detect_sources(path_fits, cat_out, sext_conf, photo_aper):
     astro_header = i_fits.header
     # Getting data from ordinary-extraordinary sources in final FITS
     # 1. SExtractor calling
-    fwhm_arcs = astro_header['FWHM'] * astro_header['INSTRSCL']
+    if 'MAPCAT' in path_fits:
+        pixscale =  astro_header['INSTRSCL']
+    elif 'T090' in path_fits:
+        pixscale =  0.387
+    elif 'T150' in path_fits:
+        pixscale = 0.232
+
+    fwhm_arcs = astro_header['FWHM'] * pixscale
 
     com_str = "source-extractor -c {} -CATALOG_NAME {} -PIXEL_SCALE {} -SEEING_FWHM {} {}"
-    com = com_str.format(sext_conf, cat_out, astro_header['INSTRSCL'], fwhm_arcs, path_fits)
+    com = com_str.format(sext_conf, cat_out, pixscale, fwhm_arcs, path_fits)
 
     # MAPCAT aperture
     com += f" -PHOT_APERTURES {photo_aper}"
@@ -355,12 +362,21 @@ def main():
     parser.add_argument("--overwrite",
        action="store",
        dest="overwrite",
-       type=bool,
-       default=False,
+       type=str,
+       default='False',
        help="If True photometric calibration is done [default: %(default)s].")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
+    
+    #Transform overwrite parameter properly to boolean
+    if args.overwrite in ('true', 'True', '1', 'y', 'yes', 'Yes'):
+        args.overwrite=True
+    elif args.overwrite in ('false', 'False', '0', 'n', 'no', 'No'):
+        args.overwrite=False
+    else:
+        print("Wrong or no value for --overwrite parameter. Setting it to default (False)")
+        args.overwrite=False
 
     # Checking input parameters
     if not os.path.exists(args.config_dir):
@@ -388,10 +404,14 @@ def main():
     # Using input path for getting observation night date... (Is this the best way or should I read FITS header?)
     dt_run = re.findall('/(\d{6})/', args.input_fits)[0]
     date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
-    fits_name = os.path.split(input_fits)[1][:-5]
-
+    if 'fits' in input_fits:
+        fits_name = os.path.split(input_fits)[1].replace('.fits', '')
+    else:
+        fits_name = os.path.split(input_fits)[1].replace('.fit', '')
     
     # Reading input fits header
+    print(fits_name)
+    print(input_fits)
     i_fits = mcFits(input_fits)
     astro_header = i_fits.header
     
@@ -405,9 +425,7 @@ def main():
     # ---------------------- MAPCAT sources info -----------------------
     blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_last.csv')
     df_mapcat = read_blazar_file(blazar_path)
-
     nearest_blazar, min_dist_deg = closest_blazar(astro_header['CRVAL1'], astro_header['CRVAL2'], df_mapcat)
-    
     
     print(f'Distance = {min_dist_deg}')
     if min_dist_deg > 0.5: # distance in degrees
@@ -434,8 +452,11 @@ def main():
     message = "Number of sources used in calibration: {} (of {})"
     print(message.format(astro_header['WCSMATCH'], astro_header['WCSNREF']))
     print('*' * 50)
-
-    cat = input_fits.replace('.fits', '_photocal.cat')
+    
+    if 'fits' in input_fits:
+        cat = input_fits.replace('.fits', '_photocal.cat')
+    else:
+        cat = input_fits.replace('.fit', '_photocal.cat')
     sex_conf = os.path.join(args.config_dir, 'sex.conf')
     detect_sources(input_fits, cat_out=cat, sext_conf=sex_conf, photo_aper=mc_aper)
 
@@ -453,7 +474,10 @@ def main():
         sky_limits['dec_min'], sky_limits['dec_max']))
 
     # Showing detailed info about detections
-    sources_sext_png = input_fits.replace('.fits', '_sextractor_sources.png')
+    if 'fits' in input_fits:
+        sources_sext_png = input_fits.replace('.fits', '_sextractor_sources.png')
+    else:
+        sources_sext_png = input_fits.replace('.fit', '_sextractor_sources.png')
     print('Out PNG ->', sources_sext_png)
     plotFits(input_fits, sources_sext_png, \
         title=f"SExtractor sources in {astro_header['OBJECT']}", colorBar=True, \
@@ -473,7 +497,10 @@ def main():
 
     # Plotting MAPCAT sources
     if len(df_mc.index) > 0:
-        sources_mapcat_png = input_fits.replace('.fits', '_mapcat_sources.png')
+        if 'fits' in input_fits:
+            sources_mapcat_png = input_fits.replace('.fits', '_mapcat_sources.png')
+        else:
+            sources_mapcat_png = input_fits.replace('.fit', '_mapcat_sources.png')
         print('Out PNG ->', sources_mapcat_png)
         plotFits(input_fits, sources_mapcat_png, \
             title=f'MAPCAT sources in {fits_name}', colorBar=True, \
@@ -490,7 +517,6 @@ def main():
     # sextractor catalog
     pcatalog = SkyCoord(ra = data['ALPHA_J2000'] * u.degree, \
         dec = data['DELTA_J2000'] * u.degree)
-
     # Matching SExtractor detections with closest MAPCAT sources: 
     # Values returned: matched ordinary source indexes, 2D-distances, 3D-distances
     idx_o, d2d_o, d3d_o = match_coordinates_sky(scatalog, pcatalog, \
@@ -515,13 +541,15 @@ def main():
     # Extraordinary counterparts location
     # rough coordinates (relative to ordinary source locations)
     ra_e = data['ALPHA_J2000'][idx_o]
-    dec_e = data['DELTA_J2000'][idx_o] - 0.0052 
-
+    if 'MAPCAT' in input_fits:
+        dec_e = data['DELTA_J2000'][idx_o] - 0.0052 
+    else:
+        dec_e = data['DELTA_J2000'][idx_o] 
     scatalog_e = SkyCoord(ra = ra_e * u.degree, dec = dec_e * u.degree)
     idx_e, d2d_e, d3d_e = match_coordinates_sky(scatalog_e, pcatalog, \
         nthneighbor=1)
-    # print(f"pcatalog = {pcatalog}")
-    # print(f"scatalog_e = {scatalog_e}")
+    #print(f"pcatalog = {pcatalog}")
+    #print(f"scatalog_e = {scatalog_e}")
 
     print(f"SExtractor numbers for extraordinary counterparts = {idx_e}")
     print(f"Distances = {d2d_e}")
@@ -543,7 +571,10 @@ def main():
 
     # Plotting source problem
     # Muestro el nivel de detalle de las detecciones de SExtractor en la imagen final
-    source_pair_png = input_fits.replace('.fits', '_source_pair.png')
+    if 'fits' in input_fits:
+        source_pair_png = input_fits.replace('.fits', '_source_pair.png')
+    else:
+        source_pair_png = input_fits.replace('.fit', '_source_pair.png')
     print('Out PNG ->', source_pair_png)
     plotFits(input_fits, source_pair_png, colorBar=True, \
         title=f"SExtractor Pair Detections in {astro_header['OBJECT']}", \
@@ -591,7 +622,10 @@ def main():
             sat_calibrator = np.zeros(sat_calibrator.size, dtype=bool) # no one saturated
             
         # plotting calibrators
-        calibrators_png = input_fits.replace('.fits', '_photo-calibrators.png')
+        if 'fits' in input_fits:
+            calibrators_png = input_fits.replace('.fits', '_photo-calibrators.png')
+        else:
+            calibrators_png = input_fits.replace('.fit', '_photo-calibrators.png')
         title = 'Photometric calibrators used (green) and rejected (red)'
         
         # ordinary coords
@@ -616,10 +650,12 @@ def main():
         nonsat_index_o_cal = index_o_cal[~sat_calibrator]
         nonsat_index_e_cal = index_e_cal[~sat_calibrator]
         # non-saturated calibrators total flux (Ordinary + Extraordinary)
-        calibrators_total_flux = data['FLUX_APER'][nonsat_index_o_cal] + \
-        data['FLUX_APER'][nonsat_index_e_cal]
-        
-        
+        if 'MAPCAT' in input_fits:
+            calibrators_total_flux = data['FLUX_APER'][nonsat_index_o_cal] + \
+                data['FLUX_APER'][nonsat_index_e_cal]
+        else:
+            calibrators_total_flux=data['FLUX_APER'][nonsat_index_o_cal]
+                                    
         zps = df_mc['Rmag_mc'][~source_problem][~sat_calibrator].values + \
         2.5 * np.log10(calibrators_total_flux)
 
@@ -629,7 +665,10 @@ def main():
         std_mag_zeropoint = zps.std()
 
         # Plotting calibrators
-        mc_calib_png = input_fits.replace('.fits', '_sources_mc_calib.png')
+        if 'fits' in input_fits:
+            mc_calib_png = input_fits.replace('.fits', '_sources_mc_calib.png')
+        else:
+            mc_calib_png = input_fits.replace('.fit', '_sources_mc_calib.png')
         print('Out PNG ->', mc_calib_png)
         plotFits(input_fits, mc_calib_png, colorBar=True, \
             title=f"MAPCAT Calibration sources in {astro_header['OBJECT']}", \
@@ -653,7 +692,10 @@ def main():
         # Then, as HD is a polarized source, I'll take as FLUX the sum of both
         # (Flux_o + Flux_e)
         try:
-            total_flux = (data['FLUX_AUTO'][indexes]).sum()
+            if 'MAPCAT' in input_fits:
+                total_flux = (data['FLUX_AUTO'][indexes]).sum()
+            else:
+                total_flux = (data['FLUX_AUTO'][indexes]).sum()/2
             mag_zeropoint = df_mc[source_problem]['Rmag_mc'].values[0] + \
                 2.5 * np.log10(total_flux)
             std_mag_zeropoint = 0
@@ -703,15 +745,20 @@ def main():
         hdul.flush()
         hdul.close()
 
-
     # Reading astro-photo-calibrated fits
     i_fits = mcFits(input_fits)
     astro_header = i_fits.header
     
     # Executing SExtractor again with MAG_ZEROPOINT info
-    fwhm_arcs = float(astro_header['FWHM']) * float(astro_header['INSTRSCL'])
+    if 'MAPCAT' in input_fits:
+        pixscale = astro_header['INSTRSCL']
+    elif 'T090' in input_fits:
+        pixscale = 0.387
+    elif 'T150' in input_fits:
+        pixscale = 0.232
+    fwhm_arcs = float(astro_header['FWHM']) * pixscale
     com_str = "source-extractor -c {} -CATALOG_NAME {} -PIXEL_SCALE {} -SEEING_FWHM {} {}"
-    com = com_str.format(sex_conf, cat, astro_header['INSTRSCL'], fwhm_arcs, input_fits)
+    com = com_str.format(sex_conf, cat, pixscale, fwhm_arcs, input_fits)
     # MAPCAT aperture
     com += f" -PHOT_APERTURES {mc_aper}"
     # Magnitude ZEROPOINT
@@ -741,10 +788,16 @@ def main():
     pair_params['ID-MC'] = [df_mc[source_problem].iloc[0]['id_mc']] * 2
     pair_params['ID-BLAZAR-MC'] = [df_mc['id_blazar_mc'].values[source_problem][0]] * 2
     pair_params['TYPE'] = ['O', 'E']
-    angle = float(astro_header['INSPOROT'])
+    if 'INSPOROT' in astro_header:
+        angle = float(astro_header['INSPOROT'])
+    else:
+        angle = float(astro_header['FILTER'].replace('R',''))
     pair_params['ANGLE'] = [round(angle, ndigits=1)] * 2
     pair_params['OBJECT'] = [astro_header['OBJECT']] * 2
-    pair_params['MJD-OBS'] = [astro_header['MJD-OBS']] * 2
+    if 'MJD-OBS' in astro_header:
+        pair_params['MJD-OBS'] = [astro_header['MJD-OBS']] * 2
+    else:
+        pair_params['MJD-OBS'] = [astro_header['JD']] * 2
     pair_params['DATE-OBS'] = [''] * 2
     if 'DATE-OBS' in astro_header:
         pair_params['DATE-OBS'] = [astro_header['DATE-OBS']] * 2
@@ -777,13 +830,18 @@ def main():
             pair_params[k].append(data[k][i])
 
     df = pd.DataFrame(pair_params)
-    csv_out = input_fits.replace('.fits', '_photocal_res.csv')
+    if 'fits' in input_fits:
+        csv_out = input_fits.replace('.fits', '_photocal_res.csv')
+    else:
+        csv_out = input_fits.replace('.fit', '_photocal_res.csv')
     df.to_csv(csv_out, index=False)
-
     # Imprimo el contenido del fichero
     print('Useful parameters for polarimetric computations:')
-    print(df)
-    
+    if 'MAPCAT' in input_fits:
+        
+        print(df)
+    else: 
+        print(df[df['TYPE']=='O'])
     # Parameters to store...
     # Getting useful info about calibrated fits
     some_calib_keywords = ['SOFT', 'PROCDATE', 'SOFTDET', 'MAX',  'MIN', \
@@ -813,7 +871,10 @@ def main():
     
 
     df = pd.DataFrame(cal_data)
-    csv_out = input_fits.replace('.fits', '_photocal_process_info.csv')
+    if 'fits' in input_fits:
+        csv_out = input_fits.replace('.fits', '_photocal_process_info.csv')
+    else:
+        csv_out = input_fits.replace('.fit', '_photocal_process_info.csv')
     df.to_csv(csv_out, index=False)
 
 

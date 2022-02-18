@@ -269,9 +269,13 @@ def main():
         mcFLAT = mcFits(mf_path, border=oReduction.border)
 
         # Plotting FLAT and histogram
-        plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fits', '.png')
+        if 'fits' in oReduction.masterFLAT[pol_ang]:
+            plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fits', '.png')
+        else:
+            plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fit', '.png')
         title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
         mcFLAT.plot(title)
+        
         plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
 
         mcFLAT.plot_histogram(plotFLATHist, title=title, \

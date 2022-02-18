@@ -58,7 +58,7 @@ def subsets(data, num_angles=4):
         
 
 def object_measures(data, name):
-    """"It returns a list of data subsets, according to object 'name'.
+    """It returns a list of data subsets, according to object 'name'.
     
     The number of subsets depends on the number of series observation taken this 
     night for this object called 'name'. The usual number of elements for each subset
@@ -92,10 +92,6 @@ def object_measures(data, name):
     
     return data_sets        
 
-    
-
-
-
 def compute_polarimetry(data_object):
     """Given input data, it calls polarimetry function to get
     polarimetric magnitudes.
@@ -118,8 +114,12 @@ def compute_polarimetry(data_object):
     # print(data_object)
     # print(data_object.info())
     # print(data_object)
+
     try:
-        P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry(data_object)
+        if (data_object['ANGLE']==22.5).any()==True:
+            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry(data_object)
+        else:
+            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry_osn(data_object)
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
         raise
@@ -156,12 +156,55 @@ def compute_polarimetry(data_object):
     result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
     result['MC-NAME'] = data_object['MC-NAME'].values[0]
     result['MC-IAU-NAME'] = data_object['MC-IAU-NAME'].values[0]
+    print(data_object['OBJECT'])
     result['OBJECT'] = data_object['OBJECT'].values[0].split()[0]        
 
     return result
+def polarimetry_osn(df):
+    """
+    Compute polarimetric parameters for OSN data.
+    Args:
+        df (pandas.DataFrame): Data from object taken from 4 polarization angles.
+
+    Returns:
+        tuple: (P, dP, Theta, dTheta)
+
+    Formula taken from "F. Moreno and O. Muñoz polarization.pdf"
+    """
+    df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
+
+    qoff=0.031
+    uoff=0.024
+
+    I_0 = (df['FLUX_APER'][df['ANGLE'] == 0]).values[0]
+    dI_0 = (df['FLUXERR_APER'][df['ANGLE'] == 0]).values[0]
+    I_45 = (df['FLUX_APER'][df['ANGLE'] == 45]).values[0]
+    dI_45 = (df['FLUXERR_APER'][df['ANGLE'] == 45]).values[0]
+    I_90 = (df['FLUX_APER'][df['ANGLE'] == 90]).values[0]
+    dI_90 = (df['FLUXERR_APER'][df['ANGLE'] == 90]).values[0]
+    I_135 = (df['FLUX_APER'][df['ANGLE'] == -45]).values[0]
+    dI_135 = (df['FLUXERR_APER'][df['ANGLE'] == -45]).values[0]
+
+    qraw = (I_0 - I_90) / (I_0 + I_90)
+    uraw = (I_45 - I_135) / (I_45 + I_135)
+
+    qc = qraw - qoff
+    uc = uraw - uoff
+
+    dqc = qc * math.sqrt(2*((dI_0/I_0)**2 + (dI_90/I_90)**2))
+    duc = qc * math.sqrt(2*((dI_45/I_45)**2 + (dI_135/I_135)**2))
+    
+    P = math.sqrt(qc**2 + uc**2)
+    dP = P * math.sqrt((dqc/qc)**2+(duc/uc)**2)
+    
+    Theta = (1/2) * math.degrees(math.atan(uc/qc))
+    dTheta = dP/P
+    
+    return P, dP, Theta, dTheta, qc, dqc, uc, duc
 
 def polarimetry(df):
-    """Compute polarimetric parameters.
+    """
+    Compute polarimetric parameters.
     Args:
         df (pandas.DataFrame): Data from object taken from 4 polarization angles.
 
@@ -269,7 +312,6 @@ def polarimetry(df):
 
     return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU
 
-
 def main():
     parser = argparse.ArgumentParser(prog='iop3_polarimetry.py', \
     conflict_handler='resolve',
@@ -320,8 +362,8 @@ def main():
     data_res = pd.concat([pd.read_csv(r) for r in results])
     data_proc = pd.concat([pd.concat([pd.read_csv(cp), pd.read_csv(cp)])  for cp in cal_process])
 
-    # print(data_res.info())
-    # print(data_proc.info())
+    print(data_res.info())
+    print(data_proc.info())
 
     # return -99
 
@@ -336,7 +378,10 @@ def main():
 
     # Extract filter polarization angle and target name as new dataframe columns
     # data_res['ANGLE'] = data_res['OBJECT'].str.extract(r'\s([\d.]+)\s')
-    data_res['OBJECT'] = np.array([' '.join(na.split(' ')[:-2]) for na in data_res['OBJECT'].values])
+    
+    if 'deg' in data_res['OBJECT'].values[0]:
+        data_res['OBJECT'] = np.array([' '.join(na.split(' ')[:-3]) for na in data_res['OBJECT'].values])
+
     # data_res['NAME'] = data_res['OBJECT'].str.extract(r'([a-zA-z0-9+-]+)\s')
     #print(data_res)
     #print(data_res.info())

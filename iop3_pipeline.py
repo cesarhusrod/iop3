@@ -128,7 +128,10 @@ def subsets(data):
     # search for duplicates
     while len(data.index) > 0: # iterate until there is no more observations
         print(f'data elements = {len(data.index)}')
-        index_dup = data.duplicated(['INSPOROT'], keep='last') # false for last duplicated (angle, type) item
+        if 'INSPOROT' in data:
+            index_dup = data.duplicated(['INSPOROT'], keep='last') # false for last duplicated (angle, type) item
+        else:
+            index_dup = data.duplicated(['FILTER'], keep='last') # false for last duplicated (angle, type) item
         sub_s.append(data[~index_dup])  # append last set of duplicated items to list
         data = data[index_dup] # delete previous last repeated set of observations
     
@@ -177,7 +180,10 @@ def group_calibration(data, calibration_dir, config_dir, overwrite=False):
     for index, row in data.iterrows():
         print(row)
         # print(row['dateobs'])
-        dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+        if 'MAPCAT' in calibration_dir:
+            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+        else:
+            dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
         im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
         cal_dir = os.path.join(calibration_dir, im_time)
         
@@ -191,18 +197,19 @@ def group_calibration(data, calibration_dir, config_dir, overwrite=False):
 
         # calibration command
         reduced = row['PATH'].replace('raw', 'reduction')
+        calibrated = glob.glob(os.path.join(cal_dir, '*final.fit*'))
         com_calibration = f"python iop3_astrometric_calibration.py --overwrite={overwrite} {config_dir} {cal_dir} {reduced}"
         print('+' * 100)
         print(com_calibration)
         print('+' * 100)
         with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
             res = subprocess.run(com_calibration, stdout=log_file, \
-            stderr=subprocess.PIPE, shell=True, check=True)
+                                     stderr=subprocess.PIPE, shell=True, check=True)
             if res.returncode:
                 print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
-        
+
         # Checking for succesful calibration
-        calibrated = glob.glob(os.path.join(cal_dir, '*final.fits'))
+        calibrated = glob.glob(os.path.join(cal_dir, '*final.fit*'))
         if calibrated:
             calibration['CAL_IMWCS'].append(calibrated[0])
             # Photometric calibration
@@ -217,7 +224,8 @@ def group_calibration(data, calibration_dir, config_dir, overwrite=False):
         else:
             non_calibrated_group_commands.append(row['PATH'])
             non_calibrated_group_datetimes.append(row['DATE-OBS'])
-
+        #print("CUIDAO CON ESTE BREAK QUITALO")
+        #break
     # After al process, check for non-successful calibrated FITS in group
     if calibration['CAL_IMWCS']: # if, at least one calibration was successful
         for ncfits, nc_dt in zip(non_calibrated_group_commands, non_calibrated_group_datetimes):
@@ -244,7 +252,7 @@ def group_calibration(data, calibration_dir, config_dir, overwrite=False):
                     print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {calibrated[0]} file."')
         
             # Checking for successful calibration result
-            calibrated = glob.glob(os.path.join(cal_dir, '*final.fits'))
+            calibrated = glob.glob(os.path.join(cal_dir, '*final.fit*'))
             if calibrated:
                 calibration['CAL_NO-IMWCS'].append(calibrated[0])
                 # Photometric calibration
@@ -408,13 +416,22 @@ def main():
     parser.add_argument("--overwrite",
        action="store",
        dest="overwrite",
-       type=bool,
+       type=str,
        default=False,
        help="If True, previous calibration is ignored and done again. [default: %(default)s].")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
     
+    #Transform overwrite parameter properly to boolean
+    if args.overwrite in ('true', 'True', '1', 'y', 'yes', 'Yes'):
+        args.overwrite=True
+    elif args.overwrite in ('false', 'False', '0', 'n', 'no', 'No'):
+        args.overwrite=False
+    else:
+        print("Wrong or no value for --overwrite parameter. Setting it to default (False)")
+        args.overwrite=False
+
     # Absolute input/output paths
     input_dir = os.path.abspath(args.input_dir) # absolute path
     config_dir = os.path.abspath(args.config_dir) # absolute path
@@ -497,15 +514,16 @@ def main():
     com_reduction = com_reduction.format(border_image, config_dir, \
         proc_dirs['reduction_dir'], input_dir)
     print(com_reduction)
+    print("IM SKIPPING REDUCTION UNCOMMENT THIS SECTION!!!")
     # Command execution
-    res_reduction = subprocess.run(com_reduction,stdout=subprocess.PIPE, \
-       stderr=subprocess.PIPE, shell=True, check=True)
-    if res_reduction.returncode:
-        message = f'REDUCTION,ERROR,"Could not reduce {dt_run} night run."'
-        print(message)
-        print(f'STDOUT = {res_reduction.stdout.decode("UTF-8")}')
-        print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
-        return 1
+    #res_reduction = subprocess.run(com_reduction,stdout=subprocess.PIPE, \
+    #   stderr=subprocess.PIPE, shell=True, check=True)
+    #if res_reduction.returncode:
+    #    message = f'REDUCTION,ERROR,"Could not reduce {dt_run} night run."'
+    #    print(message)
+    #    print(f'STDOUT = {res_reduction.stdout.decode("UTF-8")}')
+    #    print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
+    #    return 1
 
     #return -1
 
@@ -514,17 +532,28 @@ def main():
     # The idea is to do calibration grouping images close in time and
     # referred to same object
 
-    # Creating Blazars DataFrame
-    df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-    df_blazars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_blazars['PATH'].values]
+    # Creating Blazars DataFrame 
+    if 'MAPCAT' in input_dir:
+        df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+    else:
+        df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
+
+    if not len(blazar_paths)==0:
+        df_blazars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_blazars['PATH'].values]
     # sorting by DATE-OBS
     df_blazars = df_blazars.sort_values('DATE-OBS', ascending=True)
 
     # Creating Stars DataFrame
-    df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-    df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
-    # sorting by DATE-OBS
-    df_stars = df_stars.sort_values('DATE-OBS', ascending=True)
+    if 'MAPCAT' in input_dir:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+    else:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
+
+    print(star_paths)
+    if not len(star_paths)==0:
+        df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
+        # sorting by DATE-OBS
+        df_stars = df_stars.sort_values('DATE-OBS', ascending=True)
 
     # print(f'Blazar objects = {df_blazars}')
     
@@ -536,20 +565,25 @@ def main():
         df_object = df_blazars[df_blazars['CLOSE_IOP3'] == obj]
         print('********* Processing group:')
         print(df_object)
-        
         # calibration setting 
         subsets = object_groups(df_object)
         res_group_calibration = []
         for sset in subsets:
             res_group_calibration.append(group_calibration(sset, proc_dirs['calibration_dir'], \
                 config_dir, overwrite=args.overwrite))
+            #print("BELLA WHERE HAVE YOU BEEN LOCA QUITA ESTOS BREAKS")
+            #break
+        #break
         print("----------- Calibration results: ")
         print(res_group_calibration)
-        # break
+        
 
     # processing stars...
     for index, row in df_stars.iterrows():
-        dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+        if 'MAPCAT' in input_dir:
+            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+        else:
+            dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
         im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
         cal_dir = os.path.join(proc_dirs['calibration_dir'], im_time)
         
@@ -567,7 +601,10 @@ def main():
             print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
         # Photometric calibration
         cmd_photocal = "python iop3_photometric_calibration.py --overwrite={} {} {} {}"
-        calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
+        if 'fits' in os.path.split(row['PATH'])[1]:
+            calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
+        else:
+            calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fit', '_final.fit'))
         cmd_photocal = cmd_photocal.format(args.overwrite, config_dir, cal_dir, calibrated)
         print('+' * 100)
         print(cmd_photocal)
@@ -577,7 +614,8 @@ def main():
         if res.returncode:
             message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
             print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
-    
+    #print("OYE QUITA ESTE BREAK")
+    #break
     # return -1
 
     #  3rd STEP: Computing polarimetric parameters

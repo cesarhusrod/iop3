@@ -376,7 +376,14 @@ def mask_duplicated(input_fits, output_fits, sext_catalog, segmentation_fits, ba
 def rotation(input_fits, output_fits):
     
     hdul_in = fits.open(input_fits)
-    hdul_out = fits.PrimaryHDU(data=np.rot90(hdul_in[0].data, k = -1).astype(np.uint16), header=hdul_in[0].header)
+    if 'MAPCAT' in input_fits:
+        hdul_out = fits.PrimaryHDU(data=np.rot90(hdul_in[0].data, k = -1).astype(np.uint16), header=hdul_in[0].header)
+    else:
+        #images of OSN are mirrored in X axis, and must be rotated 90 degrees to be equal to mapcat
+        #check for header parameter "FLIPSTAT"
+        hdul_out=fits.PrimaryHDU(data=hdul_in[0].data[:,::-1].astype(np.uint16) , header=hdul_in[0].header)
+        hdul_out = fits.PrimaryHDU(data=np.rot90(hdul_out.data, k = -1).astype(np.uint16), header=hdul_out.header)
+        hdul_out = fits.PrimaryHDU(data=np.rot90(hdul_out.data, k = -1).astype(np.uint16), header=hdul_out.header)
     hdul_out.writeto(output_fits, overwrite = True)
     hdul_in.close()
     
@@ -390,18 +397,30 @@ def execute_command(cmd):
 
 def get_sources(input_fits, sext_conf, add_params={}, threshold_exptime=2, \
     back_image=False, segment_image=False, verbose=True):
-    
+
     i_fits = mcFits(input_fits)
-    pixscale = i_fits.header['INSTRSCL']
+    if 'MAPCAT' in input_fits:
+        pixscale = i_fits.header['INSTRSCL']
+    elif 'T090' in input_fits:
+        pixscale=0.387
+    elif 'T150' in input_fits:
+        pixscale=0.232
     exptime = i_fits.header['EXPTIME']
     fwhm_arcs = float(i_fits.header['FWHM']) * float(pixscale)
     
-    out_cat = input_fits.replace('.fits', '.cat')
-    
+    if 'fits' in input_fits:
+        out_cat = input_fits.replace('.fits', '.cat')
+    else:
+        out_cat = input_fits.replace('.fit', '.cat')
+
     # Adtitional ouput info
-    back_path = input_fits.replace('.fits', '_back.fits')
-    segm_path = input_fits.replace('.fits', '_segment.fits')
-    
+    if 'fits' in input_fits:
+        back_path = input_fits.replace('.fits', '_back.fits')
+        segm_path = input_fits.replace('.fits', '_segment.fits')
+    else:
+        back_path = input_fits.replace('.fit', '_back.fit')
+        segm_path = input_fits.replace('.fit', '_segment.fit')
+
     # SExtractor parameters    
     params = {}
     if back_image and segment_image:
@@ -515,7 +534,12 @@ def astrocal(path_fits, coord_csv, closest_blazar_coords={}):
     fits = mcFits(path_fits)
 
     # Useful information about input clean rotated FITS
-    pix_scale = fits.header['INSTRSCL']
+    if 'MAPCAT' in path_fits:
+        pix_scale = fits.header['INSTRSCL']
+    elif 'T090' in path_fits:
+        pix_scale=0.387
+    elif 'T150' in path_fits:
+        pix_scale=0.232
     date_obs = ''
     if 'DATE-OBS' in fits.header:
         date_obs = fits.header['DATE-OBS']
@@ -523,8 +547,15 @@ def astrocal(path_fits, coord_csv, closest_blazar_coords={}):
         date_obs = fits.header['DATE']
     
     # FITS or external center coordinates
-    ra_im = fits.header['RA']
-    dec_im = fits.header['DEC']
+    if 'MAPCAT' in path_fits:
+        ra_im = fits.header['RA']
+        dec_im = fits.header['DEC']
+    else:
+        icoords = icoords = "{} {}".format(fits.header['OBJCTRA'], fits.header['OBJCTDEC'])
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.hourangle, u.deg), \
+                                    obstime="J2000")
+        ra_im = input_coords.ra.value
+        dec_im = input_coords.dec.value
     if 'RA' in closest_blazar_coords:
         ra_im = closest_blazar_coords['RA']
     if 'DEC' in closest_blazar_coords:
@@ -538,8 +569,10 @@ def astrocal(path_fits, coord_csv, closest_blazar_coords={}):
     
     # Astrometric calibration process
     # IF MODEL IS PROVIDED, no calibration process will be done................
-    astrom_out_fits = path_fits.replace('.fits', 'w.fits')
-    
+    if 'fits' in path_fits:
+        astrom_out_fits = path_fits.replace('.fits', 'w.fits')
+    else:
+        astrom_out_fits = path_fits.replace('.fit', 'w.fits')
     # Composing astrometric calibraton command with 'imwcs' from WCSTools
     # com_str = "imwcs -wve -d {} -r 0 -y 3 -p {} -j {} {} -h {} -c {} -t 10 -o {} {}"
     matchable_fit = 3
@@ -558,7 +591,10 @@ def astrocal(path_fits, coord_csv, closest_blazar_coords={}):
     
     result = execute_command(cmd)
     
-    cal_out = path_fits.replace('.fits', '_imwcs_2mass.log')
+    if 'fits' in path_fits:
+        cal_out = path_fits.replace('.fits', '_imwcs_2mass.log')
+    else:
+        cal_out = path_fits.replace('.fit', '_imwcs_2mass.log')
     # writing output astrometric calibration log file
     with open(cal_out, "w") as fout:
         fout.write("\n#*********************************************************\n")
@@ -568,7 +604,7 @@ def astrocal(path_fits, coord_csv, closest_blazar_coords={}):
         fout.write(result.stdout.decode('utf-8'))
         fout.write("---------------- STDERR ----------------")
         fout.write(result.stderr.decode('utf-8'))
-
+    
     return result
 
 
@@ -591,15 +627,23 @@ def calibrate(path_fits, sext_conf, closest_iop3_source, min_astrocal_sources=5,
     
     # Plotting background and segmentation FITS
     # segmentation image
-    segmentation_fits = path_fits.replace('.fits', '_segment.fits')
-    segment_png = path_fits.replace('.fits', '_segmentation.png')
+    if 'fits' in path_fits:
+        segmentation_fits = path_fits.replace('.fits', '_segment.fits')
+        segment_png = path_fits.replace('.fits', '_segmentation.png')
+    else:
+        segmentation_fits = path_fits.replace('.fit', '_segment.fit')
+        segment_png = path_fits.replace('.fit', '_segmentation.png')
     title = 'Segmentation for OBJECT={}, EXPTIME={}, DATE-OBS={}'
     title = title.format(fits_object, exptime, dateobs)
     plotFits(segmentation_fits, segment_png, title=title)
 
     # background image
-    background_fits = path_fits.replace('.fits', '_back.fits')
-    back_png = path_fits.replace('.fits', '_background.png')
+    if 'fits' in path_fits:
+        background_fits = path_fits.replace('.fits', '_back.fits')
+        back_png = path_fits.replace('.fits', '_background.png')
+    else:
+        background_fits = path_fits.replace('.fit', '_back.fit')
+        back_png = path_fits.replace('.fit', '_background.png')
     title = 'Background for OBJECT={}, EXPTIME={}, DATE-OBS={}'
     title = title.format(fits_object, exptime, dateobs)
     try:
@@ -607,26 +651,34 @@ def calibrate(path_fits, sext_conf, closest_iop3_source, min_astrocal_sources=5,
     except ValueError:
         print(f'ASTROCALIBRATION,WARNING,"Problems plotting blackground FITS {background_fits}"')
 
-
     # masking duplicated sources
-    clean_fits = path_fits.replace('.fits', '_clean.fits')
-    cat_image = path_fits.replace('.fits', '.cat')
-    segment_image = path_fits.replace('.fits', '_segment.fits')
-    back_image = path_fits.replace('.fits', '_back.fits')
+    if 'MAPCAT' in path_fits:
+        clean_fits = path_fits.replace('.fits', '_clean.fits')
+        cat_image = path_fits.replace('.fits', '.cat')
+        segment_image = path_fits.replace('.fits', '_segment.fits')
+        back_image = path_fits.replace('.fits', '_back.fits')
     # res_masking = mask_duplicated(path_fits, clean_fits, cat_image, segment_image, back_image)
-    res_masking = mask_duplicated_simple(path_fits, clean_fits, cat_image, segment_image)
-    if res_masking:
-        message = 'ASTROCALIBRATION,ERROR,"Error masking duplicated sources in {}"'
-        print(message.format(path_fits))
-        return 2
-    
-    print("Image without duplicated: {}".format(clean_fits))
-
-    clean_png = clean_fits.replace('.fits', '.png')
+        res_masking = mask_duplicated_simple(path_fits, clean_fits, cat_image, segment_image)
+        if res_masking:
+            message = 'ASTROCALIBRATION,ERROR,"Error masking duplicated sources in {}"'
+            print(message.format(path_fits))
+            return 2
+        clean_png = clean_fits.replace('.fits', '.png')
+    else:
+        clean_fits = path_fits.replace('.fit', '_clean.fit')
+        cat_image = path_fits.replace('.fit', '.cat')
+        segment_image = path_fits.replace('.fit', '_segment.fit')
+        back_image = path_fits.replace('.fit', '_back.fit')
+        print("Image without duplicated: {}".format(clean_fits))
+        clean_png = clean_fits.replace('.fit', '.png')
+        shutil.copy(path_fits, clean_fits)
     plotFits(clean_fits, clean_png, title=f'{fits_object} {dateobs} {exptime}s without duplicated')
 
     ##### ----- Rotating cleaned image 90 degrees counter clockwise ---- #####
-    clean_rotated_fits = clean_fits.replace('.fits', '_rotated.fits')
+    if 'fits' in clean_fits:
+        clean_rotated_fits = clean_fits.replace('.fits', '_rotated.fits')
+    else:
+        clean_rotated_fits = clean_fits.replace('.fit', '_rotated.fit')
     if rotation(clean_fits, clean_rotated_fits):
         message = 'ASTROCALIBRATION,ERROR,"Error rotating FITS {}"'
         print(message.format(clean_fits))
@@ -645,7 +697,10 @@ def calibrate(path_fits, sext_conf, closest_iop3_source, min_astrocal_sources=5,
         print(f'STDERR = {res_get_sources.stderr.decode("UTF-8")}')
         return 4
     # Reading text format SExtractor output catalog
-    cat = clean_rotated_fits.replace('.fits', '.cat')
+    if 'fits' in clean_rotated_fits:
+        cat = clean_rotated_fits.replace('.fits', '.cat')
+    else:
+        cat = clean_rotated_fits.replace('.fit', '.cat')
     data_sext = read_sext_catalog(cat)
     
     ##### -------- Plotting valid detected sources ----- #####
@@ -725,18 +780,25 @@ def calibrate(path_fits, sext_conf, closest_iop3_source, min_astrocal_sources=5,
     plotFits(clean_rotated_fits, out_detect_sext_png, title=title_plot, \
         coords=(df_sorted['X_IMAGE'], df_sorted['Y_IMAGE']), \
         ref_coords='pixel', color='green') #, dictParams={'aspect':'auto', 'invert':'True'})
-
     # ----- First astrometric calibration try ----- #
+    if 'fits' in clean_rotated_fits:
+        shutil.copy(clean_rotated_fits, clean_rotated_fits.replace('.fits', '_copy.fits'))
+        clean_rotated_fits_copy=clean_rotated_fits.replace('.fits', '_copy.fits')
+    else:
+        shutil.copy(clean_rotated_fits, clean_rotated_fits.replace('.fit', '_copy.fit'))
+        clean_rotated_fits_copy=clean_rotated_fits.replace('.fit', '_copy.fit')
     res_astrocal = astrocal(clean_rotated_fits, cat_sort_filtered)
     if res_astrocal.returncode:
         message = 'ASTROCALIBRATION,ERROR,"Failed astrometric calibration for FITS {}"'
         print(message.format(clean_rotated_fits))
         print(f'STDOUT = {res_astrocal.stdout}')
         print(f'STDERR = {res_astrocal.stderr}')
-    
         return 6
-    
-    astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+
+    if 'fits' in clean_rotated_fits:
+        astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+    else:
+        astrom_out_fits = clean_rotated_fits.replace('.fit', 'w.fits')
     # Not good calibration process if not enough sources
     # were used
     wcsmatch = 0
@@ -746,16 +808,24 @@ def calibrate(path_fits, sext_conf, closest_iop3_source, min_astrocal_sources=5,
         wcsmatch = astro_header['WCSMATCH']
     except:
         message = f'ASTROCALIBRATION,WARNING,"First astrometric calibration failed. No *w.fits file found ({astrom_out_fits})"'
-        print(message)
-    
+        print(message) 
     # ----- Second astrometric calibration try ----- #
     if wcsmatch < (len(df_sorted.index) / 2): # bad calibration
         print("\nSecond astrometric calibration try")
         print("\tUsing new central FITS coordinates (Closest MAPCAT source)")
         closest_blazar_coords = {'RA': closest_iop3_source['ra2000_mc_deg'], \
             'DEC': closest_iop3_source['dec2000_mc_deg']}
-        res_astrocal = astrocal(clean_rotated_fits, cat_sort_filtered, closest_blazar_coords=closest_blazar_coords)
-        
+        #if 'fits' in clean_rotated_fits:
+        #    shutil.copy(clean_rotated_fits, clean_rotated_fits.replace('.fits', '_copy.fits'))
+        #    clean_rotated_fits_copy=clean_rotated_fits.replace('.fits', '_copy.fits')
+        #else:
+        #    shutil.copy(clean_rotated_fits, clean_rotated_fits.replace('.fit', '_copy.fit'))
+        #    clean_rotated_fits_copy=clean_rotated_fits.replace('.fit', '_copy.fit')
+        res_astrocal = astrocal(clean_rotated_fits_copy, cat_sort_filtered, closest_blazar_coords=closest_blazar_coords)
+        if 'fits' in clean_rotated_fits_copy:
+            shutil.copy(clean_rotated_fits_copy.replace('.fits', 'w.fits'), astrom_out_fits)
+        else:
+            shutil.copy(clean_rotated_fits_copy.replace('.fit', 'w.fits'), astrom_out_fits)
         if res_astrocal.returncode:
             return 7
 
@@ -763,7 +833,7 @@ def calibrate(path_fits, sext_conf, closest_iop3_source, min_astrocal_sources=5,
 
 def get_best_astrocal(calibration_dir):
     """"""
-    cal_fits = glob.glob(os.path.join(calibration_dir, '*/*final.fits'))
+    cal_fits = glob.glob(os.path.join(calibration_dir, '*/*final.fit*'))
     print(f'Calibrations done = {len(cal_fits)}')
     cal_results = defaultdict(list)
     for cf in cal_fits:
@@ -826,15 +896,23 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
     
     # Plotting background and segmentation FITS
     # segmentation image
-    segmentation_fits = path_fits.replace('.fits', '_segment.fits')
-    segment_png = path_fits.replace('.fits', '_segmentation.png')
+    if 'fits' in path_fits:
+        segmentation_fits = path_fits.replace('.fits', '_segment.fits')
+        segment_png = path_fits.replace('.fits', '_segmentation.png')
+    else:
+        segmentation_fits = path_fits.replace('.fit', '_segment.fit')
+        segment_png = path_fits.replace('.fit', '_segmentation.png')
     title = 'Segmentation for OBJECT={}, EXPTIME={}, DATE-OBS={}'
     title = title.format(fits_object, exptime, dateobs)
     plotFits(segmentation_fits, segment_png, title=title)
 
     # background image
-    background_fits = path_fits.replace('.fits', '_back.fits')
-    back_png = path_fits.replace('.fits', '_background.png')
+    if 'fits' in path_fits:
+        background_fits = path_fits.replace('.fits', '_back.fits')
+        back_png = path_fits.replace('.fits', '_background.png')
+    else:
+        background_fits = path_fits.replace('.fit', '_back.fit')
+        back_png = path_fits.replace('.fit', '_background.png')
     title = 'Background for OBJECT={}, EXPTIME={}, DATE-OBS={}'
     title = title.format(fits_object, exptime, dateobs)
     try:
@@ -844,24 +922,33 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
 
 
     # masking duplicated sources
-    clean_fits = path_fits.replace('.fits', '_clean.fits')
-    cat_image = path_fits.replace('.fits', '.cat')
-    segment_image = path_fits.replace('.fits', '_segment.fits')
-    back_image = path_fits.replace('.fits', '_back.fits')
+    if 'MAPCAT' in path_fits:
+        clean_fits = path_fits.replace('.fits', '_clean.fits')
+        cat_image = path_fits.replace('.fits', '.cat')
+        segment_image = path_fits.replace('.fits', '_segment.fits')
+        back_image = path_fits.replace('.fits', '_back.fits')
     # res_masking = mask_duplicated(path_fits, clean_fits, cat_image, segment_image, back_image)
-    res_masking = mask_duplicated_simple(path_fits, clean_fits, cat_image, segment_image)
-    if res_masking:
-        message = 'ASTROCALIBRATION,ERROR,"Error masking duplicated sources in {}"'
-        print(message.format(path_fits))
-        return 2
-    
-    print("Image without duplicated: {}".format(clean_fits))
-
-    clean_png = clean_fits.replace('.fits', '.png')
+        res_masking = mask_duplicated_simple(path_fits, clean_fits, cat_image, segment_image)
+        if res_masking:
+            message = 'ASTROCALIBRATION,ERROR,"Error masking duplicated sources in {}"'
+            print(message.format(path_fits))
+            return 2
+        clean_png = clean_fits.replace('.fits', '.png')
+    else:
+        clean_fits = path_fits.replace('.fit', '_clean.fit')
+        cat_image = path_fits.replace('.fit', '.cat')
+        segment_image = path_fits.replace('.fit', '_segment.fit')
+        back_image = path_fits.replace('.fit', '_back.fit')
+        print("Image without duplicated: {}".format(clean_fits))
+        clean_png = clean_fits.replace('.fit', '.png')
+        shutil.copy(path_fits, clean_fits)
     plotFits(clean_fits, clean_png, title=f'{fits_object} {dateobs} {exptime}s without duplicated')
 
     ##### ----- Rotating cleaned image 90 degrees counter clockwise ---- #####
-    clean_rotated_fits = clean_fits.replace('.fits', '_rotated.fits')
+    if 'fits' in clean_fits:
+        clean_rotated_fits = clean_fits.replace('.fits', '_rotated.fits')
+    else:
+        clean_rotated_fits = clean_fits.replace('.fit', '_rotated.fit')
     if rotation(clean_fits, clean_rotated_fits):
         message = 'ASTROCALIBRATION,ERROR,"Error rotating FITS {}"'
         print(message.format(clean_fits))
@@ -880,7 +967,10 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
         # print(f'STDERR = {res_get_sources.stderr.decode("UTF-8")}')
         return 4
     # Reading text format SExtractor output catalog
-    cat = clean_rotated_fits.replace('.fits', '.cat')
+    if 'fits' in clean_rotated_fits:    
+        cat = clean_rotated_fits.replace('.fits', '.cat')
+    else:
+        cat = clean_rotated_fits.replace('.fit', '.cat')
     data_sext = read_sext_catalog(cat)
     
     ##### -------- Plotting valid detected sources ----- #####
@@ -985,8 +1075,12 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
         header.remove(k, ignore_missing=True)
     
     # special keywords
-    header.rename_keyword('RA', 'WRA')
-    header.rename_keyword('DEC', 'WDEC')
+    if 'RA' in header:
+        header.rename_keyword('RA', 'WRA')
+        header.rename_keyword('DEC', 'WDEC')
+    else:
+        header.rename_keyword('OBJCTRA', 'WRA')
+        header.rename_keyword('OBJCTDEC', 'WDEC')
     # header['BLANK'] = 32768
 
     # calibration keywords
@@ -995,7 +1089,10 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
         header.append(card=(k, v, ''), end=True) # set
         
     # Finally, saving/updating astrocalibreated file with star coordinates and astrometric keywords from best fit
-    astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+    if 'fits' in clean_rotated_fits:
+        astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+    else:
+        astrom_out_fits = clean_rotated_fits.replace('.fit', 'w.fits')
     hdul[0].header = header
     hdul.writeto(astrom_out_fits, output_verify='fix', overwrite=True)
 
@@ -1004,7 +1101,7 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
 def read_blazar_file(blazar_csv):
 
     df_mapcat = pd.read_csv(blazar_csv, comment='#')
-    # print(df_mapcat.info())
+    # (df_mapcat.info())
     # getting coordinates in degrees unit
     c  = []
     for ra, dec in zip(df_mapcat['ra2000_mc'], df_mapcat['dec2000_mc']):
@@ -1017,17 +1114,27 @@ def read_blazar_file(blazar_csv):
 
     return df_mapcat
 
-    
 def closest_blazar(blazar_data, path_fits):
+    #Getting telescope type
+    tel_type=re.findall('(\w+/)', 
+                        path_fits)[len(re.findall('(\w+/)', 
+                                                  path_fits))-2][:-1]
     # Getting header informacion
     i_fits = mcFits(path_fits)
     input_head = i_fits.header
-    
     # Central FITS coordinates
-    icoords = "{} {}".format(input_head['RA'], input_head['DEC'])
-    input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
-    obstime="J2000")
-
+    if tel_type=='MAPCAT':
+        icoords = "{} {}".format(input_head['RA'], input_head['DEC'])
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
+                                    obstime="J2000")
+    else:
+        if 'OBJCTRA' in input_head:
+            icoords = "{} {}".format(input_head['OBJCTRA'], input_head['OBJCTDEC'])
+        else:
+            print('Object coordinates are missing from header of {}'.format(path_fits) )
+            icoords = "0 0"
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.hourangle, u.deg), \
+                                    obstime="J2000")
     # Blazars subset...
     df_blazars = blazar_data[blazar_data['IAU_name_mc'].notna()]
     c  = []
@@ -1035,7 +1142,6 @@ def closest_blazar(blazar_data, path_fits):
         c.append("{} {}".format(ra, dec))
     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
     obstime="J2000")
-    
     # Closest MAPCAT source to FITS central coordinates
     # Distance between this center FITS and MAPCAT targets (in degrees)
     distances = input_coords.separation(blazar_coords)
@@ -1044,7 +1150,6 @@ def closest_blazar(blazar_data, path_fits):
     i_min = distances.deg.argmin()
     
     return df_blazars.iloc[i_min], distances.deg[i_min]
-
 
 def query_external_catalog(path_fits, catalog={}):
     # Getting sources from web catalogs
@@ -1128,12 +1233,20 @@ def main():
     parser.add_argument("--overwrite",
        action="store",
        dest="overwrite",
-       type=bool,
-       default=False,
+       type=str,
+       default='False',
        help="If True, previous astrometric calibration is ignored and done again. [default: %(default)s].")
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
+    #Transform overwrite parameter properly to boolean
+    if args.overwrite in ('true', 'True', '1', 'y', 'yes', 'Yes'):
+        args.overwrite=True
+    elif args.overwrite in ('false', 'False', '0', 'n', 'no', 'No'):
+        args.overwrite=False
+    else:
+        print("Wrong or no value for --overwrite parameter. Setting it to default (False)")
+        args.overwrite=False
 
     # Checking input parameters
     if not os.path.exists(args.config_dir):
@@ -1155,9 +1268,11 @@ def main():
         return 3
 
     input_fits = os.path.abspath(args.input_fits)
-    
     copy_input_fits = os.path.join(args.output_dir, os.path.split(input_fits)[1])
-    final_fits = copy_input_fits.replace('.fits', '_final.fits')
+    if 'fits' in input_fits:
+        final_fits = copy_input_fits.replace('.fits', '_final.fits')
+    else:
+        final_fits = copy_input_fits.replace('.fit', '_final.fit')
 
     if os.path.exists(final_fits) and not args.overwrite:
         print(f'ASTROCALIBRATION,INFO,"Calibration done before for {final_fits}"')
@@ -1166,8 +1281,10 @@ def main():
     # Using input path for getting observation night date... (Is this the best way or should I read FITS header?)
     dt_run = re.findall('/(\d{6})/', input_fits)[0]
     date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
-    fits_name = os.path.split(input_fits)[1].replace('.fits', '')
-
+    if 'fits' in input_fits:
+        fits_name = os.path.split(input_fits)[1].replace('.fits', '')
+    else:
+        fits_name = os.path.split(input_fits)[1].replace('.fit', '')
     # Setting current working directory
     os.chdir(args.output_dir)
     print(f"\nWorking directory set to '{args.output_dir}'\n")
@@ -1222,16 +1339,25 @@ def main():
             return 5
 
         # Input image PNG
-        copy_input_fits_png = copy_input_fits.replace('.fits', '.png')
+        if 'fits' in copy_input_fits:
+            copy_input_fits_png = copy_input_fits.replace('.fits', '.png')
+        else:
+            copy_input_fits_png = copy_input_fits.replace('.fit', '.png')
         plotFits(copy_input_fits, copy_input_fits_png, title=f"Median filtered FITS: {title}") 
         # , dictParams={'aspect':'auto', 'stretch': 'log', 'vmin': 1})
 
     # file names (Please: pay attention to use of relative paths given by 'fits_name')
-    clean_fits = f'{fits_name}_clean.fits'
+    if 'fits' in input_fits:
+        clean_fits = f'{fits_name}_clean.fits'
+        clean_rotated_fits = clean_fits.replace('.fits', '_rotated.fits')
+        astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+    else:
+        clean_fits = f'{fits_name}_clean.fit'
+        clean_rotated_fits = clean_fits.replace('.fit', '_rotated.fit')
+        astrom_out_fits = clean_rotated_fits.replace('.fit', 'w.fits')
+        
     clean_png = f'{fits_name}_clean.png'
-    clean_rotated_fits = clean_fits.replace('.fits', '_rotated.fits')
     clean_rotated_png = clean_png.replace('.png', '_rotated.png')
-    astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
     inner_detect_sext_png = clean_rotated_png.replace('.png', '_inner_detect_sext.png')
     out_detect_sext_png = clean_rotated_png.replace('.png', '_detect_sext.png')
     
@@ -1266,7 +1392,7 @@ def main():
         if res_cal:
             print(f'ASTROCALIBRATION,ERROR,"Could not calibrate astrometrically FITS {clean_rotated_fits}"')
             return 7
-
+    
     # Checking astrometric calibrated ouput FITS
     if not os.path.exists(astrom_out_fits):
         fits_cal = os.path.abspath(astrom_out_fits)
@@ -1303,7 +1429,10 @@ def main():
     rotation(input_fits, tmp_rotation)
     
     # Composing final FITS
-    final_fits = copy_input_fits.replace('.fits', '_final.fits')
+    if 'fits' in copy_input_fits:
+        final_fits = copy_input_fits.replace('.fits', '_final.fits')
+    else:
+        final_fits = copy_input_fits.replace('.fit', '_final.fit')
     tmp_fits = mcFits(tmp_rotation)
     hdul_final = fits.PrimaryHDU(data=tmp_fits.data, header=astro_header)
     hdul_final.writeto(final_fits, output_verify='fix', overwrite=True)
@@ -1316,7 +1445,10 @@ def main():
     # print('-' * 100)
     
     # Plotting final calibrated FITS
-    final_png = final_fits.replace('.fits', '_final.png')
+    if 'fits' in final_fits:
+        final_png = final_fits.replace('.fits', '_final.png')
+    else:
+        final_png = final_fits.replace('.fit', '_final.png')
     title = '{}, {}, {} rotated astrocalib'
     title = title.format(header_cal['DATE-OBS'], header_cal['OBJECT'], \
         header_cal['EXPTIME'])
@@ -1348,7 +1480,10 @@ def main():
         cal_data[f"CALIB_{k}_PNG"] = v
     cal_data['FINAL_PNG'] = final_png
     df = pd.DataFrame(cal_data)
-    csv_out = final_fits.replace('.fits', '_astrocal_process_info.csv')
+    if 'fits' in final_fits:
+        csv_out = final_fits.replace('.fits', '_astrocal_process_info.csv')
+    else:
+        csv_out = final_fits.replace('.fit', '_astrocal_process_info.csv')
     df.to_csv(csv_out, index=False)
     
 
