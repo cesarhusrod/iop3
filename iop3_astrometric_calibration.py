@@ -1247,7 +1247,7 @@ def main():
     else:
         print("Wrong or no value for --overwrite parameter. Setting it to default (False)")
         args.overwrite=False
-
+    
     # Checking input parameters
     if not os.path.exists(args.config_dir):
         str_err = 'ASTROCALIBRATION,ERROR,"Config dir {} not available."'

@@ -549,7 +549,6 @@ def main():
     else:
         df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
 
-    print(star_paths)
     if not len(star_paths)==0:
         df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
         # sorting by DATE-OBS
@@ -609,8 +608,13 @@ def main():
         print('+' * 100)
         print(cmd_photocal)
         print('+' * 100)
-        res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
-            stderr=subprocess.PIPE, shell=True, check=True)
+        try:
+            res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
+                                     stderr=subprocess.PIPE, shell=True, check=True)
+        except:
+            print("Photocal failed, trying again...")
+            res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
+                                     stderr=subprocess.PIPE, shell=True, check=True)
         if res.returncode:
             message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
             print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))

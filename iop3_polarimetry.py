@@ -156,8 +156,7 @@ def compute_polarimetry(data_object):
     result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
     result['MC-NAME'] = data_object['MC-NAME'].values[0]
     result['MC-IAU-NAME'] = data_object['MC-IAU-NAME'].values[0]
-    print(data_object['OBJECT'])
-    result['OBJECT'] = data_object['OBJECT'].values[0].split()[0]        
+    result['OBJECT'] = data_object['OBJECT']
 
     return result
 def polarimetry_osn(df):
@@ -188,8 +187,8 @@ def polarimetry_osn(df):
     qraw = (I_0 - I_90) / (I_0 + I_90)
     uraw = (I_45 - I_135) / (I_45 + I_135)
 
-    qc = qraw - qoff
-    uc = uraw - uoff
+    qc = qraw
+    uc = uraw
 
     dqc = qc * math.sqrt(2*((dI_0/I_0)**2 + (dI_90/I_90)**2))
     duc = qc * math.sqrt(2*((dI_45/I_45)**2 + (dI_135/I_135)**2))
@@ -379,9 +378,10 @@ def main():
     # Extract filter polarization angle and target name as new dataframe columns
     # data_res['ANGLE'] = data_res['OBJECT'].str.extract(r'\s([\d.]+)\s')
     
-    if 'deg' in data_res['OBJECT'].values[0]:
-        data_res['OBJECT'] = np.array([' '.join(na.split(' ')[:-3]) for na in data_res['OBJECT'].values])
 
+    if 'deg' in data_res['OBJECT'].values[0]:
+        data_res['OBJECT'] = np.array([' '.join(na.split(' ')[:-2]) for na in data_res['OBJECT'].values])
+        
     # data_res['NAME'] = data_res['OBJECT'].str.extract(r'([a-zA-z0-9+-]+)\s')
     #print(data_res)
     #print(data_res.info())
@@ -404,7 +404,7 @@ def main():
         for data_object in data_sets:
             print('group')
             print('-' * 60)
-            print(data_object)
+            print(data_object[['TYPE','OBJECT','ANGLE','MAG_APER', 'MAGERR_APER', 'FLUX_APER', 'FLUXERR_APER']])
 
             if len(data_object.index) < 8:
                 print(f'POLARIMETRY,WARNING,"Not enough observations for compute object \'{name}\' polarimetry"')

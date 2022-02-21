@@ -442,8 +442,10 @@ def main():
     print(f" at coordinates ({alternative_ra}, {alternative_dec}")
     print('(Rmag, Rmagerr) = ({}, {})'.format(df_mapcat['Rmag_mc'][0], \
         df_mapcat['Rmagerr_mc'][0]))
-    
-    mc_aper = nearest_blazar['aper_mc'].values[0]
+    if 'MAPCAT' in input_fits:
+        mc_aper = nearest_blazar['aper_mc'].values[0]
+    else:
+        mc_aper = nearest_blazar['aper_mc'].values[0]
     print(f'aperture = {mc_aper} pixels')
 
     ################ WORKING ON ASTROMETRIC CALIBRATED FITS ################
@@ -459,7 +461,6 @@ def main():
         cat = input_fits.replace('.fit', '_photocal.cat')
     sex_conf = os.path.join(args.config_dir, 'sex.conf')
     detect_sources(input_fits, cat_out=cat, sext_conf=sex_conf, photo_aper=mc_aper)
-
     
     # RA,DEC limits...
     sky_limits = get_radec_limits(input_fits)
@@ -592,14 +593,13 @@ def main():
     num_sat = 0
     zps = []
     calibrators_png = ''
-    
     # If there are MAPCAT calibrators in field covered by FITS
     if len(df_mc[~source_problem].index) > 0:
         # checking for non-saturated calibrators
         index_o_cal = idx_o[~source_problem]
         index_e_cal = idx_e[~source_problem]
         # As SExtractor manual says, if some source pixel si saturated then FLAGS take
-        # 3th bit of FLAG to 1. That is, value 4 = 2^2 (3th bit) is activated
+        # 3th bit of FLAG to 1. That is, value 4 = 2^2 (3th bit ) is activated
         
         # getting binary string representation for each value of SExtractor FLAGS output parameter
         bin_ord = np.array([f"{format(flag, 'b') :0>8}" for flag in data['FLAGS'][index_o_cal]])
@@ -695,7 +695,9 @@ def main():
             if 'MAPCAT' in input_fits:
                 total_flux = (data['FLUX_AUTO'][indexes]).sum()
             else:
-                total_flux = (data['FLUX_AUTO'][indexes]).sum()/2
+                print("HOLAAA")
+                print(data['FLUX_AUTO'])
+                total_flux = (data['FLUX_AUTO'][indexes]).sum() / 2
             mag_zeropoint = df_mc[source_problem]['Rmag_mc'].values[0] + \
                 2.5 * np.log10(total_flux)
             std_mag_zeropoint = 0
@@ -810,7 +812,7 @@ def main():
     pair_params['MAGZPT'] = [mag_zeropoint] * 2
     pair_params['RUN_DATE'] = [date_run] * 2
     pair_params['EXPTIME'] = [astro_header['EXPTIME']] * 2
-    pair_params['APERPIX'] = [mc_aper] * 2
+    pair_params['APERPIX'] = [mc_aper] * 2 
 
 
     # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
@@ -838,7 +840,6 @@ def main():
     # Imprimo el contenido del fichero
     print('Useful parameters for polarimetric computations:')
     if 'MAPCAT' in input_fits:
-        
         print(df)
     else: 
         print(df[df['TYPE']=='O'])
