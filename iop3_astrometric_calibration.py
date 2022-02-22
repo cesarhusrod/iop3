@@ -981,7 +981,6 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
         ref_coords='pixel', color='magenta', \
         coords=(data_sext['X_IMAGE'], data_sext['Y_IMAGE'])) # , \
         # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
-    
 
     if len(data_sext.index) < 3:
         message = 'ASTROCALIBRATION,WARNING,Low number of sources ({}) in "{}"'
@@ -989,18 +988,30 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
 
     ##### -------- Filtering sources too close to FITS limits ------ #####
     data_sext_filtered = filter_detections(data_sext, path_fits, border)
-    
     # Number of filtered detections
     n_sources = len(data_sext_filtered.index)
-
-    # getting most brilliant source. This is our STAR
+    
+    # getting most brilliant source. This is our STAR --> NOT ALWAYS!
     dt_star = data_sext_filtered.sort_values(['FLUX_MAX','FLUX_AUTO'], ascending=False).head(1)
-    x_star = dt_star['X_IMAGE'].values[0]
-    y_star = dt_star['Y_IMAGE'].values[0]
+    x_brstar = dt_star['X_IMAGE'].values[0]
+    y_brstar = dt_star['Y_IMAGE'].values[0]
+    dist_br = np.sqrt(((x_brstar - input_head['NAXIS1']/2)**2 + (y_brstar - input_head['NAXIS1']/2)**2))
+  
+    #getting star that is closer to the center:
+    idx_centered = np.sqrt((data_sext_filtered['X_IMAGE'].values - input_head['NAXIS1']/2)**2 + \
+                               (data_sext_filtered['Y_IMAGE'].values - input_head['NAXIS1']/2)**2).argmin()
+    
+    x_star = data_sext_filtered['X_IMAGE'].values[idx_centered]
+    y_star = data_sext_filtered['Y_IMAGE'].values[idx_centered]
+    dist = np.sqrt(((x_star - input_head['NAXIS1']/2)**2 + (y_star - input_head['NAXIS1']/2)**2))
+    print(dist, dist_br)  
+    if dist_br < 100:
+        x_star = x_brstar
+        y_star = y_brstar
     
     plotFits(clean_rotated_fits, 'selected_star.png', title='SELECTED STAR', \
         ref_coords='pixel', color='magenta', \
-        coords=(dt_star['X_IMAGE'].values, dt_star['Y_IMAGE'].values))
+        coords=(x_star, y_star))
     
     # get best calibration of the night
     calibration_dir = "/".join(path_fits.split("/")[:-2])
@@ -1162,10 +1173,15 @@ def query_external_catalog(path_fits, catalog={}):
 
     # Plotting web sources over our calibrated FITS
     for cat_name, cat_code in catalog.items():
-        result = Vizier.query_region(center_coords, width="10m", catalog=cat_code)
-        print('Web catalog obtained')
-        pprint.pprint(result)
-        
+        try:
+            if 'MAPCAT' in path_fits:
+                result = Vizier.query_region(center_coords, width="10m", catalog=cat_code)
+            else:
+                result = Vizier.query_region(center_coords, width="13m", catalog=cat_code)
+            print('Web catalog obtained')
+            pprint.pprint(result)
+        except:
+            continue
         wcat = None
         try:
             wcat = result[cat_code]

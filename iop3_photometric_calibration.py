@@ -695,9 +695,8 @@ def main():
             if 'MAPCAT' in input_fits:
                 total_flux = (data['FLUX_AUTO'][indexes]).sum()
             else:
-                print("HOLAAA")
-                print(data['FLUX_AUTO'])
                 total_flux = (data['FLUX_AUTO'][indexes]).sum() / 2
+
             mag_zeropoint = df_mc[source_problem]['Rmag_mc'].values[0] + \
                 2.5 * np.log10(total_flux)
             std_mag_zeropoint = 0
@@ -793,7 +792,10 @@ def main():
     if 'INSPOROT' in astro_header:
         angle = float(astro_header['INSPOROT'])
     else:
-        angle = float(astro_header['FILTER'].replace('R',''))
+        if astro_header['FILTER']=='R':
+            angle = -999.0
+        else:
+            angle = float(astro_header['FILTER'].replace('R',''))
     pair_params['ANGLE'] = [round(angle, ndigits=1)] * 2
     pair_params['OBJECT'] = [astro_header['OBJECT']] * 2
     if 'MJD-OBS' in astro_header:

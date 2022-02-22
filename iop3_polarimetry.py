@@ -132,14 +132,17 @@ def compute_polarimetry(data_object):
     zps = data_object['MAGZPT'][is_ord].values
     fluxes = data_object[['ANGLE', 'FLUX_APER']].groupby(['ANGLE']).sum()
     flux_errs = data_object[['ANGLE', 'FLUXERR_APER']].groupby(['ANGLE']).sum()
-    try:
-        mags = zps - 2.5 * np.log10(fluxes['FLUX_APER'].values)
-    except ValueError:
-        obs_datetimes = sorted(data_object['DATE-OBS'].unique().tolist())
-        print(f'POLARIMETRY,ERROR,"Processing data from {name}, date-obs ={obs_datetimes}')
-        print(f'\tzps = {zps}')
-        print(f'\tFlux_apers = {fluxes["FLUX_APER"].values}')
-        raise
+    if (data_object['ANGLE']==22.5).any()==True:
+        try:
+            mags = zps - 2.5 * np.log10(fluxes['FLUX_APER'].values)
+        except ValueError:
+            obs_datetimes = sorted(data_object['DATE-OBS'].unique().tolist())
+            print(f'POLARIMETRY,ERROR,"Processing data from {name}, date-obs ={obs_datetimes}')
+            print(f'\tzps = {zps}')
+            print(f'\tFlux_apers = {fluxes["FLUX_APER"].values}')
+            raise
+    else:
+        mags = data_object['MAG_APER']
 
     result['P'] = round(P * 100, 3)
     result['dP'] = round(dP * 100, 3)
@@ -172,8 +175,9 @@ def polarimetry_osn(df):
     """
     df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
 
-    qoff=0.031
-    uoff=0.024
+    #values for T090
+    qoff = 0.0593
+    uoff = 0.0575
 
     I_0 = (df['FLUX_APER'][df['ANGLE'] == 0]).values[0]
     dI_0 = (df['FLUXERR_APER'][df['ANGLE'] == 0]).values[0]
@@ -187,9 +191,9 @@ def polarimetry_osn(df):
     qraw = (I_0 - I_90) / (I_0 + I_90)
     uraw = (I_45 - I_135) / (I_45 + I_135)
 
-    qc = qraw
-    uc = uraw
-
+    qc = qraw - qoff
+    uc = uraw - uoff
+    
     dqc = qc * math.sqrt(2*((dI_0/I_0)**2 + (dI_90/I_90)**2))
     duc = qc * math.sqrt(2*((dI_45/I_45)**2 + (dI_135/I_135)**2))
     
@@ -198,7 +202,6 @@ def polarimetry_osn(df):
     
     Theta = (1/2) * math.degrees(math.atan(uc/qc))
     dTheta = dP/P
-    
     return P, dP, Theta, dTheta, qc, dqc, uc, duc
 
 def polarimetry(df):
@@ -455,7 +458,11 @@ def main():
             # pprint.pprint(pol_rows)
 
     # writing output night polarimetry file
-    name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
+    
+    if 'MAPCAT' in args.calib_base_dir:
+        name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
+    elif 'T090' in args.calib_base_dir:
+        name_out_file = 'T090_polR_{}.res'.format(date_run)
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
@@ -466,7 +473,10 @@ def main():
             fout.write(str_out.format(*lines))
 
     # --------------------- CSV file
-    name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
+    if 'MAPCAT' in args.calib_base_dir:
+        name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
+    elif 'T090' in args.calib_base_dir:
+        name_out_csv = 'T090_polR_{}.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \

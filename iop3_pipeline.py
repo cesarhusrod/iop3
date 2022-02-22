@@ -514,16 +514,16 @@ def main():
     com_reduction = com_reduction.format(border_image, config_dir, \
         proc_dirs['reduction_dir'], input_dir)
     print(com_reduction)
-    print("IM SKIPPING REDUCTION UNCOMMENT THIS SECTION!!!")
-    # Command execution
-    #res_reduction = subprocess.run(com_reduction,stdout=subprocess.PIPE, \
-    #   stderr=subprocess.PIPE, shell=True, check=True)
-    #if res_reduction.returncode:
-    #    message = f'REDUCTION,ERROR,"Could not reduce {dt_run} night run."'
-    #    print(message)
-    #    print(f'STDOUT = {res_reduction.stdout.decode("UTF-8")}')
-    #    print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
-    #    return 1
+    #print("IM SKIPPING REDUCTION UNCOMMENT THIS SECTION!!!")
+    #Command execution
+    res_reduction = subprocess.run(com_reduction,stdout=subprocess.PIPE, \
+       stderr=subprocess.PIPE, shell=True, check=True)
+    if res_reduction.returncode:
+        message = f'REDUCTION,ERROR,"Could not reduce {dt_run} night run."'
+        print(message)
+        print(f'STDOUT = {res_reduction.stdout.decode("UTF-8")}')
+        print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
+        return 1
 
     #return -1
 
@@ -593,8 +593,13 @@ def main():
         print('+' * 100)
         print(cmd)
         print('+' * 100)
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, \
-            stderr=subprocess.PIPE, shell=True, check=True)
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, \
+                                     stderr=subprocess.PIPE, shell=True, check=True)
+        except:
+            print("Astrocal failed, trying again...")
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, \
+                                     stderr=subprocess.PIPE, shell=True, check=True)
         if res.returncode:
             message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
             print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
