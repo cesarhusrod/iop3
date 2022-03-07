@@ -12,10 +12,13 @@ VERSION:
 
 
 # ---------------------- IMPORT SECTION ----------------------
+from cmath import e
 import os
 import argparse
 from collections import defaultdict
 from pprint import pprint
+from tkinter import N
+from typing import DefaultDict
 from urllib.parse import quote
 
 import pandas as pd
@@ -217,11 +220,17 @@ def main():
     # Plotting MasterBIAS and histogram
     mcBIAS = mcFits(oReduction.masterBIAS, border=oReduction.border)
     
-    plotBIAS = oReduction.masterBIAS.replace('.fits', '.png')
+    if 'fits' in oReduction.masterBIAS:
+        plotBIAS = oReduction.masterBIAS.replace('.fits', '.png')
+    else:
+        plotBIAS = oReduction.masterBIAS.replace('.fit', '.png')
     title = f'{oReduction.date} masterBIAS'
     mcBIAS.plot(title)
 
-    plotBIASHist = oReduction.masterBIAS.replace('.fits', '_histogram.png')
+    if 'fits' in oReduction.masterBIAS:
+        plotBIASHist = oReduction.masterBIAS.replace('.fits', '_histogram.png')
+    else:
+        plotBIASHist = oReduction.masterBIAS.replace('.fit', '_histogram.png')
     histo_par = {'xlabelsize':8,
                  'ylabelsize': 8,
                  'bins': 100,
@@ -264,6 +273,8 @@ def main():
         print("MasterFLATs generation failed.")
         return 7
 
+    num_fits_in_mf = 0    
+
     for pol_ang, mf_path in oReduction.masterFLAT.items():
         print('- ' * 5 + mf_path)
         mcFLAT = mcFits(mf_path, border=oReduction.border)
@@ -275,8 +286,10 @@ def main():
             plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fit', '.png')
         title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
         mcFLAT.plot(title)
-        
-        plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
+        if 'fits' in oReduction.masterFLAT[pol_ang]:
+            plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
+        else:
+            plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fit', '_histogram.png')
 
         mcFLAT.plot_histogram(plotFLATHist, title=title, \
             histogram_params=histo_par)
@@ -290,6 +303,8 @@ def main():
                 pol_ang = mcFLAT.header['INSPOROT']
             else:
                 pol_ang = round(float(mcFLAT.header['INSPOROT']), 1)
+        else:
+                pol_ang = mcFLAT.header['FILTER']
         data_masterflats_info['POLANGLE'].append(pol_ang)
         data_masterflats_info['PLOT'].append(plotFLAT)
         data_masterflats_info['HISTOGRAM'].append(plotFLATHist)
@@ -305,6 +320,11 @@ def main():
         while f"FLAT{counter}" in mcFLAT.header:
             data_masterflats_info[f"FLAT{counter}"].append(mcFLAT.header[f"FLAT{counter}"])
             counter += 1
+        num_fits_in_mf = max([counter, num_fits_in_mf])
+
+    for n in range(num_fits_in_mf):
+        while len(data_masterflats_info[f'FLAT{n}']) < len(oReduction.masterFLAT.keys()):
+            data_masterflats_info[f'FLAT{n}'].append('')
         
     # Saving masterbias data
     # Ouput CSV data file info
@@ -332,17 +352,24 @@ def main():
 
         # Estimating FWHM from extracted sources
         dictSEx = {}
-        if 'MAPCAT' in mcRED.path:
+        if 'fits' in mcRED.path:
             dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
         else:
             dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fit', '.cat')
         dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
-        mcRED.compute_fwhm(dictSEx)
-        mcRED = 0 # Forcing to write FWHM dataSEX
-        mcRED = mcFits(path_red, border=border_image)
+        try:
+            mcRED.compute_fwhm(dictSEx)
+            mcRED = 0 # Forcing to write FWHM dataSEX
+            mcRED = mcFits(path_red, border=border_image)
+        except Exception as e:
+            print(f'REDUCTION,ERROR,"Could not compute FWHM in FITS \'{path_red}\'."')
+            print(e)
 
         # Plotting Science image...
-        plotSCI = mcRED.path.replace('.fits', '.png')
+        if 'fits' in mcRED.path:
+            plotSCI = mcRED.path.replace('.fits', '.png')
+        else:
+            plotSCI = mcRED.path.replace('.fit', '.png')
         title_pattern = "{} - {} - {:.1f} s"
         title = title_pattern.format(sci['DATE-OBS'], \
             sci['OBJECT'], float(sci['EXPTIME']))
@@ -361,6 +388,9 @@ def main():
         pol_ang = ''
         if 'INSPOROT' in mcRED.header:
             pol_ang = round(float(mcRED.header['INSPOROT']), 1)
+        else:
+            pol_ang = round(float(mcRED.header['FILTER'][1:]), 1)
+
         data_red_out['POLANGLE'].append(pol_ang)
         data_red_out['PLOT'].append(plotSCI)
         data_red_out['HISTOGRAM'].append(plotSCIHist)

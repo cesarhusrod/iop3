@@ -60,7 +60,6 @@ class mcReduction:
         self.__getInfo()
         self.__classify()
 
-
     def __getInfo(self):
         """
         A short description.
@@ -173,11 +172,11 @@ class mcReduction:
         # Raw input images classification by their OBJECT names
         procOBJ = list()
         for index, row in self.info_fits.iterrows():
-            if row['OBJECT'].lower().find('bias') != -1 or \
-                row['IMAGETYP'].strip().lower() == 'dark':
+            obj = row['OBJECT'].lower()
+            imtype = row['IMAGETYP'].strip().lower()
+            if obj.find('bias') != -1 or imtype.find('dark') != -1:
                 procOBJ.append('bias')
-            elif row['OBJECT'].lower().find('flat') != -1 or \
-                row['IMAGETYP'].strip().lower() == 'dome':
+            elif obj.find('flat') != -1 or obj.find('dome') != -1 or imtype.find('dome') != -1:
                 procOBJ.append('flat')
             else:
                 toks = row['OBJECT'].split()
@@ -203,7 +202,7 @@ class mcReduction:
             self.info_fits[k] = pd.array(stats[k])
 
         #############################################################
-        ## STEP 2: Classification according to FITS content
+        ## STEP 3: Classification according to FITS content
         #############################################################
         
         # Classifying
@@ -315,12 +314,14 @@ class mcReduction:
 
         if show_info:
             print(f"\tMaster BIAS info -> {oMB.stats()}")
-        print(self.flats)
+
+        print(self.flats.info)
         # getting polarization Angles
         if self.tel_type=='MAPCAT':
             pol_angles = self.flats['INSPOROT'].unique()
         else:
             pol_angles = self.flats['FILTER'].unique()
+
         print(f'Available polarization angles -> {pol_angles}')
 
         # One masterFLAT for each polarization angle
@@ -457,6 +458,12 @@ class mcReduction:
                 print(f"Polarization angle set to -> {pol_angle}")
             
             # flat
+            try:
+                flat = self.masterFLAT[round(float(pol_angle), 1)]
+            except:
+                print(f'self.masterFLAT = {self.masterFLAT}')
+                raise
+
             oFLAT = mcFits(flat, border=0)
             data_flat_norm = 1.0 * oFLAT.data / oFLAT.data.max()
 
