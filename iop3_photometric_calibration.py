@@ -320,7 +320,9 @@ def detect_sources(path_fits, cat_out, sext_conf, photo_aper):
     if 'MAPCAT' in path_fits:
         pixscale =  astro_header['INSTRSCL']
     elif 'T090' in path_fits:
-        pixscale =  0.387
+        pixscale = 0.387
+        if astro_header['NAXIS1']==1024:
+            pixscale=2*pixscale
     elif 'T150' in path_fits:
         pixscale = 0.232
 
@@ -755,6 +757,8 @@ def main():
         pixscale = astro_header['INSTRSCL']
     elif 'T090' in input_fits:
         pixscale = 0.387
+        if astro_header['NAXIS1']==1024:
+            pixscale=2*pixscale
     elif 'T150' in input_fits:
         pixscale = 0.232
     fwhm_arcs = float(astro_header['FWHM']) * pixscale

@@ -17,7 +17,7 @@ import pandas as pd
 from collections import defaultdict
 
 from astropy.io import fits
-
+import astropy.units as unit
 
 def subsets(data, num_angles=4):
     """It analyzes data passed and maje subsets of observations according to date-obs
@@ -176,8 +176,9 @@ def polarimetry_osn(df):
     df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
 
     #values for T090
-    qoff = 0.0593
-    uoff = 0.0575
+    qoff = 0.0645
+    uoff = 0.0574
+    phi=math.radians(75.44)
 
     I_0 = (df['FLUX_APER'][df['ANGLE'] == 0]).values[0]
     dI_0 = (df['FLUXERR_APER'][df['ANGLE'] == 0]).values[0]
@@ -194,15 +195,19 @@ def polarimetry_osn(df):
     qc = qraw - qoff
     uc = uraw - uoff
     
+    q = qc*math.cos(math.radians(2*75.44)) - uc*math.sin(math.radians(2*75.44))
+    u = qc*math.sin(math.radians(2*75.44)) + uc*math.cos(math.radians(2*75.44))
+
+
     dqc = qc * math.sqrt(2*((dI_0/I_0)**2 + (dI_90/I_90)**2))
     duc = qc * math.sqrt(2*((dI_45/I_45)**2 + (dI_135/I_135)**2))
     
-    P = math.sqrt(qc**2 + uc**2)
+    P = math.sqrt(q**2 + u**2)
     dP = P * math.sqrt((dqc/qc)**2+(duc/uc)**2)
     
-    Theta = (1/2) * math.degrees(math.atan(uc/qc))
+    Theta = (1/2) * math.degrees(math.atan(uc/qc)) + math.degrees(phi)
     dTheta = dP/P
-    return P, dP, Theta, dTheta, qc, dqc, uc, duc
+    return P, dP, Theta, dTheta, q, dqc, u, duc
 
 def polarimetry(df):
     """
@@ -303,7 +308,7 @@ def polarimetry(df):
         raise
 
     try:
-        Theta = 0.5 * math.degrees(math.atan(U_I / Q_I))
+        Theta = 0.5 * math.degrees(math.atan(U_I / Q_I)) + 90
         dTheta = dP / P * 28.6
     except ZeroDivisionError:
         # print(f"(U_I, Q_I, P, dP) = ({U_I}, {Q_I}, {P}, {dP})")

@@ -20,6 +20,7 @@ import re
 from collections import defaultdict
 from typing import DefaultDict
 from venv import create
+from difflib import SequenceMatcher
 
 import pandas as pd
 
@@ -74,7 +75,7 @@ def create_dataframe(fits_paths, keywords=[]):
 
 
 def closest_blazar(blazar_data, path_fits):
-    """"""
+    
     #Getting telescope type
     tel_type=re.findall('(\w+/)', 
                         path_fits)[len(re.findall('(\w+/)', 
@@ -94,13 +95,21 @@ def closest_blazar(blazar_data, path_fits):
             print('Object coordinates are missing from header of {}'.format(path_fits) )
             icoords = "0 0"
         input_coords = SkyCoord(icoords, frame=FK5, unit=(u.hourangle, u.deg), \
-                                    obstime="J2000")
-    
-    
-
+                    obstime="J2000")
     # Blazars subset...
     df_blazars = blazar_data[blazar_data['IAU_name_mc'].notna()]
     c  = []
+    if input_coords.ra.value==0.0 and input_coords.dec.value==0.0:
+        for name,ra,dec in zip(df_blazars['IAU_name_mc'],df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
+            s = SequenceMatcher(None, name, path_fits.split('/')[-1].split('-')[0])
+            if s.ratio() > 0.6:
+                input_coords=SkyCoord("{} {}".format(ra,dec), frame=FK5, unit=(u.hourangle, u.deg), \
+                                          obstime="J2000")
+                print('Found this object in blazar list: %s' % name)
+                print('with name similar to (from fits file): %s' % path_fits.split('/')[-1].split('-')[0])
+                print('Using its coordinares instead, take with caution!')
+                break
+
     for ra, dec in zip(df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
         c.append("{} {}".format(ra, dec))
     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
@@ -108,7 +117,6 @@ def closest_blazar(blazar_data, path_fits):
     # Closest MAPCAT source to FITS central coordinates
     # Distance between this center FITS and MAPCAT targets (in degrees)
     distances = input_coords.separation(blazar_coords)
-    
     # Closest source in complete set...
     i_min = distances.deg.argmin()
     
@@ -516,14 +524,14 @@ def main():
     print(com_reduction)
     #print("IM SKIPPING REDUCTION UNCOMMENT THIS SECTION!!!")
     #Command execution
-    res_reduction = subprocess.run(com_reduction,stdout=subprocess.PIPE, \
-       stderr=subprocess.PIPE, shell=True, check=True)
-    if res_reduction.returncode:
-        message = f'REDUCTION,ERROR,"Could not reduce {dt_run} night run."'
-        print(message)
-        print(f'STDOUT = {res_reduction.stdout.decode("UTF-8")}')
-        print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
-        return 1
+    #res_reduction = subprocess.run(com_reduction,stdout=subprocess.PIPE, \
+    #   stderr=subprocess.PIPE, shell=True, check=True)
+    #if res_reduction.returncode:
+    #    message = f'REDUCTION,ERROR,"Could not reduce {dt_run} night run."'
+    #    print(message)
+    #    print(f'STDOUT = {res_reduction.stdout.decode("UTF-8")}')
+    #    print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
+    #    return 1
 
     #return -1
 

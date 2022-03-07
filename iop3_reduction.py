@@ -4,7 +4,7 @@
 Created on Thu April 09 09:49:53 2020
 
 ___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+__author__ = 'Cesar Hiop3_pousillos'
 
 VERSION:
     1.0 Initial version

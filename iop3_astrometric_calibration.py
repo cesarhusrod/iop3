@@ -21,6 +21,7 @@ import pprint
 import glob
 import re
 from collections import defaultdict, OrderedDict
+from difflib import SequenceMatcher
 
 # Data structures libraries
 import numpy as np
@@ -403,6 +404,8 @@ def get_sources(input_fits, sext_conf, add_params={}, threshold_exptime=2, \
         pixscale = i_fits.header['INSTRSCL']
     elif 'T090' in input_fits:
         pixscale=0.387
+        if i_fits.header['NAXIS1']==1024:
+            pixscale=2*pixscale
     elif 'T150' in input_fits:
         pixscale=0.232
     exptime = i_fits.header['EXPTIME']
@@ -538,6 +541,8 @@ def astrocal(path_fits, coord_csv, closest_blazar_coords={}):
         pix_scale = fits.header['INSTRSCL']
     elif 'T090' in path_fits:
         pix_scale=0.387
+        if fits.header['NAXIS1']==1024:
+            pix_scale=2*pix_scale
     elif 'T150' in path_fits:
         pix_scale=0.232
     date_obs = ''
@@ -1089,9 +1094,10 @@ def calibrate_star(path_fits, sext_conf, closest_iop3_source, min_astrocal_sourc
     if 'RA' in header:
         header.rename_keyword('RA', 'WRA')
         header.rename_keyword('DEC', 'WDEC')
-    else:
+    elif 'OBJCTRA' in header:
         header.rename_keyword('OBJCTRA', 'WRA')
         header.rename_keyword('OBJCTDEC', 'WDEC')
+    
     # header['BLANK'] = 32768
 
     # calibration keywords
@@ -1149,6 +1155,16 @@ def closest_blazar(blazar_data, path_fits):
     # Blazars subset...
     df_blazars = blazar_data[blazar_data['IAU_name_mc'].notna()]
     c  = []
+    if input_coords.ra.value==0.0 and input_coords.dec.value==0.0:
+        for name,ra,dec in zip(df_blazars['IAU_name_mc'],df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
+            s = SequenceMatcher(None, name, path_fits.split('/')[-1].split('-')[0])
+            if s.ratio() > 0.6:
+                input_coords=SkyCoord("{} {}".format(ra,dec), frame=FK5, unit=(u.hourangle, u.deg), \
+                                          obstime="J2000")
+                print('Found this object in blazar list: %s' % name)
+                print('with name similar to (from fits file): %s' % path_fits.split('/')[-1].split('-')[0])
+                print('Using its coordinares instead, take with caution!')
+                break
     for ra, dec in zip(df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
         c.append("{} {}".format(ra, dec))
     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
