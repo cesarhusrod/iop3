@@ -12,10 +12,13 @@ VERSION:
 
 
 # ---------------------- IMPORT SECTION ----------------------
+from cmath import e
 import os
 import argparse
 from collections import defaultdict
 from pprint import pprint
+from tkinter import N
+from typing import DefaultDict
 from urllib.parse import quote
 
 import pandas as pd
@@ -264,6 +267,8 @@ def main():
         print("MasterFLATs generation failed.")
         return 7
 
+    num_fits_in_mf = 0    
+
     for pol_ang, mf_path in oReduction.masterFLAT.items():
         print('- ' * 5 + mf_path)
         mcFLAT = mcFits(mf_path, border=oReduction.border)
@@ -298,11 +303,16 @@ def main():
         while f"FLAT{counter}" in mcFLAT.header:
             data_masterflats_info[f"FLAT{counter}"].append(mcFLAT.header[f"FLAT{counter}"])
             counter += 1
+        num_fits_in_mf = max([counter, num_fits_in_mf])
+
+    for n in range(num_fits_in_mf):
+        while len(data_masterflats_info[f'FLAT{n}']) < len(oReduction.masterFLAT.keys()):
+            data_masterflats_info[f'FLAT{n}'].append('')
         
     # Saving masterbias data
     # Ouput CSV data file info
     csv_masterflats_data = os.path.join(args.reduction_dir, 'masterflats_data.csv')
-    df_masterflats_out = pd.DataFrame(data_masterflats_info)
+    df_masterflats_out = pd.DataFrame(data_masterflats_info)    
     df_masterflats_out.to_csv(csv_masterflats_data, index=False)
 
     # --------------- Making FITS set reduction operations --------------#
@@ -326,9 +336,13 @@ def main():
         dictSEx = {}
         dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
         dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
-        mcRED.compute_fwhm(dictSEx)
-        mcRED = 0 # Forcing to write FWHM dataSEX
-        mcRED = mcFits(path_red, border=border_image)
+        try:
+            mcRED.compute_fwhm(dictSEx)
+            mcRED = 0 # Forcing to write FWHM dataSEX
+            mcRED = mcFits(path_red, border=border_image)
+        except Exception as e:
+            print(f'REDUCTION,ERROR,"Could not compute FWHM in FITS \'{path_red}\'."')
+            print(e)
 
         # Plotting Science image...
         plotSCI = mcRED.path.replace('.fits', '.png')

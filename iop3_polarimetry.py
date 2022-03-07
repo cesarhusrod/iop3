@@ -92,74 +92,6 @@ def object_measures(data, name):
     
     return data_sets        
 
-    
-
-
-
-def compute_polarimetry(data_object):
-    """Given input data, it calls polarimetry function to get
-    polarimetric magnitudes.
-
-    Args:
-        data_object (pandas.DataFrame): Data from object taken from 4 polarization angles.
-
-    Returns:
-        dict: Keywords are [P, dP, Theta, dTheta, R, Sigma, RJD-5000, ID-MC, ID-BLAZAR-MC, MC-NAME, MC-IAU-NAME, NAME]
-    
-    """
-    result = DefaultDict()
-    name = data_object['OBJECT'].values[0]
-    
-    dates = sorted(data_object['MJD-OBS'].unique().tolist())
-    obs_date = dates[2] # 3rd observation
-    
-    
-    # Computing polarimetry parameters
-    # print(data_object)
-    # print(data_object.info())
-    # print(data_object)
-    try:
-        P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry(data_object)
-    except ZeroDivisionError:
-        print(f'\tZeroDivisionError while processing object called "{name}"')
-        raise
-    
-    # HOW DO I COMPUTE MAGNITUDE AND ITS ERROR?
-    # m = mean(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
-    # e_m = std(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
-    # print(data_object.info())
-    is_ord = data_object['TYPE'] == 'O'
-    zps = data_object['MAGZPT'][is_ord].values
-    fluxes = data_object[['ANGLE', 'FLUX_APER']].groupby(['ANGLE']).sum()
-    flux_errs = data_object[['ANGLE', 'FLUXERR_APER']].groupby(['ANGLE']).sum()
-    try:
-        mags = zps - 2.5 * np.log10(fluxes['FLUX_APER'].values)
-    except ValueError:
-        obs_datetimes = sorted(data_object['DATE-OBS'].unique().tolist())
-        print(f'POLARIMETRY,ERROR,"Processing data from {name}, date-obs ={obs_datetimes}')
-        print(f'\tzps = {zps}')
-        print(f'\tFlux_apers = {fluxes["FLUX_APER"].values}')
-        raise
-
-    result['P'] = round(P * 100, 3)
-    result['dP'] = round(dP * 100, 3)
-    result['Theta'] = round(Theta, 2)
-    result['dTheta'] = round(dTheta, 2)
-    result['R'] =  round(mags.mean(), 2)
-    result['Sigma'] = round(data_object['MAGERR_APER'].values.max(), 4)
-    result['Q'] = round(RQ, 4)
-    result['dQ'] = round(dRQ, 4)
-    result['U'] = round(RU, 4)
-    result['dU'] = round(dRU, 4)
-    result['RJD-5000'] = round(obs_date - 50000, 4)
-    result['ID-MC'] = data_object['ID-MC'].values[0]
-    result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
-    result['MC-NAME'] = data_object['MC-NAME'].values[0]
-    result['MC-IAU-NAME'] = data_object['MC-IAU-NAME'].values[0]
-    result['OBJECT'] = data_object['OBJECT'].values[0].split()[0]        
-
-    return result
-
 def polarimetry(df):
     """Compute polarimetric parameters.
     Args:
@@ -183,23 +115,67 @@ def polarimetry(df):
     # print('Ordinary =')
     # print(df_o)
     # print(df_o.info())
-    o_0 = (df_o['FLUX_APER'][df_o['ANGLE'] == 0]).values[-1]
-    oe_0 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 0]).values[-1]
-    o_22 = (df_o['FLUX_APER'][df_o['ANGLE'] == 22.5]).values[-1]
-    oe_22 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 22.5]).values[-1]
-    o_45 = (df_o['FLUX_APER'][df_o['ANGLE'] == 45]).values[-1]
-    oe_45 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 45]).values[-1]
-    o_67 = (df_o['FLUX_APER'][df_o['ANGLE'] == 67.5]).values[-1]
-    oe_67 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 67.5]).values[-1]
 
-    e_0 = (df_e['FLUX_APER'][df_e['ANGLE'] == 0]).values[-1]
-    ee_0 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 0]).values[-1]
-    e_22 = (df_e['FLUX_APER'][df_e['ANGLE'] == 22.5]).values[-1]
-    ee_22 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 22.5]).values[-1]
-    e_45 = (df_e['FLUX_APER'][df_e['ANGLE'] == 45]).values[-1]
-    ee_45 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 45]).values[-1]
-    e_67 = (df_e['FLUX_APER'][df_e['ANGLE'] == 67.5]).values[-1]
-    ee_67 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 67.5]).values[-1]
+    all_angles = df_o['ANGLE'].unique().tolist()
+    
+    if len(all_angles) == 1:
+        return [None] * 8 
+    elif len(all_angles) == 2:
+        # valid combinations are: 0 and 22.5 or 45 and 67.5
+        if (0 in all_angles and 45 in all_angles) or (22.5 in all_angles and 67.5 in all_angles):
+            return [None] * 8
+    
+    # ORDINARY measurements
+    if (df_o['ANGLE'] == 0).sum() == 0: # No measures in rotator angle equals to 0
+        o_0 = (df_e['FLUX_APER'][df_e['ANGLE'] == 45]).values[-1]
+        oe_0 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 45]).values[-1]
+    else:
+        o_0 = (df_o['FLUX_APER'][df_o['ANGLE'] == 0]).values[-1]
+        oe_0 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 0]).values[-1]
+    if (df_o['ANGLE'] == 22.5).sum() == 0: # No measures in rotator angle equals to 22.5
+        o_22 = (df_e['FLUX_APER'][df_e['ANGLE'] == 67.5]).values[-1]
+        oe_22 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 67.5]).values[-1]
+    else:
+        o_22 = (df_o['FLUX_APER'][df_o['ANGLE'] == 22.5]).values[-1]
+        oe_22 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 22.5]).values[-1]
+    if (df_o['ANGLE'] == 45).sum() == 0: # No measures in rotator angle equals to 45
+        o_45 = (df_e['FLUX_APER'][df_e['ANGLE'] == 0]).values[-1]
+        oe_45 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 0]).values[-1]
+    else:
+        o_45 = (df_o['FLUX_APER'][df_o['ANGLE'] == 45]).values[-1]
+        oe_45 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 45]).values[-1]
+    if (df_o['ANGLE'] == 67.5).sum() == 0: # No measures in rotator angle equals to 67.5
+        o_67 = (df_e['FLUX_APER'][df_e['ANGLE'] == 22.5]).values[-1]
+        oe_67 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 22.5]).values[-1]
+    else:
+        o_67 = (df_o['FLUX_APER'][df_o['ANGLE'] == 67.5]).values[-1]
+        oe_67 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 67.5]).values[-1]
+
+    # EXTRAORDINARY measurements
+    if (df_o['ANGLE'] == 0).sum() == 0: # No measures in rotator angle equals to 0
+        e_0 = (df_o['FLUX_APER'][df_o['ANGLE'] == 45]).values[-1]
+        ee_0 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 45]).values[-1]
+    else:
+        e_0 = (df_e['FLUX_APER'][df_e['ANGLE'] == 0]).values[-1]
+        ee_0 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 0]).values[-1]
+    if (df_o['ANGLE'] == 22.5).sum() == 0: # No measures in rotator angle equals to 22.5
+        e_22 = (df_o['FLUX_APER'][df_o['ANGLE'] == 67.5]).values[-1]
+        ee_22 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 67.5]).values[-1]
+    else:
+        e_22 = (df_e['FLUX_APER'][df_e['ANGLE'] == 22.5]).values[-1]
+        ee_22 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 22.5]).values[-1]
+    if (df_o['ANGLE'] == 45).sum() == 0: # No measures in rotator angle equals to 45
+        e_45 = (df_o['FLUX_APER'][df_o['ANGLE'] == 0]).values[-1]
+        ee_45 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 0]).values[-1]
+    else:
+        e_45 = (df_e['FLUX_APER'][df_e['ANGLE'] == 45]).values[-1]
+        ee_45 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 45]).values[-1]
+    if (df_o['ANGLE'] == 67.5).sum() == 0: # No measures in rotator angle equals to 67.5
+        e_67 = (df_o['FLUX_APER'][df_o['ANGLE'] == 22.5]).values[-1]
+        ee_67 = (df_o['FLUXERR_APER'][df_o['ANGLE'] == 22.5]).values[-1]
+    else:
+        e_67 = (df_e['FLUX_APER'][df_e['ANGLE'] == 67.5]).values[-1]
+        ee_67 = (df_e['FLUXERR_APER'][df_e['ANGLE'] == 67.5]).values[-1]
 
     # str_out = '{} (0, 22, 45, 67) = ({}, {}, {}, {})'
     # print(str_out.format('Ord', o_0, o_22, o_45, o_67))
@@ -269,6 +245,95 @@ def polarimetry(df):
 
     return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU
 
+def compute_polarimetry(data_object):
+    """Given input data, it calls polarimetry function to get
+    polarimetric magnitudes.
+
+    Args:
+        data_object (pandas.DataFrame): Data from object taken from 4 polarization angles.
+
+    Returns:
+        dict: Keywords are [P, dP, Theta, dTheta, R, Sigma, RJD-5000, ID-MC, ID-BLAZAR-MC, MC-NAME, MC-IAU-NAME, NAME]
+    
+    """
+    result = DefaultDict()
+    
+    name = data_object['OBJECT'].values[0]
+    dates = sorted(data_object['MJD-OBS'].unique().tolist())
+    # print(len(data_object.index))
+    # print(f'dates = {dates}')
+    index_date = 2 # 3rd observation () for group of 3 o 4 observations
+    if len(dates) == 1:
+        index_date = 0
+    elif len(dates) == 2:
+        index_date = 1
+    obs_date = dates[index_date] 
+    
+    result['RJD-5000'] = round(obs_date - 50000, 4)
+    result['ID-MC'] = data_object['ID-MC'].values[0]
+    result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
+    result['MC-NAME'] = data_object['MC-NAME'].values[0]
+    result['MC-IAU-NAME'] = data_object['MC-IAU-NAME'].values[0]
+    result['OBJECT'] = data_object['OBJECT'].values[0] # .split()[0]      
+    result['NUM_ROTATION'] = int(len(data_object.index) / 2)
+    
+    
+    
+    
+    # Computing polarimetry parameters
+    # print(data_object)
+    # print(data_object.info())
+    # print(data_object)
+    try:
+        P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry(data_object)
+    except ZeroDivisionError:
+        print(f'\tZeroDivisionError while processing object called "{name}"')
+        raise
+    
+    if P is None:
+        result['P'] = P
+        result['dP'] = dP
+        result['Theta'] = Theta
+        result['dTheta'] = dTheta
+        result['R'] = None
+        result['Sigma'] = None
+        result['Q'] = RQ
+        result['dQ'] = dRQ
+        result['U'] = RU
+        result['dU'] = dRU
+        
+        return result
+    
+    
+    # HOW DO I COMPUTE MAGNITUDE AND ITS ERROR?
+    # m = mean(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
+    # e_m = std(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
+    # print(data_object.info())
+    is_ord = data_object['TYPE'] == 'O'
+    zps = data_object['MAGZPT'][is_ord].values
+    fluxes = data_object[['ANGLE', 'FLUX_APER']].groupby(['ANGLE']).sum()
+    flux_errs = data_object[['ANGLE', 'FLUXERR_APER']].groupby(['ANGLE']).sum()
+    try:
+        mags = zps - 2.5 * np.log10(fluxes['FLUX_APER'].values)
+    except ValueError:
+        obs_datetimes = sorted(data_object['DATE-OBS'].unique().tolist())
+        print(f'POLARIMETRY,ERROR,"Processing data from {name}, date-obs ={obs_datetimes}')
+        print(f'\tzps = {zps}')
+        print(f'\tFlux_apers = {fluxes["FLUX_APER"].values}')
+        raise
+
+    result['P'] = round(P * 100, 3)
+    result['dP'] = round(dP * 100, 3)
+    result['Theta'] = round(Theta, 2)
+    result['dTheta'] = round(dTheta, 2)
+    result['R'] =  round(mags.mean(), 2)
+    result['Sigma'] = round(data_object['MAGERR_APER'].values.max(), 4)
+    result['Q'] = round(RQ, 4)
+    result['dQ'] = round(dRQ, 4)
+    result['U'] = round(RU, 4)
+    result['dU'] = round(dRU, 4)
+
+    return result
 
 def main():
     parser = argparse.ArgumentParser(prog='iop3_polarimetry.py', \
@@ -361,12 +426,11 @@ def main():
             print('-' * 60)
             print(data_object)
 
-            if len(data_object.index) < 8:
-                print(f'POLARIMETRY,WARNING,"Not enough observations for compute object \'{name}\' polarimetry"')
-                continue
-
             try:
                 res_pol = compute_polarimetry(data_object)
+                if res_pol['P'] is None:
+                    print('POLARIMETRY,WARNING,"Could not compute Polarization for this set of measurements"')
+                    continue
             except ZeroDivisionError:
                 message = 'POLARIMETRY,ERROR,"EXCEPTION ZeroDivisionError: Found Zero Division Error in group processing; OBJECT={} DATE-OBS={}'
                 message = message.format(name, data_object['DATE-OBS'])
@@ -383,7 +447,13 @@ def main():
             res_pol['APERPIX'] = data_object['APERPIX'].values[0]
             # arcsec per pixel as mean values of astrometric calibration computaion in RA and DEC.
             is_ord = data_object['TYPE'] == 'O'
-            mean_secpix = (data_object[is_ord]['SECPIX1'].mean() + data_object[is_ord]['SECPIX2'].mean()) / 2
+            mean_secpix = (np.nanmean(data_object[is_ord]['SECPIX1'].values) + np.nanmean(data_object[is_ord]['SECPIX2'].values)) / 2
+            if np.isnan(mean_secpix):
+                print(f'mean_secpix = {mean_secpix}')
+                print(data_object[is_ord]['SECPIX1'].values)
+                print(data_object[is_ord]['SECPIX2'].values)
+                return -199
+            
             res_pol['APERAS'] = res_pol['APERPIX'] * mean_secpix
             rp_sigma = res_pol['Sigma']
             # if rp_sigma < 0.01:
@@ -395,7 +465,10 @@ def main():
                     continue
                 pol_data[k].append(v)
 
-            obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[2]
+            index_obs = 2 # groups of three or four observations
+            if len(data_object['MJD-OBS'][data_object['TYPE'] == 'O']) < 3:
+                index_obs = 1
+            obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[index_obs]
             pol_data['RJD-50000'].append(obs_date - 50000)
             row = [date_run, obs_date - 50000, name.strip()]
             
@@ -404,7 +477,7 @@ def main():
                 res_pol['Q'], res_pol['dQ'], \
                 res_pol['U'], res_pol['dU'], \
                 res_pol['R'], rp_sigma, \
-                res_pol['APERPIX'], res_pol['APERAS']]
+                res_pol['APERPIX'], res_pol['APERAS'], res_pol['NUM_ROTATION']]
             pol_rows.append(row)
             # print('Lines to write down:')
             # pprint.pprint(pol_rows)
@@ -414,8 +487,8 @@ def main():
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}'
-        header = 'DATE_RUN     RJD-50000   Object                 P+-dP(%)        Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS'
+        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>4}'
+        header = 'DATE_RUN     RJD-50000   Object                 P+-dP(%)        Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
@@ -426,7 +499,7 @@ def main():
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS']
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
