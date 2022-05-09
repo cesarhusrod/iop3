@@ -20,6 +20,7 @@ import subprocess
 import pprint
 import glob
 import re
+import math
 from collections import defaultdict, OrderedDict
 
 # Data structures libraries
@@ -112,7 +113,7 @@ def plotFits(inputFits, outputImage, title=None, colorBar=True, coords=None, \
         gc.show_markers(ra, dec, edgecolor=color, facecolor='none', \
         marker='o', coords_frame=ref_coords, s=40, alpha=1)
     gc.save(outputImage, format=format)
-    #gc.close()
+    gc.close()
 
     return 0
 
@@ -151,7 +152,7 @@ def read_sext_catalog(path, format='ASCII', verbose=False):
         verbose (bool): IT True, it prints process info.
         
     Returns:
-        pandas.DataFrame: Data from SExtractor output catalog.
+        pd.DataFrame: Data from SExtractor output catalog.
     """
     if format == 'ASCII':
         cat = ''
@@ -161,16 +162,21 @@ def read_sext_catalog(path, format='ASCII', verbose=False):
         if verbose:
             print(f'Header catalog keywords = {campos}')
 
-        data_sext = np.atleast_1d(np.genfromtxt(path, names=campos))
+        data_sext = np.genfromtxt(path, names=campos)
+        
         # Working with pandas DataFrame
         # data_sext = pd.DataFrame({k:np.atleast_1d(data_sext[k]) for k in campos})
     else:
         sext = fits.open(path)
         data_sext = sext[2].data
-        #data_sext = pd.DataFrame(data)
+        campos = data_sext.columns.names
+    
+    data_sext = {k:list(data_sext[k]) for k in campos}
+
+    data_sext = pd.DataFrame(data_sext)
     
     return data_sext
-    
+
 def get_duplicated(cat_path, format='ASCII'):
     """Mask extraordinay sources (left)
 
@@ -182,49 +188,42 @@ def get_duplicated(cat_path, format='ASCII'):
         bool np.array: Extraordinary masks sources values set to True.
     """
     data = read_sext_catalog(cat_path, format)
+    data = pd.DataFrame(data)
     
     numbers = list()
     # mask = np.ones(len(data['NUMBER'].index), dtype=bool) # Nothing selected
     mask = np.ones(data['NUMBER'].size, dtype=bool) # Nothing selected
 
     for index, n in enumerate(data['NUMBER'].tolist()):
-        # tx = data.iloc[index]['X_IMAGE']
-        # ty = data.iloc[index]['Y_IMAGE']
-        # tm = data.iloc[index]['MAG_BEST']
-        # tx = data['X_IMAGE'][index]
-        # ty = data['Y_IMAGE'][index]
-        # tm = data['MAG_BEST'][index]
         if n not in numbers:
-            # distx = data['X_IMAGE'].values - tx
-            # disty = np.abs(data['Y_IMAGE'].values - ty)
-            # diffmag = np.abs(data['MAG_BEST'] - tm)
             distx = data['X_IMAGE'] - data['X_IMAGE'][index]
             disty = np.abs(data['Y_IMAGE'] - data['Y_IMAGE'][index])
             diffmag = np.abs(data['MAG_BEST'] - data['MAG_BEST'][index])
 
-            #Original pair-sources conditions
-            #  boo = (data_sex['NUMBER'].values.astype(int) != n) & (disty < 1) & \
-            # (distx > 0) & (distx < 38) & (diffmag < 1) # & (data['FLAGS'].astype(int) == 0)
-
-            # relaxed pair-sources conditions
-            # boo = (data['NUMBER'].values.astype(int) != n) & (disty < 10) & \
-            # (distx > 5) & (distx < 45) & (diffmag < 2) # & (data['FLAGS'].astype(int) == 0)
-            # if boo.sum() >= 1: # Hay fuentes que han pasado el filtro anterior
-            #     # print(data_sex[boo].info())
-            #     numbers.append(int(data[boo].iloc[0]['NUMBER']))
-            #     mask[index] = False
             boo = (data['NUMBER'].astype(int) != n) & (disty < 10) & \
                 (distx > 5) & (distx < 45) & (diffmag < 2) # & (data['FLAGS'].astype(int) == 0)
             if boo.sum() >= 1: # Hay fuentes que han pasado el filtro anterior
                 # print(data_sex[boo].info())
-                numbers.append(int(data[boo]['NUMBER'][0]))
+                numbers.append(int(data[boo]['NUMBER'].values[0]))
                 mask[index] = False
 
     mask = np.logical_not(mask) # this allows working with ordinary sources
 
     return mask
 
-def mask_duplicated_simple(input_fits, output_fits, sext_catalog, segmentation_fits, format_cat='ASCII'):
+def mask_duplicated_simple(input_fits, output_fits, sext_catalog, \
+    segmentation_fits, format_cat='FITS_LDAC'):
+    """_summary_
+
+    Args:
+        input_fits (_type_): _description_
+        output_fits (_type_): _description_
+        sext_catalog (_type_): _description_
+        format_cat (str, optional): _description_. Defaults to 'FITS_LDAC'.
+
+    Returns:
+        _type_: _description_
+    """
     fits_name = os.path.split(input_fits)[1].replace('.fits', '')
     
     # segmentation image
@@ -232,7 +231,8 @@ def mask_duplicated_simple(input_fits, output_fits, sext_catalog, segmentation_f
     segdata = seg.data
 
     # Reading text format SExtractor catalog
-    data_sex = read_sext_catalog(sext_catalog)
+    data_sex = read_sext_catalog(sext_catalog, format=format_cat)
+    data_sex = pd.DataFrame(data_sex)
 
     # Filtering duplicated sources
     mask = get_duplicated(sext_catalog, format=format_cat)
@@ -250,13 +250,28 @@ def mask_duplicated_simple(input_fits, output_fits, sext_catalog, segmentation_f
     data = hdul[0].data
     # replacing duplicated sources with background area given by their
     # segmentation areas
-    datamasked = np.where(mask, int(np.median(data)), data)
+    # datamasked = np.where(mask, int(np.median(data)), data)
+    datamasked = np.where(mask, 0, data)
     hdul[0].data = datamasked
     hdul.writeto(output_fits, overwrite=True)
 
     return 0
 
-def mask_duplicated(input_fits, output_fits, sext_catalog, segmentation_fits, background_fits):
+def mask_duplicated(input_fits, output_fits, sext_catalog, segmentation_fits, \
+    background_fits, format_cat='FITS_LDAC'):
+    """_summary_
+
+    Args:
+        input_fits (_type_): _description_
+        output_fits (_type_): _description_
+        sext_catalog (_type_): _description_
+        segmentation_fits (_type_): _description_
+        format_cat (str, optional): _description_. Defaults to 'FITS_LDAC'.
+
+    Returns:
+        _type_: _description_
+    """
+
     fits_name = os.path.split(input_fits)[1].replace('.fits', '')
     
     # segmentation image
@@ -266,14 +281,17 @@ def mask_duplicated(input_fits, output_fits, sext_catalog, segmentation_fits, ba
     # background image
     back = mcFits(background_fits)
     back_data = back.data.astype(np.uint16)
+
+
     # Reading text format SExtractor catalog
-    data_sex = read_sext_catalog(sext_catalog)
+    data_sex = read_sext_catalog(sext_catalog, format=format_cat)
+    data_sex = pd.DataFrame(data_sex)
 
     # Filtering duplicated sources
-    mask = get_duplicated(data_sex)
+    mask = get_duplicated(sext_catalog, format=format_cat)
     print(f"Duplicated number of sources = {mask.size}")
     
-    numb = data_sex['NUMBER'][mask].astype(int)
+    numb = data_sex['NUMBER'][mask]
 
     ##### --------- Masking duplicated sources -------- #####
     mask = np.zeros(segdata.shape)
@@ -285,10 +303,11 @@ def mask_duplicated(input_fits, output_fits, sext_catalog, segmentation_fits, ba
     data = hdul[0].data
     # replacing duplicated sources with background area given by their
     # segmentation areas
+    # datamasked = np.where(mask, int(np.median(data)), data)
     datamasked = np.where(mask, back_data, data)
     hdul[0].data = datamasked
     hdul.writeto(output_fits, overwrite=True)
-    
+
     return 0
 
 def rotation(input_fits, output_fits):
@@ -340,7 +359,7 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
         path_fits (str): PAth to FITS file.
         border (int, optional): Pixel ignored close to border. Defaults to 15.
         sat_threshold (int, optional): Minimum value for considered pixel as saturated. Defaults to 45000.
-
+    
     Returns:
         dict: Optimal parameters for SExtractor detection.
     """
@@ -372,9 +391,9 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
 
     return params
 
-def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
+def detect_sources(path_fits, sext_conf, cat_out, cat_format='FITS_LDAC', plot_out=None, \
     additional_params={}, photo_aper=None, mag_zeropoint=None, \
-    back_image=False, segment_image=False, border=15, \
+    back_image=False, segment_image=False, aper_image=False, border=15, \
     sat_threshold=45000, verbose=True):
     """_summary_
 
@@ -397,62 +416,15 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
     """
     
     o_fits = mcFits(path_fits, border=border)
-    fits_par = o_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
-    pixscale = fits_par['INSTRSCL']
-    # exptime = fits_par['EXPTIME']
-    fwhm_arcs = float(fits_par['FWHM']) * float(pixscale)
-    
-    # Adtitional ouput info
-    back_path = path_fits.replace('.fits', '_back.fits')
-    segm_path = path_fits.replace('.fits', '_segment.fits')
-    
-    # SExtractor parameters    
-    params = {}
-    if back_image and segment_image:
-        params['CHECKIMAGE_TYPE'] = 'BACKGROUND,SEGMENTATION'
-        params['CHECKIMAGE_NAME'] = f'{back_path},{segm_path}'
-    elif back_image:
-        params['CHECKIMAGE_TYPE'] = 'BACKGROUND'
-        params['CHECKIMAGE_NAME'] = f'{back_path}'
-    elif segment_image:
-        params['CHECKIMAGE_TYPE'] = 'SEGMENTATION'
-        params['CHECKIMAGE_NAME'] = f'{segm_path}'
-    
-    cmd = f"source-extractor -c {sext_conf} -CATALOG_NAME {cat_out} -PIXEL_SCALE {pixscale} -SEEING_FWHM {fwhm_arcs} "
-    if photo_aper:
-        cmd += f"-PHOT_APERTURES {photo_aper} "
-    
-    if mag_zeropoint:
-        cmd += f"-MAG_ZEROPOINT {mag_zeropoint} "
-    # Aditional parameters passed as arguments. They overwrite previous values
-    s_params = sext_params_detection(path_fits, border, sat_threshold=sat_threshold)
-    for k, v in s_params.items():
-        params[k] = v
-    
-    # Tuning default parameters
-    for k, v in additional_params.items():
-        params[k] = v
-    
-    # Formatting parameters to command line syntax
-    com_params = [f'-{k} {v}' for k, v in params.items()]
-    
-    # adding parameters to command
-    cmd = cmd + ' '.join(com_params)
-    
-    # last parameter for command
-    cmd = cmd + f' {path_fits}'
 
-    if verbose:
-        print(cmd)
-    
-    res = execute_command(cmd)
-
-    if res.returncode:
-        print(res)
-        return res.returncode
+    o_fits.detect_sources(sext_conf, cat_out, additional_params=additional_params, \
+        photo_aper=photo_aper, mag_zeropoint=mag_zeropoint, \
+        back_image=back_image, segment_image=segment_image, \
+        aper_image=aper_image, verbose=verbose)
     
     if plot_out:
-        data_cat = read_sext_catalog(cat_out)
+        data_cat = read_sext_catalog(cat_out, format=cat_format)
+        data_cat = pd.DataFrame(data_cat)
         x = data_cat['X_IMAGE']
         y = data_cat['Y_IMAGE']
         
@@ -460,12 +432,12 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
         print(stats)
 
         title_temp = "{}, {} ({} s, STD/MEAN = {})"
-        title = title_temp.format(fits_par['OBJECT'], fits_par['DATE-OBS'], \
-            fits_par['EXPTIME'], round(stats['STD/MEAN'], 3))
-        plotFits(path_fits, plot_out, title=title, coords=[x, y], \
-            ref_coords='pixel', astroCal=False, color='red', \
+        title = title_temp.format(o_fits.header['OBJECT'], o_fits.header['DATE-OBS'], \
+            o_fits.header['EXPTIME'], round(stats['STD/MEAN'], 3))
+
+        o_fits.plot(outputImage=plot_out, title=title, \
+            coords=[x, y], ref_coords='pixel', color='red', \
             dictParams={'aspect':'auto', 'vmin': 1, 'stretch': 'power', 'invert': True})    
-            # dictParams={'aspect':'auto', 'vmin': 1, 'invert': True}, format='png')
 
     return 0
 
@@ -586,7 +558,7 @@ def astrocal(path_fits, blazar_file_path, coords_csv, exclude_border=15, tol_pix
         print(result)
         return result.returncode
 
-def inner_detections(path_fits, cat, border=15):
+def inner_detections(path_fits, cat, border=15, format_cat='FITS_LDAC'):
     """_summary_
 
     Args:
@@ -606,7 +578,8 @@ def inner_detections(path_fits, cat, border=15):
     exptime = input_header['EXPTIME']
     
     # Reading text format SExtractor output catalog
-    data = read_sext_catalog(cat)     
+    data = read_sext_catalog(cat, format=format_cat)     
+    data = pd.DataFrame(data)
 
     # Getting inner FITS area (inside borders of image)
     x = data['X_IMAGE']
@@ -617,7 +590,8 @@ def inner_detections(path_fits, cat, border=15):
     
     return data[inner_sources]
 
-def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol_pixs=10, crotation=3):
+def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
+    format_cat='FITS_LDAC', border=15, tol_pixs=10, crotation=3):
     # Reading FITS file
     input_fits = mcFits(path_fits)
     input_head = input_fits.header
@@ -656,12 +630,15 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
     plot_out = root + '_first_sext_detection.png'
     res_detection = detect_sources(path_fits, sext_conf, cat, \
         plot_out=plot_out, back_image=True, segment_image=True, \
-        border=border)
+        border=border, additional_params=sext_params_detection(path_fits))
     if res_detection:
         message = f'ASTROCALIBRATION,ERROR,"Could not get sources for {path_fits}"'
         print(message)
         return 2
-    
+    # root, ext = os.path.splitext(path_fits)
+    # plot_out_path = f'{root}_detection_sext.png'
+    # plot_cat(path_fits, plot_out_path, cat, astro_coords=False, \
+    # cat_format='FITS_LDAC', color='red', title='SExtractor astrocalib detections')
     segmentation_fits = root + '_segment.fits'
     background_fits = root + '_back.fits'
     
@@ -670,22 +647,26 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
     segment_png = root + '_segmentation.png'
     title = 'Segmentation for OBJECT={}, EXPTIME={}, DATE-OBS={}'
     title = title.format(fits_object, exptime, dateobs)
-    plotFits(segmentation_fits, segment_png, title=title)
+    seg_fits = mcFits(segmentation_fits)
+    seg_fits.plot(segment_png, title=title)
+    # plotFits(segmentation_fits, segment_png, title=title)
 
     # background image
     back_png = root + '_background.png'
     title = 'Background for OBJECT={}, EXPTIME={}, DATE-OBS={}'
     title = title.format(fits_object, exptime, dateobs)
     try:
-        plotFits(background_fits, back_png, title=title)
+        back_fits = mcFits(background_fits)
+        back_fits.plot(back_png, title=title)
+        # plotFits(background_fits, back_png, title=title)
     except ValueError:
         print(f'ASTROCALIBRATION,WARNING,"Problems plotting blackground FITS {background_fits}"')
 
     # masking duplicated sources
     clean_fits = root + '_clean.fits'
     
-    # res_masking = mask_duplicated(path_fits, clean_fits, cat_image, segmentation_fits, back_fits)
-    res_masking = mask_duplicated_simple(path_fits, clean_fits, cat, segmentation_fits)
+    res_masking = mask_duplicated(path_fits, clean_fits, cat, \
+        segmentation_fits, background_fits, format_cat=format_cat)
     if res_masking:
         message = 'ASTROCALIBRATION,ERROR,"Error masking duplicated sources in {}"'
         print(message.format(path_fits))
@@ -706,13 +687,16 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
     
     clean_rotated_png = root_cf + '_rotated.png'
     title = f'{fits_object} {dateobs} {exptime}s no-duplicated and rotated'
-    plotFits(clean_rotated_fits, clean_rotated_png, title=title)
+    cr_fits = mcFits(clean_rotated_fits)
+    cr_fits.plot(clean_rotated_png, title=title)
+    # plotFits(clean_rotated_fits, clean_rotated_png, title=title)
     
     root_crf, ext_crf = os.path.splitext(clean_rotated_fits)
     cat = root_crf + '.cat'
     all_detect_sext_png = root_crf + '_all_detect_sext.png'
     res = detect_sources(clean_rotated_fits, sext_conf, cat, \
-        plot_out=all_detect_sext_png, border=border)
+        plot_out=all_detect_sext_png, border=border, \
+        additional_params=sext_params_detection(path_fits))
     if res:
         message = 'ASTROCALIBRATION,ERROR,"Error detecting sources in {}"'
         print(message.format(clean_rotated_fits))
@@ -722,11 +706,11 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
         # -------------- Astrocalibrating BLAZAR -------------
         # Filtering sources too close to FITS limits
         data_sext_filtered = inner_detections(clean_rotated_fits, cat, border)
-        if len(data_sext_filtered['NUMBER']) < 3:
+        n_sources = len(data_sext_filtered.index)
+        if n_sources < 3:
             message = 'ASTROCALIBRATION,WARNING,"Low number of sources ({}) in {}".'
-            print(message.format(len(data_sext_filtered['NUMBER']), clean_rotated_fits))
+            print(message.format(n_sources, clean_rotated_fits))
         
-        n_sources = data_sext_filtered['NUMBER'].size
         print(f"Number of sources after filtering = {n_sources}")
 
         # Plotting inner sources...
@@ -734,10 +718,13 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
         inner_detect_sext_png = root_crf +  '_inner_detect_sext.png'
         print('Out PNG ->', inner_detect_sext_png)
         title_plot = f'SExtractor astrocalibration sources in {fits_object} {dateobs} {exptime}s'
-        plotFits(clean_rotated_fits, inner_detect_sext_png, title=title_plot, \
+        cr_fits.plot(inner_detect_sext_png, title=title_plot, \
             ref_coords='pixel', color='magenta', \
-            coords=(data_sext_filtered['X_IMAGE'], data_sext_filtered['Y_IMAGE'])) # , \
-            # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
+            coords=(data_sext_filtered['X_IMAGE'], data_sext_filtered['Y_IMAGE']))
+        # plotFits(clean_rotated_fits, inner_detect_sext_png, title=title_plot, \
+        #     ref_coords='pixel', color='magenta', \
+        #     coords=(data_sext_filtered['X_IMAGE'], data_sext_filtered['Y_IMAGE'])) # , \
+        #     # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
 
         # get better SExtractor detections for astrocalibration
         df_sorted = get_brilliant_sources(pd.DataFrame(data_sext_filtered), exptime)    
@@ -748,16 +735,19 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
         cat_sort_filtered = root_crf + '_sorted_filtered.cat'
 
         # Writing to file (needed for WCSTools astrometric calibration)
-        df_sorted.to_csv(cat_sort_filtered, index=False, sep=' ', header=False)
+        df_sorted.to_csv(cat_sort_filtered, index=False, sep=' ', header=False, columns=['X_IMAGE', 'Y_IMAGE'])
 
         # Plotting selected brilliant sources
         out_detect_sext_png = root_crf + '_detect_sext.png'
         print('Out PNG ->', out_detect_sext_png)
         title_plot = f'Valid astrocalibration sources in {fits_object} {dateobs} {exptime}s'
 
-        plotFits(clean_rotated_fits, out_detect_sext_png, title=title_plot, \
+        cr_fits.plot(out_detect_sext_png, title=title_plot, \
             coords=(df_sorted['X_IMAGE'], df_sorted['Y_IMAGE']), \
-            ref_coords='pixel', color='green') #, dictParams={'aspect':'auto', 'invert':'True'})
+            ref_coords='pixel', color='green')
+        # plotFits(clean_rotated_fits, out_detect_sext_png, title=title_plot, \
+        #     coords=(df_sorted['X_IMAGE'], df_sorted['Y_IMAGE']), \
+        #     ref_coords='pixel', color='green') #, dictParams={'aspect':'auto', 'invert':'True'})
 
         # # Astrometric calibration
         # print("\tUsing new central FITS coordinates (Closest MAPCAT source)")
@@ -774,7 +764,7 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
         # -------------- Astrocalibrating STAR --------------
         # getting most brilliant source. This is our STAR
         print(f'cat = {cat}')
-        dt_star = select_central_star(path_fits, cat)
+        dt_star = select_central_star(path_fits, cat, format_cat=format_cat)
 
         print(f'Central stars = {dt_star}')
         
@@ -787,9 +777,12 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
 
         print(f'Most Brilliant star = ({x_star}, {y_star}) (distance in pixels to center = {dist_pix}')
         
-        plotFits(clean_rotated_fits, 'selected_star.png', title='SELECTED STAR', \
+        cr_fits.plot('selected_star.png', title='SELECTED STAR', \
             ref_coords='pixel', color='magenta', \
             coords=(dt_star['X_IMAGE'].values, dt_star['Y_IMAGE'].values))
+        # plotFits(clean_rotated_fits, 'selected_star.png', title='SELECTED STAR', \
+        #     ref_coords='pixel', color='magenta', \
+        #     coords=(dt_star['X_IMAGE'].values, dt_star['Y_IMAGE'].values))
         
         # get best calibration of the night
         calibration_dir = "/".join(path_fits.split("/")[:-2])
@@ -930,7 +923,8 @@ def center_coordinates(pixel_obj_coords, deg_astro_coords, pixel_fits_size, arcs
     
     return deg_central_coords
     
-def select_central_star(fits_path, cat_path, inner_pix_radius=100):
+def select_central_star(fits_path, cat_path, format_cat='FITS_LDAC', \
+    inner_pix_radius=100):
     """
     Return the most brilliant star closer than 'inner_pix_radius' 
     to center of 'fits_path', detected and registered in text format catalog
@@ -948,7 +942,8 @@ def select_central_star(fits_path, cat_path, inner_pix_radius=100):
     head = mcFits(fits_path).header
 
     # Reading text format SExtractor output catalog
-    dc = read_sext_catalog(cat_path)
+    dc = read_sext_catalog(cat_path, format=format_cat)
+    dc = pd.DataFrame(dc)
 
     # computing distances to center pixels image
     distances = np.sqrt(np.power(dc['X_IMAGE'] - head['NAXIS1'] / 2, 2) + \
@@ -1051,16 +1046,298 @@ def query_external_catalog(path_fits, catalog={}):
             title_temp = '{}: OBJECT={}, DATE-OBS={}, EXPTIME={} s'
             title = title_temp.format(cat_name, astro_header['OBJECT'], \
                 astro_header['DATE-OBS'], astro_header['EXPTIME'])
-            plotFits(path_fits, cat_out_png, title=title, \
-                coords=coords, astroCal=True, color='green', \
-                dictParams={'aspect':'auto', 'invert':'True'})
+            try:
+                astro_fits.plot(cat_out_png, title=title, \
+                    coords=coords, astroCal=True, color='green', \
+                    dictParams={'aspect':'auto', 'invert':'True'})
+                # plotFits(path_fits, cat_out_png, title=title, \
+                #     coords=coords, astroCal=True, color='green', \
+                #     dictParams={'aspect':'auto', 'invert':'True'})
+            except:
+                print(f"ASTROCALIBRATION,WARNING,'Plotting {cat_out_png}'")
         except TypeError:
             return 1
     
     return 0
 
+def match_sources(ra1, dec1, ra2, dec2, num_close=1):
+    """
+    It matches catalog1 and catalog2. Coordinates for astrometric sky coordinates are given 
+    by key_coord dictionaries (keywords 'RA' and 'DEC'). It returns num_close closest sources 
+    in cat2 for each source in cat1.
+    
+    Args:
+        ra1 (np.array): First catalog 'RA' coordinates (in degrees).
+        dec1 (np.array): First catalog 'DEC' coordinates (in degrees).
+        ra2 (np.array): Second catalog 'RA' coordinates (in degrees).
+        dec2 (np.array): Second catalog 'DEC' coordinates (in degrees).
+        num_close (int, optional): Number of closest sources in second set of coordinates 
+            for each source first set of coordinates. Default: 1.
+        
+    Returns:
+        tuple of tuples: (index/es in cat2 closest to cat1 ones, 2D-distances, 3d-distances).
+            Each element is a tuple. Their len is given by cat1 sources.
+    """
+    c1 = SkyCoord(ra = ra1 * u.degree, dec = dec1 * u.degree)
+    # sextractor catalog
+    c2 = SkyCoord(ra = ra2 * u.degree, dec = dec2 * u.degree)
 
-# ------------------------ MAIN FUNCTION SECTION -----------------------------
+    return match_coordinates_sky(c1, c2, nthneighbor=num_close)
+
+def check_saturation(sext_flags):
+    """Check for saturated SExtractor FLAGS in 'sext_flags'.
+    
+    As SExtractor manual says, if some source pixel si saturated then FLAGS take
+    3th bit of FLAG to 1. That is, value 4 = 2^2 (3th bit) is activated
+    
+    Args:
+        sext_flags (np.array): SExtractor FLAGS array.
+        
+    Returns:
+        np.array of booleans: True means saturated FLAG.
+    """
+    # Binary codification and bit check
+    return np.array([f"{format(flag, 'b') :0>8}"[-3] == '1' for flag in sext_flags], dtype=bool)
+    
+
+def assoc_sources(catalog, df_mapcat, max_deg_dist=0.006, suffix='O'):
+    """_summary_
+
+    Args:
+        catalog (_type_): _description_
+        df_mapcat (_type_): _description_
+        max_deg_dist (float, optional): _description_. Defaults to 0.006.
+        source_type (str, optional): _description_. Defaults to 'O'.
+
+    Returns:
+        _type_: _description_
+    """
+    df_mapcat = df_mapcat.reset_index()
+    
+    # Loading FITS_LDAC format SExtractor catalog
+    data = read_sext_catalog(catalog, format='FITS_LDAC')
+    print('Assoc_sources = ', data.columns.values)
+    # Matching SExtractor detections with closest ORDINARY MAPCAT sources: 
+    # Values returned: matched source indexes, 2D-distances, 3D-distances
+    ra1 = df_mapcat['ra2000_mc_deg'].values
+    dec1 = df_mapcat['dec2000_mc_deg'].values
+    ra2 = data['ALPHA_J2000'].values
+    dec2 =data['DELTA_J2000'].values
+    idx, d2d, d3d = match_sources(ra1, dec1, ra2, dec2, num_close=1)
+
+    # Selecting SExtractor closest sources
+    data = data.iloc[idx]
+    data = data.reset_index()
+
+    print(f'------------ distances = {d2d.deg}')
+    # matching catalog sources
+    data['DISTANCE_DEG'] = list(d2d.deg)
+
+    # Concatenating
+    df_merge = pd.concat([df_mapcat, data], axis=1)
+    
+    # getting close enough matches
+    fboo = df_merge['DISTANCE_DEG'] < max_deg_dist
+    if fboo.sum() == 0:  # no near sources
+        print(df_merge[['IAU_name_mc', 'ra2000_mc_deg', 'dec2000_mc_deg', 'ALPHA_J2000', 'DELTA_J2000', 'DISTANCE_DEG']])
+    df_merge = df_merge[fboo]
+
+
+    # renaming columns
+    cols = {k: f'{k}_{suffix}' for k in df_merge.columns.values}
+    df_merge.rename(columns = cols, inplace = True)
+
+    print(f' --------- Columnas para el merge del tipo {suffix} = {df_merge.columns.values}')
+
+    return df_merge
+
+def merge_mapcat_sextractor(cat, df_mc, input_fits, max_deg_dist=0.006):
+    """_summary_
+
+    Args:
+        cat (_type_): _description_
+        df_mc_o (_type_): _description_
+        input_fits (_type_): _description_
+        max_deg_dist (float, optional): _description_. Defaults to 0.006.
+
+    Returns:
+        _type_: _description_
+    """
+    root, ext = os.path.splitext(input_fits) 
+    i_fits = mcFits(input_fits)
+    header = i_fits.header
+
+    data_match_o = assoc_sources(cat, df_mc, suffix='O')
+
+    f_source = data_match_o['IAU_name_mc_O'].str.len() > 0
+    # if len(df_mapcat[f_source].index) == 0:
+    if f_source.sum() == 0:
+        print(data_match_o[['id_mc_O', 'IAU_name_mc_O', 'DISTANCE_DEG_O']])
+        print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
+        return 6 
+    else:
+        print(f'Target = {data_match_o[f_source]}') 
+    
+    # Plotting MAPCAT sources
+    if len(df_mc.index) > 0:
+        mc_ra = data_match_o['ra2000_mc_deg_O'].values
+        mc_dec = data_match_o['dec2000_mc_deg_O'].values 
+        sources_mapcat_png = f'{root}_mapcat_sources.png'
+        title_temp = "{}, {} ({} s)"
+        title = title_temp.format(header['OBJECT'], header['DATE-OBS'], header['EXPTIME'])
+        i_fits.plot(sources_mapcat_png, title=title, astroCal=True, color='magenta', \
+            coords=(mc_ra, mc_dec), dictParams={'aspect':'auto', 'invert':'True'})
+        print('Out PNG ->', sources_mapcat_png)
+    else:
+        print(f'ERROR: No closer enough MAPCAT sources found for this input FITS: {input_fits}')
+        return 7
+    
+    # Printing info about MAPCAT-SExtractor sources
+    str_match_mapcat = " MAPCAT (name, ra, dec, Rmag, Rmagerr) = ({}, {}, {}, {}, {})"
+    str_match_sext = "SExtractor (ra, dec, mag_auto, magerr_auto) = ({}, {}, {}, {})"
+    str_dist = "Distance = {}\n-----------------------"
+    for j, row in data_match_o.iterrows():
+        print(str_match_mapcat.format(row['name_mc_O'], row['ra2000_mc_deg_O'], row['dec2000_mc_deg_O'], \
+            row['Rmag_mc_O'], row['Rmagerr_mc_O']))
+        print(str_match_sext.format(row['ALPHA_J2000_O'], row['DELTA_J2000_O'], \
+            row['MAG_AUTO_O'], row['MAGERR_AUTO_O']))
+        print(str_dist.format(row['DISTANCE_DEG_O']))
+
+    # Extraordinary counterparts location
+    # rough coordinates (relative to ordinary source locations)
+    df_mc['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+    data_match_e = assoc_sources(cat, df_mc, suffix='E')
+
+    if len(data_match_e.index) != len(data_match_o.index):
+        print('PHOTOMETRY,ERROR,"Different number of ORDINARY and EXTRAORDINARY sources."')
+        return 9
+
+    data_matched = pd.concat([data_match_o, data_match_e], axis=1)
+
+    return data_matched
+
+def get_mapcat_sources(input_fits, blazar_path):
+    """Search for MAPCAT sources included in area covered by FITS.
+
+    Args:
+        input_fits (str): FITS fille path.
+        blazar_path (str): Path of file that contains MAPCAT sources.
+
+    Returns:
+        pd.DataFrame: It contains MAPCAT info provided by 'balazar_path'
+            about sources in sky 'input_fits' area.
+    """
+    # RA,DEC limits...
+    sky_limits = get_radec_limits(input_fits)
+    
+    # getting blazars info inside FITS sky area
+    blazars_data = read_blazar_file(blazar_path)
+    df_mc = detections_inside(blazars_data, \
+        (sky_limits['ra_min'], sky_limits['ra_max']), \
+        (sky_limits['dec_min'], sky_limits['dec_max']))
+    
+    return df_mc
+
+def get_radec_limits(path_fits):
+    """It computes alpha_J2000, delta_J2000 limits for astrometric calibrated FITS. 
+    
+    Args:
+        path_fits (str): FITS path.
+
+    Returns:
+        dict: dictionary with keywords 'ra_min', 'ra_max', 'dec_min', dec_max' in degrees.
+    """
+    fits = mcFits(path_fits)
+    com1 = f'xy2sky -d {path_fits} 0 0'
+    com2 = f'xy2sky -d {path_fits} {fits.header["NAXIS1"]} {fits.header["NAXIS2"]}'
+
+    print(f'{com1}')
+    proc1 = subprocess.Popen(com1, shell=True, stdout=subprocess.PIPE)
+    out1 = proc1.stdout.read().decode('utf-8')[:-2]
+    data1 = [float(d) for d in out1.split()[:2]]
+    print(f'data1 = {data1}')
+   
+    print(f'{com2}')
+    proc2 = subprocess.Popen(com2, shell=True, stdout=subprocess.PIPE)
+    out2 = proc2.stdout.read().decode('utf-8')[:-2]
+    data2 = [float(d) for d in out2.split()[:2]]
+    print(f'data2 = {data2}')
+   
+
+    ras = [data1[0], data2[0]]
+    decs = [data1[1], data2[1]]
+
+    return {'ra_min': min(ras), 'ra_max': max(ras), 'dec_min': min(decs), 'dec_max': max(decs)}
+
+def detections_inside(data, ra_limits, dec_limits, \
+    keywords={'RA': 'ra2000_mc_deg', 'DEC': 'dec2000_mc_deg'}):
+    """Filter sources given by 'data' inside rectangular limits given by
+    ra_limits and dec_limits.
+
+    Args:
+        data (pd.DataFrame): source info DataFrame.
+        ra_limits (tuple/list): (ra_min, ra_max) in degrees.
+        dec_limits (tuple/list): (dec_min, dec_max) in degrees.
+        keywords (dict): 'RA', 'DEC' keywords for 'data' sky coordinates.
+    Returns:
+        pd.DataFrame: DataFrame with sources inside sky limits.
+    """
+    ##### ------ Searching for MAPCAT sources inside limits FITS coordinates ---- #####
+    ra_min, ra_max = ra_limits[0], ra_limits[1]
+    dec_min, dec_max = dec_limits[0], dec_limits[1]
+
+    ra = keywords['RA']
+    dec = keywords['DEC']
+    dt = data.loc[data[ra] > ra_min]
+    dt = dt.loc[dt[ra] < ra_max]
+    dt = dt.loc[dt[dec] > dec_min]
+    dt = dt.loc[dt[dec] < dec_max]
+    
+    return dt
+
+def plot_cat(path_fits, plot_out_path, cat, astro_coords=False, \
+    cat_format='FITS_LDAC', color='red', title=None, border=15, sat_threshold=45000):
+    """Plot data given by 'cat' over 'path_fits'
+
+    Args:
+        path_fits (str): _description_
+        plot_out_path (str): _description_
+        cat (str): _description_
+        astro_coords (bool): If True, (ALPHA_J2000, DELTA_J2000) coordinates 
+            are plotted. Else (X_IMAGE, Y_IMAGE). Defaults to False.
+        cat_format (str, optional): Output SExtractor valid format ('ASCII' or 'FITS_LDAC'). Defaults to 'ASCII'.
+    
+    Returns:
+        int: 0, if everything was fine.
+    """
+    # Read input FITS
+    i_fits = mcFits(path_fits)
+    fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
+    
+    # Plotting detections
+    data_cat = read_sext_catalog(cat, format=cat_format)
+    
+    coords = [data_cat['X_IMAGE'], data_cat['Y_IMAGE']] 
+    ref_coords = 'pixel'
+    astrocal = False
+    if astro_coords:
+        coords = [data_cat['ALPHA_J2000'], data_cat['DELTA_J2000']] 
+        ref_coords = 'world'
+        astrocal = True
+    
+    stats = statistics(path_fits, border=border, sat_threshold=sat_threshold)
+
+    if not title:
+        title = f"{fits_par['OBJECT']}, {fits_par['DATE-OBS']} ({fits_par['EXPTIME']} s, STD/MEAN = {round(stats['STD/MEAN'], 3)})"
+    
+    i_fits.plot(plot_out_path, title=title, coords=coords, \
+        ref_coords=ref_coords, astroCal=astrocal, color=color, \
+        dictParams={'aspect':'auto', 'vmin': 1, 'stretch': 'power', 'invert': True})    
+        # dictParams={'aspect':'auto', 'vmin': 1, 'invert': True}, format='png')
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(prog='iop3_astrometric_calibration.py', \
     conflict_handler='resolve',
@@ -1092,7 +1369,7 @@ def main():
        action="store",
        dest="tol_pixs",
        type=int,
-       default=10,
+       default=2,
        help="Tolerance for distance in pixels for matching between objects in external catalog and FITS detections. [default: %(default)s].")
     parser.add_argument("--crotation",
        action="store",
@@ -1140,9 +1417,8 @@ def main():
         print(f'ASTROCALIBRATION,INFO,"Calibration done before for {final_fits}"')
         return -1
     
-    # Using input path for getting observation night date... (Is this the best way or should I read FITS header?)
-    dt_run = re.findall('/(\d{6})/', copy_input_fits)[0]
-    date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
+    # dt_run = re.findall('/(\d{6})/', copy_input_fits)[0]
+    # date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
     # fits_name = os.path.split(input_fits)[1].replace('.fits', '')
 
     # Setting current working directory
@@ -1152,13 +1428,17 @@ def main():
     # Getting header informacion
     i_fits = mcFits(copy_input_fits)
     input_head = i_fits.header
-    
+
     obj = input_head['OBJECT']
     exptime = input_head['EXPTIME']
 
     text = 'ASTROCALIBRATION,INFO,"OBJECT and Polarization angle = {}, EXPTIME = {} s."'
     print(text.format(obj, exptime))
 
+    # Using input FITS header DATE-OBS for getting observation night date
+    dt_run = i_fits.run_date()
+    date_run = dt_run.strftime("%Y-%m-%d")
+    
     # Reading blazar CSV file
     blazar_path = os.path.join(args.config_dir, BLAZAR_FILENAME)
     # blazar_data = read_blazar_file(blazar_path)
@@ -1176,16 +1456,18 @@ def main():
         print(message.format(min_deg_dist))
         return 4
 
-    mc_aper = closest_iop3_source['aper_mc']
-    print(f'ASTROCALIBRATION,INFO,"SExtractor aperture = {mc_aper} pixels"')
+    # mc_aper = closest_iop3_source['aper_mc']
+    # if np.isnan(np.array([mc_aper])[0]):
+    #     mc_aper = math.ceil(2 * input_head['FWHM'])
+    # print(f'ASTROCALIBRATION,INFO,"SExtractor aperture = {mc_aper} pixels"')
 
     # Input image PNG
-    input_fits_png = root + '.png'
+    input_fits_png = f'{root}.png'
     print('Original FITS PNG= {}'.format(input_fits_png))
     title = "OBJECT = {}, EXPTIME = {} s, DATE-OBS = {}"
     title = title.format(input_head['OBJECT'], input_head['EXPTIME'], input_head['DATE-OBS'])
     print(text.format(input_head['OBJECT'], input_head['EXPTIME']))
-    plotFits(copy_input_fits, input_fits_png, title=title)
+    i_fits.plot(input_fits_png, title=title)
     
     # file names (Please: pay attention to use of relative paths given by 'fits_name')
     clean_fits = f'{root}_clean.fits'
@@ -1199,7 +1481,8 @@ def main():
     inner_detect_sext_png = root_crf + '_inner_detect_sext.png'
     out_detect_sext_png = root_crf + '_detect_sext.png'
     
-    sext_conf = os.path.join(args.config_dir, 'daofind.sex')
+    # sext_conf = os.path.join(args.config_dir, 'daofind.sex')
+    sext_conf = os.path.join(args.config_dir, 'sex.conf')
     if args.fits_astrocal is None: # Not FITS model
         res_cal = calibrate(copy_input_fits, sext_conf, blazar_path, \
             border=args.border_image, tol_pixs=args.tol_pixs, \
@@ -1225,13 +1508,7 @@ def main():
                     hdr[k] = v
                 else:
                     hdr.append((k, v, ''), end=True)
-    # else: 
-    #     # Working with star
-    #     res_cal = calibrate_star(copy_input_fits, sext_conf, closest_iop3_source, border=args.border_image, overwrite=args.overwrite)  
-    #     if res_cal:
-    #         print(f'ASTROCALIBRATION,ERROR,"Could not calibrate astrometrically FITS {clean_rotated_fits}"')
-    #         return 7
-
+    
     # Checking astrometric calibrated ouput FITS
     if not os.path.exists(astrom_out_fits):
         fits_cal = os.path.abspath(astrom_out_fits)
@@ -1279,16 +1556,100 @@ def main():
    
     os.remove(tmp_rotation) 
    
-    # Final calibnrated FITS
-    i_fits = mcFits(final_fits)
-    astro_header = i_fits.header
+    # Update header with blazar_name
+    f_fits = mcFits(final_fits)
+    blazar_cards = [('BLZRNAME', closest_iop3_source['IAU_name_mc'])]
+    f_fits.update_header(cards=blazar_cards)
+    
+    #------------------------ Only for images given by Ivan for testing --------------
+    # Re-open final calibrated FITS
+    f_fits = mcFits(final_fits)
+    astro_header = f_fits.header
    
     # Plotting final calibrated FITS
     final_png = final_fits.replace('.fits', '_final.png')
     title = '{}, {}, {} rotated astrocalib'
     title = title.format(astro_header['DATE-OBS'], astro_header['OBJECT'], \
         astro_header['EXPTIME'])
-    plotFits(final_fits, final_png, title=title)
+    f_fits.plot(final_png, title=title)
+
+    # --------------- Compute FWHM using non-saturated calibrators --------- #
+    root, ext = os.path.splitext(final_fits)
+    cat = f'{root}_astrocal.cat'
+    sext_conf = os.path.join(args.config_dir, 'sex.conf')
+    
+    res = f_fits.detect_sources(sext_conf, cat, \
+        additional_params=sext_params_detection(final_fits))
+    if res:
+        print('PHOTOCALIBRATION,ERROR,"SExtractor did not work properly"')
+        return 6
+    
+    # Blazar data
+    df_mc_o = get_mapcat_sources(final_fits, blazar_path)
+    print(df_mc_o)
+    # Merging data: MAPCAT & SExtractor
+    data_matched = merge_mapcat_sextractor(cat, df_mc_o, final_fits, max_deg_dist=0.006)
+
+    print('Data macthed info')
+    print(data_matched)
+
+    # MAPCAT calibrators
+    try:
+        num_mapcat_sources = len(data_matched.index)
+    except:
+        print(f'Data matched result = {data_matched}')
+        return 9
+    source_problem = data_matched['IAU_name_mc_O'].str.len() > 0
+    if num_mapcat_sources == 1: # Star
+        cards = f_fits.fwhm_from_cat(cat, cat_format='FITS_LDAC')
+        f_fits.update_header(cards)
+
+    # Re-open final FITS
+    f_fits = mcFits(final_fits)
+    astro_header = f_fits.header
+
+    calibrators = data_matched[~source_problem]
+    # If there are IOP3 calibrators in field covered by FITS
+    if len(calibrators.index) > 0:        
+        # getting saturated calibrators
+        ord_sat = check_saturation(calibrators['FLAGS_O'])    
+        ext_sat = check_saturation(calibrators['FLAGS_E'])    
+        # If ordinary or extraordinary counterpart is saturated, source 
+        # is considered as saturated.
+        sat_calibrator = np.logical_or(ord_sat, ext_sat)
+        num_sat = sat_calibrator.sum()
+        
+        # Computing ZEROPOINT
+        root, ext = os.path.splitext(final_fits)
+        calibrators_png = root + '_photo-calibrators.png'
+
+        # Computing FWHM
+        # taking non-saturated calibrators
+        fwhm_images = np.concatenate([calibrators['FWHM_IMAGE_O'][~ord_sat].values, \
+            calibrators['FWHM_IMAGE_E'][~ext_sat].values], axis=None)
+        flags = np.concatenate([calibrators['FLAGS_O'][~ord_sat].values, \
+            calibrators['FLAGS_E'][~ext_sat].values], axis=None)
+        ellip = np.concatenate([calibrators['ELLIPTICITY_O'][~ord_sat].values, \
+            calibrators['ELLIPTICITY_E'][~ext_sat].values], axis=None)
+        cstar = np.concatenate([calibrators['CLASS_STAR_O'][~ord_sat].values, \
+            calibrators['CLASS_STAR_E'][~ext_sat].values], axis=None)
+
+        cards = []
+        if fwhm_images.size > 0:
+            cards = [('SOFTDET', 'SExtractor', 'Source detection software'), \
+            ('FWHM', round(fwhm_images.mean(), 2), 'Mean pix FWHM'), \
+            ('FWHMSTD', round(fwhm_images.std(), 2), 'Std pix FWHM'), \
+            ('FWNSOURC', fwhm_images.size, 'FWHM number of sources used'), \
+            ('FWHMFLAG', flags.max(), 'SExtractor max source FLAG'), \
+            ('FWHMELLI', round(ellip.max(), 2), 'SExtractor max ELLIP'), \
+            ('PIXSCALE', i_fits.header['INSTRSCL'], 'Scale [arcs/pix]'),
+            ('CSTARMIN', round(cstar.min(), 2), 'SExtractor min CLASS_STAR')]
+        else:
+            # Use filtered SExtractor detections
+            cards = f_fits.fwhm_from_cat(cat, cat_format='FITS_LDAC')
+        
+        # Updating FITS header with computed FWHM 
+        f_fits.update_header(cards)
 
     # Parameters to store...
     # Getting useful info about calibrated fits
