@@ -458,11 +458,15 @@ class mcReduction:
                 print(f"Polarization angle set to -> {pol_angle}")
             
             # flat
-            try:
-                flat = self.masterFLAT[round(float(pol_angle), 1)]
-            except:
-                print(f'self.masterFLAT = {self.masterFLAT}')
-                raise
+            print(pol_angle)
+            if 'R' in str(pol_angle):
+                flat = self.masterFLAT[pol_angle]
+            else:
+                try:
+                    flat = self.masterFLAT[round(float(pol_angle), 1)]
+                except:
+                    print(f'self.masterFLAT = {self.masterFLAT}')
+                    raise
 
             oFLAT = mcFits(flat, border=0)
             data_flat_norm = 1.0 * oFLAT.data / oFLAT.data.max()

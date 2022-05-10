@@ -372,7 +372,7 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
         params['CLEAN'] = 'Y'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
-        params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
+        #params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
     
     if dt['STD/MEAN'] > 2: # noisy
         params['ANALYSIS_THRESH'] = 1.5
@@ -395,6 +395,8 @@ def get_sources(input_fits, sext_conf, add_params={}, threshold_exptime=2, \
             pixscale=2*pixscale
     elif 'T150' in input_fits:
         pixscale=0.232
+        if i_fits.header['NAXIS1']==1024:
+            pixscale=2*pixscale
     exptime = i_fits.header['EXPTIME']
     fwhm_arcs = float(i_fits.header['FWHM']) * float(pixscale)
     
@@ -434,17 +436,31 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
     Returns:
         int: 0, if everything was fine.
     """
-    
     o_fits = mcFits(path_fits, border=border)
-    fits_par = o_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
-    pixscale = fits_par['INSTRSCL']
+    if 'MAPCAT' in path_fits:
+        fits_par = o_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
+        pixscale = fits_par['INSTRSCL']
+    else:
+        fits_par = o_fits.get_data(keywords=['NAXIS1', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
+        if 'T090' in path_fits:
+            pixscale = 0.387
+            if fits_par['NAXIS1']==1024:
+                pixscale=2*pixscale
+        elif 'T150' in path_fits:
+            pixscale = 0.232
+            if fits_par['NAXIS1']==1024:
+                pixscale=2*pixscale
+    print(fits_par['FWHM'])
     # exptime = fits_par['EXPTIME']
     fwhm_arcs = float(fits_par['FWHM']) * float(pixscale)
     
     # Adtitional ouput info
-    back_path = path_fits.replace('.fits', '_back.fits')
-    segm_path = path_fits.replace('.fits', '_segment.fits')
-    
+    if 'fits' in path_fits:
+        back_path = path_fits.replace('.fits', '_back.fits')
+        segm_path = path_fits.replace('.fits', '_segment.fits')
+    else:
+        back_path = path_fits.replace('.fit', '_back.fit')
+        segm_path = path_fits.replace('.fit', '_segment.fit')
     # SExtractor parameters    
     params = {}
     if back_image and segment_image:
@@ -456,7 +472,6 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
     elif segment_image:
         params['CHECKIMAGE_TYPE'] = 'SEGMENTATION'
         params['CHECKIMAGE_NAME'] = f'{segm_path}'
-    
     cmd = f"source-extractor -c {sext_conf} -CATALOG_NAME {cat_out} -PIXEL_SCALE {pixscale} -SEEING_FWHM {fwhm_arcs} "
     if photo_aper:
         cmd += f"-PHOT_APERTURES {photo_aper} "
@@ -465,6 +480,7 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
         cmd += f"-MAG_ZEROPOINT {mag_zeropoint} "
     # Aditional parameters passed as arguments. They overwrite previous values
     s_params = sext_params_detection(path_fits, border, sat_threshold=sat_threshold)
+
     for k, v in s_params.items():
         params[k] = v
     
@@ -480,10 +496,8 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
     
     # last parameter for command
     cmd = cmd + f' {path_fits}'
-
     if verbose:
         print(cmd)
-    
     res = execute_command(cmd)
 
     if res.returncode:
@@ -497,7 +511,6 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
         
         stats = statistics(path_fits, border=border, sat_threshold=sat_threshold)
         print(stats)
-
         title_temp = "{}, {} ({} s, STD/MEAN = {})"
         title = title_temp.format(fits_par['OBJECT'], fits_par['DATE-OBS'], \
             fits_par['EXPTIME'], round(stats['STD/MEAN'], 3))
@@ -586,6 +599,9 @@ def astrocal(path_fits, blazar_file_path, coords_csv, exclude_border=15, tol_pix
             pix_scale=2*pix_scale
     elif 'T150' in path_fits:
         pix_scale=0.232
+        if fits.header['NAXIS1']==1024:
+            pix_scale=2*pix_scale
+        
     date_obs = ''
     if 'DATE-OBS' in fits.header:
         date_obs = fits.header['DATE-OBS']
@@ -597,7 +613,7 @@ def astrocal(path_fits, blazar_file_path, coords_csv, exclude_border=15, tol_pix
     dec_im = nearest_blazar['dec2000_mc_deg']
         
     str_out = 'ASTROCALIBRATION,INFO,"Trying calibration with data: RA = {}, DEC = {}, DATE-OBS = {}, PIX_SCALE = {}"'
-    print(str_out.format(ra_im, dec_im, head['DATE-OBS'], head['INSTRSCL']))
+    print(str_out.format(ra_im, dec_im, head['DATE-OBS'], pix_scale))
 
     # reading 'coord_csv' file
     try:
@@ -616,7 +632,7 @@ def astrocal(path_fits, blazar_file_path, coords_csv, exclude_border=15, tol_pix
     # com_str = "imwcs -wve -d {} -r 0 -y 3 -p {} -j {} {} -h {} -c {} -t 10 -o {} {}"
     matchable_fit = 1
     com_str = "imwcs -wve -a {} -d {} -r 0 -y {} -p {} -j {} {} -h {} -c {} -t {} {}"
-    cmd = com_str.format(crotation, coords_csv, matchable_fit, head['INSTRSCL'], \
+    cmd = com_str.format(crotation, coords_csv, matchable_fit, pix_scale, \
         ra_im, dec_im, len(data_csv), 'tmc', tol_pixs, path_fits)
 
     print("astrometric calibration command")
@@ -673,6 +689,7 @@ def inner_detections(path_fits, cat, border=15):
     return data[inner_sources]
 
 def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol_pixs=10, crotation=3):
+    
     # Reading FITS file
     input_fits = mcFits(path_fits)
     input_head = input_fits.header
@@ -744,15 +761,16 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
         clean_fits = root + '_clean.fits'
     else:
         clean_fits = root + '_clean.fit'
-    # res_masking = mask_duplicated(path_fits, clean_fits, cat_image, segmentation_fits, back_fits)
-    res_masking = mask_duplicated_simple(path_fits, clean_fits, cat, segmentation_fits)
-    if res_masking:
-        message = 'ASTROCALIBRATION,ERROR,"Error masking duplicated sources in {}"'
-        print(message.format(path_fits))
-        return 3
-    
+    if 'MAPCAT' in path_fits:
+        # res_masking = mask_duplicated(path_fits, clean_fits, cat_image, segmentation_fits, back_fits)
+        res_masking = mask_duplicated_simple(path_fits, clean_fits, cat, segmentation_fits)
+        if res_masking:
+            message = 'ASTROCALIBRATION,ERROR,"Error masking duplicated sources in {}"'
+            print(message.format(path_fits))
+            return 3
+    else:
+        shutil.copy(path_fits, clean_fits)
     print("Image without duplicated: {}".format(clean_fits))
-
     root_cf, ext_cf = os.path.splitext(clean_fits)
     clean_png = root_cf + '.png'
     plotFits(clean_fits, clean_png, title=f'{fits_object} {dateobs} {exptime}s without duplicated')
@@ -761,7 +779,7 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
     if 'fits' in path_fits:
         clean_rotated_fits = root_cf + '_rotated.fits'
     else:
-        clean_fits = root + '_clean.fit'
+        clean_rotated_fits = root_cf + '_rotated.fit'
 
     if rotation(clean_fits, clean_rotated_fits):
         message = 'ASTROCALIBRATION,ERROR,"Error rotating FITS {}"'
@@ -925,8 +943,12 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, border=15, tol
             header.remove(k, ignore_missing=True)
         
         # special keywords
-        header.rename_keyword('RA', 'WRA')
-        header.rename_keyword('DEC', 'WDEC')
+        if 'RA' in header:
+            header.rename_keyword('RA', 'WRA')
+            header.rename_keyword('DEC', 'WDEC')
+        else:
+            header.rename_keyword('OBJCTRA', 'WRA')
+            header.rename_keyword('OBJCTDEC', 'WDEC')
         # header['BLANK'] = 32768
 
         # calibration keywords
@@ -1157,7 +1179,7 @@ def main():
     parser = argparse.ArgumentParser(prog='iop3_astrometric_calibration.py', \
     conflict_handler='resolve',
     description='''Main program that perfoms astrometric and photometric calibration for input FITS. ''',
-    epilog='''''')
+    epilog='')
     parser.add_argument("config_dir", help="Configuration parameter files directory")
     parser.add_argument("output_dir", help="Output base directory for FITS calibration")
     parser.add_argument("input_fits", help="Reduced input FITS file")
@@ -1199,14 +1221,6 @@ def main():
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
-    #Transform overwrite parameter properly to boolean
-    if args.overwrite in ('true', 'True', '1', 'y', 'yes', 'Yes'):
-        args.overwrite=True
-    elif args.overwrite in ('false', 'False', '0', 'n', 'no', 'No'):
-        args.overwrite=False
-    else:
-        print("Wrong or no value for --overwrite parameter. Setting it to default (False)")
-        args.overwrite=False
     
     # Checking input parameters
     if not os.path.exists(args.config_dir):
@@ -1229,13 +1243,13 @@ def main():
 
     input_fits = os.path.abspath(args.input_fits)
     copy_input_fits = os.path.join(args.output_dir, os.path.split(input_fits)[1])
-
-
-    # Copy FITS from reduction to calibration/* directory
-    shutil.copy(input_fits, copy_input_fits)
     
+    # Copy FITS from reduction to calibration/* directory
+    print(input_fits, copy_input_fits)
+    shutil.copy(input_fits, copy_input_fits)
+        
     root, ext = os.path.splitext(copy_input_fits)
-
+    print(root)
     if 'fits' in input_fits:
         final_fits = root + '_final.fits'    
     else:
@@ -1246,6 +1260,7 @@ def main():
         return -1
     
     # Using input path for getting observation night date... (Is this the best way or should I read FITS header?)
+    
     dt_run = re.findall('/(\d{6})/', copy_input_fits)[0]
     date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
 
@@ -1269,6 +1284,7 @@ def main():
     
     # getting closest blazar to input FITS centre
     closest_iop3_source, min_deg_dist = closest_blazar(copy_input_fits, blazar_path)
+    
     print('-------Closest IOP3 source-----------')
     print('------------')
     print(closest_iop3_source)
@@ -1297,12 +1313,14 @@ def main():
         clean_fits = f'{root}_clean.fits'
         root_cf, ext = os.path.splitext(clean_fits)
         clean_rotated_fits = root_cf + '_rotated.fits'
-        astrom_out_fits = root_crf + 'w.fits'    
+        
     else:
         clean_fits = f'{root}_clean.fit'
         root_cf, ext = os.path.splitext(clean_fits)
         clean_rotated_fits = root_cf + '_rotated.fit'
-        astrom_out_fits = root_crf + 'w.fits'
+
+    root_crf, ext = os.path.splitext(clean_rotated_fits)
+    astrom_out_fits = root_crf + 'w.fits'
 
     clean_png = f'{root}_clean.png'
     clean_rotated_png = root_cf + '_rotated.png'
@@ -1374,9 +1392,9 @@ def main():
             res = query_external_catalog(astrom_out_fits, query_cat)
             if not res:
                 if 'fits' in clean_rotated_fits:
-                cat_out_pngs[name_cat] = clean_rotated_fits.replace('.fits', f'_{name_cat}.png')
-            else:
-                cat_out_pngs[name_cat] = clean_rotated_fits.replace('.fit', f'_{name_cat}.png')
+                    cat_out_pngs[name_cat] = clean_rotated_fits.replace('.fits', f'_{name_cat}.png')
+                else:
+                    cat_out_pngs[name_cat] = clean_rotated_fits.replace('.fit', f'_{name_cat}.png')
             else:
                 print(f'ASTROCALIBRATON,WARNING,"No data available for {name_cat} external catalog."')
         except EOFError:

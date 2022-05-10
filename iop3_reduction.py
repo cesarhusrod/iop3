@@ -192,7 +192,10 @@ def main():
         
         pol_ang = ''
         if 'INSPOROT' in ff.header:
-            pol_ang = round(float(ff.header['INSPOROT']), 1)
+            try:
+                pol_ang = round(float(ff.header['INSPOROT']), 1)
+            except:
+                pol_ang=ff.header['INSPOROT']
         data_raw_input['POLANGLE'].append(pol_ang)
         
         for s_key in some_raw_keys:
@@ -299,12 +302,12 @@ def main():
         data_masterflats_info['RUN_DATE'].append(date_run)
         pol_ang = ''
         if 'INSPOROT' in mcFLAT.header:
-            if 'R' in mcFLAT.header['INSPOROT']:
-                pol_ang = mcFLAT.header['INSPOROT']
-            else:
+            try:
                 pol_ang = round(float(mcFLAT.header['INSPOROT']), 1)
+            except:
+                pol_ang = mcFLAT.header['INSPOROT']
         else:
-                pol_ang = mcFLAT.header['FILTER']
+            pol_ang = mcFLAT.header['FILTER']
         data_masterflats_info['POLANGLE'].append(pol_ang)
         data_masterflats_info['PLOT'].append(plotFLAT)
         data_masterflats_info['HISTOGRAM'].append(plotFLATHist)
@@ -389,8 +392,10 @@ def main():
         if 'INSPOROT' in mcRED.header:
             pol_ang = round(float(mcRED.header['INSPOROT']), 1)
         else:
-            pol_ang = round(float(mcRED.header['FILTER'][1:]), 1)
-
+            try:
+                pol_ang = round(float(mcRED.header['FILTER'][1:]), 1)
+            except:
+                pol_ang = 99.0
         data_red_out['POLANGLE'].append(pol_ang)
         data_red_out['PLOT'].append(plotSCI)
         data_red_out['HISTOGRAM'].append(plotSCIHist)

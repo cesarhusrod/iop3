@@ -209,7 +209,7 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
         params['CLEAN'] = 'Y'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
-        params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
+        #params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
     
     if dt['STD/MEAN'] > 2: # noisy
         params['ANALYSIS_THRESH'] = 1.5
@@ -238,8 +238,10 @@ def plot_cat(path_fits, plot_out_path, cat, astro_coords=False, cat_format='ASCI
     """
     # Read input FITS
     i_fits = mcFits(path_fits)
-    fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
-    
+    if 'MAPCAT' in path_fits:
+        fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
+    else:
+        fits_par = i_fits.get_data(keywords=['NAXIS1', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
     # Plotting detections
     data_cat = read_sext_catalog(cat, format=cat_format)
     
@@ -307,6 +309,8 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
                 pixscale=2*pixscale
         elif 'T150' in path_fits:
             pixscale = 0.232    
+            if fits_par['NAXIS1']==1024:
+                pixscale=2*pixscale
 # exptime = fits_par['EXPTIME']
     fwhm_arcs = float(fits_par['FWHM']) * float(pixscale)
     
@@ -481,7 +485,6 @@ def detections_inside(data, ra_limits, dec_limits, \
     dt = dt.loc[dt[dec] < dec_max]
     
     return dt
->>>>>>> main
 
 def match_sources(ra1, dec1, ra2, dec2, num_close=1):
     """
@@ -582,8 +585,11 @@ def compute_zeropoint(input_fits, blazar_data, sextractor_ord_data, sextractor_e
         dictParams={'invert':'True'})
 
     # non-saturated calibrators total flux (Ordinary + Extraordinary)
-    calibrators_total_flux = sextractor_ord_data['FLUX_APER'][~sat_calibrator] + \
-    sextractor_ext_data['FLUX_APER'][~sat_calibrator]
+    if 'MAPCAT' in input_fits:
+        calibrators_total_flux = sextractor_ord_data['FLUX_APER'][~sat_calibrator] + \
+            sextractor_ext_data['FLUX_APER'][~sat_calibrator]
+    else:
+        calibrators_total_flux = sextractor_ord_data['FLUX_APER'][~sat_calibrator]
     
     # Computing ZEROPOINT using non-saturated calibrators (or all of them if 
     # they are all saturated)
@@ -645,15 +651,6 @@ def main():
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
-    
-    #Transform overwrite parameter properly to boolean
-    if args.overwrite in ('true', 'True', '1', 'y', 'yes', 'Yes'):
-        args.overwrite=True
-    elif args.overwrite in ('false', 'False', '0', 'n', 'no', 'No'):
-        args.overwrite=False
-    else:
-        print("Wrong or no value for --overwrite parameter. Setting it to default (False)")
-        args.overwrite=False
 
     # Checking input parameters
     if not os.path.exists(args.config_dir):
@@ -692,6 +689,8 @@ def main():
 
     # ---------------------- MAPCAT sources info -----------------------
     blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_last.csv')
+    if 'MAPCAT' in input_fits:
+        blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_MAPCAT.csv')
 
     #df_mapcat = read_blazar_file(blazar_path)
     center_fits = (astro_header['CRVAL1'], astro_header['CRVAL2'])
@@ -880,7 +879,7 @@ def main():
         print(str_match_sext.format(ra_se[idx_o[j]], dec_se[idx_o[j]], \
             mag_se[idx_o[j]], magerr_se[idx_o[j]]))
         print(str_dist.format(d2d_o[j]))
-    
+ 
     # if dist > 0.006: # aprox. 20 arcsec ~ 40 pixels
     #     print('PHOTOCALIBRATION,ERROR,"Distance too big for good astrocalibration"')
     #     return 7
@@ -919,20 +918,42 @@ def main():
 
     # Source problem: boolena that identify target source in blazars inside FITS FOV.
     source_problem = None
+    is_blz=False
     # If there is only one source and it has R magnitude measure -> HD star
     if len(df_mc.index) == 1:
         source_problem = np.ones(1, dtype=bool) # filter equals to True
     else:
         # Source problem has no R filter magnitude (asigned value equals to -99)
         source_problem = df_mc['Rmag_mc'].values < 0 # negative R-mag is the source problem
+        is_blz=True
 
     print(f'source_problem = {source_problem}')
 
     print(type(idx_o), type(idx_e))
+    
+
     # Printing SExtractor indexes
     indexes_target = [idx_o[source_problem][0], idx_e[source_problem][0]]
-     
     print(f'[Ordinary, Extraordinary] SExtractor indexes = {indexes_target}')
+
+
+    #Get reference star
+    #CUIDAO QUE ESTO NO VA A FUNCIONAR PARA LAS HD stars
+    
+    if is_blz:
+        ra_blz=ra_mc[source_problem]
+        dec_blz=dec_mc[source_problem]
+        ra_stars=ra_mc[~source_problem]
+        dec_stars=dec_mc[~source_problem]
+        
+        dist=np.sqrt((ra_blz-ra_stars)**2+(dec_blz-dec_stars)**2)
+        ref_idx=np.argmin(dist)+1
+        source_problem[ref_idx]=True
+
+        refstar_Rmag=df_mc['Rmag_mc'].values[source_problem][1]
+
+        indexes_refstar=[idx_o[source_problem][1], idx_e[source_problem][1]]
+        print(f'[Ordinary, Extraordinary] SExtractor indexes of reference star = {indexes_refstar}')
 
     # Plotting source problem
     # Showing detailed info about SExtractor counterparts
@@ -992,12 +1013,12 @@ def main():
         print('Out PNG ->', mc_calib_png)
         title_temp = "MAPCAT Calibration sources in {}, {} ({} s)"
         title = title_temp.format(some_values['OBJECT'], some_values['DATE-OBS'], some_values['EXPTIME'])
-        plotFits(input_fits, mc_calib_png, colorBar=True, \
-            title=title, astroCal=True, color='green', \
-            coords=(df_mc['ra2000_mc_deg'][~source_problem].values, \
-            df_mc['dec2000_mc_deg'][~source_problem].values), \
-            dictParams={'aspect':'auto', 'invert':'True'})
-        cal_data['MC_CALIB_PNG'] = [mc_calib_png]
+        #plotFits(input_fits, mc_calib_png, colorBar=True, \
+        #    title=title, astroCal=True, color='green', \
+        #    coords=(df_mc['ra2000_mc_deg'][~source_problem].values, \
+        #    df_mc['dec2000_mc_deg'][~source_problem].values), \
+        #    dictParams={'aspect':'auto', 'invert':'True'})
+        #cal_data['MC_CALIB_PNG'] = [mc_calib_png]
     else:
         num_calibrators = 1
         # Dealing with HD calibrator
@@ -1014,9 +1035,9 @@ def main():
         # (Flux_o + Flux_e)
         try:
             if 'MAPCAT' in input_fits:
-                total_flux = (data['FLUX_AUTO'][indexes]).sum()
+                total_flux = (data['FLUX_AUTO'][indexes_target]).sum()
             else:
-                total_flux = (data['FLUX_AUTO'][indexes]).sum() / 2
+                total_flux = (data['FLUX_AUTO'][indexes_target]).sum() / 2
 
             mag_zeropoint = df_mc[source_problem]['Rmag_mc'].values[0] + \
                 2.5 * np.log10(total_flux)
@@ -1086,7 +1107,6 @@ def main():
         'MAGERR_APER', 'MAG_ISO', 'MAGERR_ISO', 'MAG_AUTO', 'MAGERR_AUTO']
 
     pair_params = defaultdict(list)
-
     pair_params['ID-MC'] = [df_mc[source_problem].iloc[0]['id_mc']] * 2
     pair_params['ID-BLAZAR-MC'] = [df_mc['id_blazar_mc'].values[source_problem][0]] * 2
     pair_params['TYPE'] = ['O', 'E']
@@ -1132,6 +1152,12 @@ def main():
     for k in keywords:
         for i in indexes_target:
             pair_params[k].append(data[k][i])
+
+    if is_blz:
+        for i in indexes_refstar:
+            pair_params['REF_MAG_APER'].append(data['MAG_APER'][i])
+            pair_params['REF_MAGERR_APER'].append(data['MAGERR_APER'][i])
+            pair_params['REF_MAG_LIT'].append(refstar_Rmag)
 
     df = pd.DataFrame(pair_params)
     if 'fits' in input_fits:

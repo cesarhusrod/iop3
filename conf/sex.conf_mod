@@ -5,12 +5,12 @@
 #-------------------------------- Catalog ------------------------------------
 
 CATALOG_NAME	test.cat	# name of the output catalog
-CATALOG_TYPE	ASCII_HEAD	# "ASCII_HEAD","ASCII","FITS_1.0" or "FITS_LDAC"
+CATALOG_TYPE	FITS_LDAC	# "ASCII_HEAD","ASCII","FITS_1.0" or "FITS_LDAC"
 
 ## Pipeline path in blazar server
 #PARAMETERS_NAME	/home/IOP3/code/iop3-main/conf/daofind.param	# name of the file containing catalog contents
 #local path
-PARAMETERS_NAME	/home/users/dreg/misabelber/GitHub/iop3/conf/daofind.param	# name of the file containing catalog contents
+PARAMETERS_NAME	/home/users/dreg/misabelber/GitHub/iop3/conf/default.param	# name of the file containing catalog contents
 
 #------------------------------- Extraction ----------------------------------
 
@@ -43,7 +43,7 @@ MASK_TYPE        CORRECT        # type of detection MASKing: can be one of
 PHOT_APERTURES	5		# MAG_APER aperture diameter(s) in pixels
 PHOT_AUTOPARAMS	2.5, 3.5	# MAG_AUTO parameters: <Kron_fact>,<min_radius>
 
-SATUR_LEVEL	50000.0		# level (in ADUs) at which arises saturation
+SATUR_LEVEL	60000.0		# level (in ADUs) at which arises saturation
 
 MAG_ZEROPOINT	0.0		# magnitude zero-point
 MAG_GAMMA	4.0		# gamma of emulsion (for photographic scans)
@@ -65,7 +65,7 @@ BACK_SIZE	64		# Background mesh: <size> or <width>,<height>
 BACK_FILTERSIZE	5		# Background filter: <size> or <width>,<height>
 
 BACKPHOTO_TYPE	LOCAL		# can be "GLOBAL" or "LOCAL" (*)
-BACKPHOTO_THICK	34		# thickness of the background LOCAL annulus (*)
+BACKPHOTO_THICK	24		# thickness of the background LOCAL annulus (*)
 BACK_FILTTHRESH  0.0            # Threshold above which the background-
                                 # map filter operates
 

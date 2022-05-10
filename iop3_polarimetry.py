@@ -105,40 +105,108 @@ def polarimetry_osn(df):
     #values for T090
     qoff = 0.0645
     uoff = 0.0574
-    phi=math.radians(75.44)
+    phi=math.radians(0)
+    
+    #values for 150
+    qoff = 0.0058
+    dqoff = 0.001
+    uoff = 0.0334
+    duoff = 0.003
+ 
+    
+    Phi=math.radians(9.)
+    dPhi=math.radians(2.3)
 
-    I_0 = (df['FLUX_APER'][df['ANGLE'] == 0]).values[0]
-    dI_0 = (df['FLUXERR_APER'][df['ANGLE'] == 0]).values[0]
-    I_45 = (df['FLUX_APER'][df['ANGLE'] == 45]).values[0]
-    dI_45 = (df['FLUXERR_APER'][df['ANGLE'] == 45]).values[0]
-    I_90 = (df['FLUX_APER'][df['ANGLE'] == 90]).values[0]
-    dI_90 = (df['FLUXERR_APER'][df['ANGLE'] == 90]).values[0]
-    I_135 = (df['FLUX_APER'][df['ANGLE'] == -45]).values[0]
-    dI_135 = (df['FLUXERR_APER'][df['ANGLE'] == -45]).values[0]
+    #values of T150 from polarization.pdf
+    #qoff=0.031
+    #uoff=0.024
+            
+    # For getting instrumental polarization
+    #qoff=0
+    #uoff=0
+    #Phi=0
+    #dPhi=0
 
+    try:
+        I_0 = (df['FLUX_APER'][df['ANGLE'] == 0]).values[0]
+        dI_0 = (df['FLUXERR_APER'][df['ANGLE'] == 0]).values[0]
+        I_45 = (df['FLUX_APER'][df['ANGLE'] == 45]).values[0]
+        dI_45 = (df['FLUXERR_APER'][df['ANGLE'] == 45]).values[0]
+        I_90 = (df['FLUX_APER'][df['ANGLE'] == 90]).values[0]
+        dI_90 = (df['FLUXERR_APER'][df['ANGLE'] == 90]).values[0]
+        I_135 = (df['FLUX_APER'][df['ANGLE'] == -45]).values[0]
+        dI_135 = (df['FLUXERR_APER'][df['ANGLE'] == -45]).values[0]
+    except:
+        return -99, -99, -99, -99, -99, -99, -99, -99
+
+    #Check if there is a value with big deviation from the rest:
+    fluxes = np.array([I_0, I_45, I_90, I_135])
+    flux_mean = fluxes.mean()
+    flux_std = fluxes.std()
+    dev_from_mean=(np.sqrt((fluxes-flux_mean)**2)/flux_mean)*100
+    sig_from_mean=(np.sqrt((fluxes-flux_mean)**2)/flux_std)
+
+    if (dev_from_mean>10).sum()>=1:
+        flag="B"
+    else:
+        flag="G"
+    
     qraw = (I_0 - I_90) / (I_0 + I_90)
     uraw = (I_45 - I_135) / (I_45 + I_135)
+    
+    #Applying error propagation...
+    dqraw = qraw * math.sqrt(((dI_0**2+dI_90**2)/(I_0+I_90)**2)+(((dI_0**2+dI_90**2))/(I_0-I_90)**2))
+    duraw = uraw * math.sqrt(((dI_45**2+dI_135**2)/(I_45+I_135)**2)+(((dI_45**2+dI_135**2))/(I_45-I_135)**2))
 
     qc = qraw - qoff
     uc = uraw - uoff
+
+    dqc = math.sqrt(dqraw**2 + dqoff**2) 
+    duc = math.sqrt(duraw**2 + duoff**2)
+
+    q = qc*math.cos(2*Phi) - uc*math.sin(2*Phi)
+    u = qc*math.sin(2*Phi) + uc*math.cos(2*Phi)
     
-    q = qc*math.cos(math.radians(2*75.44)) - uc*math.sin(math.radians(2*75.44))
-    u = qc*math.sin(math.radians(2*75.44)) + uc*math.cos(math.radians(2*75.44))
-
-
-    dqc = qc * math.sqrt(2*((dI_0/I_0)**2 + (dI_90/I_90)**2))
-    duc = qc * math.sqrt(2*((dI_45/I_45)**2 + (dI_135/I_135)**2))
+    dqa = qc*math.cos(2*Phi) * math.sqrt((dqc/qc)**2+((2*dPhi*math.sin(2*Phi))/(math.cos(2*Phi)))**2) 
+    dqb = uc*math.sin(2*Phi) * math.sqrt((duc/uc)**2+((2*dPhi*math.cos(2*Phi))/(math.sin(2*Phi)))**2)
+    dua = qc*math.sin(2*Phi) * math.sqrt((dqc/qc)**2+((2*dPhi*math.cos(2*Phi))/(math.sin(2*Phi)))**2) 
+    dub = uc*math.cos(2*Phi) * math.sqrt((duc/uc)**2+((2*dPhi*math.sin(2*Phi))/(math.cos(2*Phi)))**2)
+    
+    #Just for tests
+    #dqa=0
+    #dua=0
+    #dqb=0
+    #dub=0
+    
+    dq = np.sqrt(dqa**2+dqb**2)
+    du = np.sqrt(dua**2+dub**2)
     
     P = math.sqrt(q**2 + u**2)
-    dP = P * math.sqrt((dqc/qc)**2+(duc/uc)**2)
+    dP = P * (1/(q**2+u**2)) * math.sqrt((q*dq)**2+(u*du)**2)
     
-    Theta = (1/2) * math.degrees(math.atan(uc/qc)) + math.degrees(phi)
-    dTheta = dP/P
-    return P, dP, Theta, dTheta, q, dqc, u, duc
+    Theta_0 = 0
+    if q >=0:
+        Theta_0 = math.pi
+        if u > 0:
+            Theta_0 = -1 * math.pi
+
+#    Theta_0 = 0
+#    if q > 0:
+#        if u >= 0:
+#            Theta_0 = 0
+#        if u < 0:
+#            Theta_0 = math.pi / 2
+#    elif q < 0:
+#        Theta_0 = math.pi / 4
+    Theta_0 = 0
+    Theta = (1/2) * math.degrees(math.atan2(u,q) + Theta_0)
+    dTheta = dP/P * 28.6
+    
+    
+    return P, dP, Theta, dTheta, q, dq, u, du, flag, dev_from_mean.max()
 
 def polarimetry(df):
-    """
-    Compute polarimetric parameters.
+    """Compute polarimetric parameters.
     Args:
         df (pandas.DataFrame): Data from object taken from 4 polarization angles.
 
@@ -236,6 +304,9 @@ def polarimetry(df):
     try:
         dRQ = RQ * math.sqrt((oe_0/o_0) ** 2 + (ee_0 / e_0) ** 2 + \
             (oe_45 / o_45) ** 2 + (ee_45 / e_45) ** 2)
+
+        #dRQ = RQ * (1/2) * ((o_45/e_45)/(o_0/e_0)) * math.sqrt((((oe_0/o_0)**2+(ee_0/e_0)**2)/(o_0/e_0)**2)+(((oe_45/o_45)**2+(ee_45/e_45)**2)/(o_45/e_45)**2))
+
     except:
         print(f"ERROR: computing dRQ = RQ * math.sqrt((oe_0/o_0) ** 2 + (ee_0 / e_0) ** 2 + \
             (oe_45 / o_45) ** 2 + (ee_45 / e_45) ** 2)")
@@ -253,6 +324,8 @@ def polarimetry(df):
     try:
         dRU = RU * math.sqrt((oe_22 / o_22) ** 2 + (ee_22 / e_22) ** 2 + \
             (oe_67 / o_67) ** 2 + (ee_67 / e_67) ** 2)
+        #dRU = RU * (1/2) * ((o_67/e_67)/(o_22/e_22)) * math.sqrt((((oe_22/o_22)**2+(ee_22/e_22)**2)/(o_22/e_22)**2)+(((oe_67/o_67)**2+(ee_67/e_67)**2)/(o_67/e_67)**2))
+
     except:
         print(f"ERROR: computing dRU = RU * math.sqrt((oe_22 / o_22) ** 2 + (ee_22 / e_22) ** 2 + \
             (oe_67 / o_67) ** 2 + (ee_67 / e_67) ** 2)")
@@ -274,12 +347,20 @@ def polarimetry(df):
     try:
         P = math.sqrt(Q_I ** 2 + U_I ** 2)
         dP = P * math.sqrt((dRQ / RQ) ** 2 + (dRU / RU) ** 2) / 2
+        #dP = P * (1/(Q_I**2+U_I**2)) * math.sqrt((Q_I*dQ_I)**2+(U_I*dU_I)**2)
     except ZeroDivisionError:
         # print(f"(Q_I, U_I, RQ, dRQ, RU, dRU) = ({Q_I}, {U_I}, {RQ}, {dRQ}, {RU}, {dRU})")
         raise
 
     try:
-        Theta = 0.5 * math.degrees(math.atan(U_I / Q_I)) + 90
+        Theta_0 = 0
+        
+        if Q_I >= 0:
+            Theta_0 = math.pi 
+            if U_I > 0:
+                Theta_0 = -1 * math.pi
+        print(f'Theta_0 = {Theta_0}')
+        Theta = 0.5 * math.degrees(math.atan(U_I/Q_I) + Theta_0)
         dTheta = dP / P * 28.6
     except ZeroDivisionError:
         # print(f"(U_I, Q_I, P, dP) = ({U_I}, {Q_I}, {P}, {dP})")
@@ -290,6 +371,7 @@ def polarimetry(df):
 
     return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU
 
+
 def compute_polarimetry(data_object):
     """Given input data, it calls polarimetry function to get
     polarimetric magnitudes.
@@ -298,7 +380,7 @@ def compute_polarimetry(data_object):
         data_object (pandas.DataFrame): Data from object taken from 4 polarization angles.
 
     Returns:
-        dict: Keywords are [P, dP, Theta, dTheta, R, Sigma, RJD-5000, ID-MC, ID-BLAZAR-MC, MC-NAME, MC-IAU-NAME, NAME]
+        dict: Keywords are [P, dP, Theta, dTheta, R, Sigma, MJD-5000, ID-MC, ID-BLAZAR-MC, MC-NAME, MC-IAU-NAME, NAME]
     
     """
     result = DefaultDict()
@@ -312,9 +394,11 @@ def compute_polarimetry(data_object):
         index_date = 0
     elif len(dates) == 2:
         index_date = 1
+
     obs_date = dates[index_date] 
     
-    result['RJD-5000'] = round(obs_date - 50000, 4)
+        
+    result['MJD-5000'] = round(obs_date - 50000, 4)
     result['ID-MC'] = data_object['ID-MC'].values[0]
     result['ID-BLAZAR-MC'] = data_object['ID-BLAZAR-MC'].values[0]
     result['MC-NAME'] = data_object['MC-NAME'].values[0]
@@ -329,8 +413,10 @@ def compute_polarimetry(data_object):
     try:
         if (data_object['ANGLE']==22.5).any()==True:
             P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry(data_object)
+            flag="N/S"
+            flux_std=-999
         else:
-            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry_osn(data_object)
+            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flag, flux_std = polarimetry_osn(data_object)
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
         raise
@@ -346,6 +432,8 @@ def compute_polarimetry(data_object):
         result['dQ'] = dRQ
         result['U'] = RU
         result['dU'] = dRU
+        result['flag'] = flag
+        result['flux_std'] = flux_std
         
         return result
     
@@ -380,7 +468,8 @@ def compute_polarimetry(data_object):
     result['dQ'] = round(dRQ, 4)
     result['U'] = round(RU, 4)
     result['dU'] = round(dRU, 4)
-
+    result['flag'] = flag
+    result['flux_std'] = round(flux_std,4)
     return result
 
 def main():
@@ -520,8 +609,10 @@ def main():
             index_obs = 2 # groups of three or four observations
             if len(data_object['MJD-OBS'][data_object['TYPE'] == 'O']) < 3:
                 index_obs = 1
+            if len(data_object['MJD-OBS'][data_object['TYPE'] == 'O']) == 1:
+                index_obs = 0
             obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[index_obs]
-            pol_data['RJD-50000'].append(obs_date - 50000)
+            pol_data['MJD-50000'].append(obs_date)
             row = [date_run, obs_date - 50000, name.strip()]
             
             row = row + [res_pol['P'], res_pol['dP'], \
@@ -529,10 +620,12 @@ def main():
                 res_pol['Q'], res_pol['dQ'], \
                 res_pol['U'], res_pol['dU'], \
                 res_pol['R'], rp_sigma, \
-                res_pol['APERPIX'], res_pol['APERAS'], res_pol['NUM_ROTATION']]
+                res_pol['APERPIX'], res_pol['APERAS'], res_pol['NUM_ROTATION'], \
+                res_pol['flag'], \
+                res_pol['flux_std']             ]
             pol_rows.append(row)
-            # print('Lines to write down:')
-            # pprint.pprint(pol_rows)
+             #print('Lines to write down:')
+             #pprint.pprint(pol_rows)
 
     # writing output night polarimetry file
     
@@ -540,11 +633,13 @@ def main():
         name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
     elif 'T090' in args.calib_base_dir:
         name_out_file = 'T090_polR_{}.res'.format(date_run)
+    elif 'T150' in args.calib_base_dir:
+        name_out_file = 'T150_polR_{}.res'.format(date_run)
     out_res = os.path.join(args.output_dir, name_out_file)
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>4}'
-        header = 'DATE_RUN     RJD-50000   Object                 P+-dP(%)        Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION'
+        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>4}    {:s}   {:>14.3f}'
+        header = 'DATE_RUN     MJD-50000   Object                 P+-dP(%)        Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION   flag    flux_std'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
@@ -554,11 +649,13 @@ def main():
         name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
     elif 'T090' in args.calib_base_dir:
         name_out_csv = 'T090_polR_{}.csv'.format(date_run)
+    elif 'T150' in args.calib_base_dir:
+        name_out_csv = 'T150_polR_{}.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
-            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION']
+            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'MJD-50000', 'ID-MC', \
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'flag', 'flux_std']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
@@ -566,7 +663,7 @@ def main():
             print(f"{k} -> {len(v)}")
         raise
     # Formatting
-    df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.4f}'.format(x))
+    df['MJD-50000'] = df['MJD-50000'].map(lambda x: '{0:.4f}'.format(x))
     df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
     df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
     df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))
@@ -578,6 +675,9 @@ def main():
     df['R'] = df['R'].map(lambda x: '{0:.3f}'.format(x))
     df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
+    df['flag'] = df['flag'].map(lambda x: '{0:s}'.format(x))
+    df['flux_std'] = df['flux_std'].map(lambda x: '{0:.3f}'.format(x))
+    
     df.to_csv(out_csv, index=False)
 
     return 0

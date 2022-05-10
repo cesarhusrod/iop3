@@ -107,7 +107,7 @@ def closest_blazar(blazar_data, path_fits):
                 input_coords=SkyCoord("{} {}".format(ra,dec), frame=FK5, unit=(u.hourangle, u.deg), \
                                           obstime="J2000")
                 print('Found this object in blazar list: %s' % name)
-                print('with name similar to (from fits file): %s' % path_fits.split('/')[-1].split('-')[0])
+                print('with name similar to (from fits file): %s' % path_fits)
                 print('Using its coordinares instead, take with caution!')
                 break
 
@@ -518,15 +518,6 @@ def main():
     parser.add_argument("input_dir", help="Input directory")  # mandatory argument
     
     args = parser.parse_args()
-    
-    #Transform overwrite parameter properly to boolean
-    if args.overwrite in ('true', 'True', '1', 'y', 'yes', 'Yes'):
-        args.overwrite=True
-    elif args.overwrite in ('false', 'False', '0', 'n', 'no', 'No'):
-        args.overwrite=False
-    else:
-        print("Wrong or no value for --overwrite parameter. Setting it to default (False)")
-        args.overwrite=False
 
     # Absolute input/output paths
     input_dir = os.path.abspath(args.input_dir) # absolute path
@@ -553,6 +544,9 @@ def main():
     
     # Reading blazar file
     blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_last.csv')
+    
+    if 'MAPCAT' in input_dir:
+        blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_MAPCAT.csv')
     blazar_data = read_blazar_file(blazar_path)
     
     # Does input verify pattern given above?
@@ -605,8 +599,12 @@ def main():
         message = 'CHECKING,ERROR,"Close calibrator was not found for \'{}\' (OBJECT = \'{}\')."'
         message += '(RA, DEC) = ({}, {})'
         for path in far_calibrators:
-            print(message.format(path, mcFits(path).header['OBJECT'], \
-                mcFits(path).header['RA'], mcFits(path).header['DEC']))
+            if 'RA' in mcFits(path).header:
+                print(message.format(path, mcFits(path).header['OBJECT'], \
+                                         mcFits(path).header['RA'], mcFits(path).header['DEC']))
+            else:
+                print(message.format(path, mcFits(path).header['OBJECT'], \
+                                         mcFits(path).header['OBJCTRA'], mcFits(path).header['OBJCTDEC']))
             blazar, distance = closest_blazar(blazar_data, path)
             print(f"\tClosest one = {blazar['IAU_name_mc']}")
             
@@ -652,7 +650,10 @@ def main():
             
     if not args.skip_calibration:
         # Creating Blazars DataFrame
-        df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+        if 'MAPCAT' in input_dir:
+            df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+        else:
+            df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
         if len(df_blazars.index) > 0:
             df_blazars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_blazars['PATH'].values]
             df_blazars['CLOSE_IOP3_RA'] = [closest_blazar(blazar_data, bp)[0]['ra2000_mc_deg'] for bp in df_blazars['PATH'].values]
@@ -676,8 +677,8 @@ def main():
                 data_res = open(res_path).read().split(',') 
                 crot = float(data_res[0]) 
                 wcsmatch_best = int(data_res[1])   
-                
-            if wcsmatch_best < 10:
+            print(wcsmatch_best)
+            if wcsmatch_best < 1:
                 print("ASTROCALIBRATION,ERROR,'Not enought matches for confident rotation angle computation. Please, look at \'{cal_dir}\' for more info.'")
                 return -99
             
