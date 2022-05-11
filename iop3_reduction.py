@@ -26,6 +26,8 @@ import jinja2 # HTML templates packages for documentation and logging
 
 import mcReduction
 from mcFits import *
+import matplotlib
+matplotlib.use('Agg')
 
 def report(csv_file, output_dir, template_file, title=''):
     """Create output HTML report with CSV input data.
