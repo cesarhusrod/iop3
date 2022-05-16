@@ -233,10 +233,12 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
             print('+' * 100)
             print(com_photocal)
             print('+' * 100)
-            res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
-                stderr=subprocess.PIPE, shell=True, check=True)
-            if res.returncode:
-                print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {calibrated[0]} file."')
+            try:
+                res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
+                                         stderr=subprocess.PIPE, shell=True, check=True)
+            except:
+                if res.returncode:
+                    print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {calibrated[0]} file."')
         else:
             non_calibrated_group_commands.append(row['PATH'])
             non_calibrated_group_datetimes.append(row['DATE-OBS'])
@@ -323,10 +325,12 @@ def get_best_rotangle(path, config_dir, cal_dir, tol_pixs=5):
         com_calibration = com_cal.format(crot, tol_pixs, config_dir, \
             cal_dir, path)
         print(com_calibration)
-        res = execute_command(com_calibration)
-        if res.returncode:
-            print(res)
-            return res.returncode
+        try:
+            res = execute_command(com_calibration)
+        except:
+            if res.returncode:
+                print(res)
+                return res.returncode
         # read astrocalibration file
         astro_csv = glob.glob(os.path.join(cal_dir, '*astrocal_process_info.csv'))
         
@@ -741,11 +745,13 @@ def main():
                 print('+' * 100)
                 print(cmd)
                 print('+' * 100)
-                res = subprocess.run(cmd, stdout=subprocess.PIPE, \
-                    stderr=subprocess.PIPE, shell=True, check=True)
-                if res.returncode:
-                    message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                    print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+                try:
+                    res = subprocess.run(cmd, stdout=subprocess.PIPE, \
+                                             stderr=subprocess.PIPE, shell=True, check=True)
+                except:
+                    if res.returncode:
+                        message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
+                        print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
                 
                 # Photometric calibration
                 if 'fits' in os.path.split(row['PATH'])[1]:
@@ -761,11 +767,13 @@ def main():
                 print('+' * 100)
                 print(cmd_photocal)
                 print('+' * 100)
-                res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
-                    stderr=subprocess.PIPE, shell=True, check=True)
-                if res.returncode:
-                    message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                    print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+                try:
+                    res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
+                                             stderr=subprocess.PIPE, shell=True, check=True)
+                except:
+                    if res.returncode:
+                        message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
+                        print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
 
     #  3rd STEP: Computing polarimetric parameters
     if not args.skip_polarimetry:
