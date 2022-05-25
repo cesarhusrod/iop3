@@ -398,6 +398,7 @@ def get_sources(input_fits, sext_conf, add_params={}, threshold_exptime=2, \
         if i_fits.header['NAXIS1']==1024:
             pixscale=2*pixscale
     exptime = i_fits.header['EXPTIME']
+            
     fwhm_arcs = float(i_fits.header['FWHM']) * float(pixscale)
     
     if 'fits' in input_fits:
@@ -452,6 +453,7 @@ def detect_sources(path_fits, sext_conf, cat_out, plot_out=None, \
                 pixscale=2*pixscale
     print(fits_par['FWHM'])
     # exptime = fits_par['EXPTIME']
+    
     fwhm_arcs = float(fits_par['FWHM']) * float(pixscale)
     
     # Adtitional ouput info

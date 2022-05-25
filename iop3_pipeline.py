@@ -216,11 +216,13 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
         print(com_calibration)
         print('+' * 100)
         with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
-            res = subprocess.run(com_calibration, stdout=log_file, \
-                                     stderr=subprocess.PIPE, shell=True, check=True)
-            if res.returncode:
+            try:
+                res = subprocess.run(com_calibration, stdout=log_file, \
+                                         stderr=subprocess.PIPE, shell=True, check=True)
+                if res.returncode:
+                    print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
+            except:
                 print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
-
         # Checking for succesful calibration
         calibrated = glob.glob(os.path.join(cal_dir, '*final.fit*'))
         if calibrated:
@@ -483,7 +485,7 @@ def main():
     conflict_handler='resolve',
     description='''Main program that reads, classify, reduces and calibrate 
     FITS located at input directory. ''',
-    epilog='''''')
+    epilog="")
 
     parser.add_argument("-b", "--border_image",
        action="store",
@@ -606,9 +608,12 @@ def main():
             if 'RA' in mcFits(path).header:
                 print(message.format(path, mcFits(path).header['OBJECT'], \
                                          mcFits(path).header['RA'], mcFits(path).header['DEC']))
-            else:
+            elif 'OBJCTRA' in mcFits(path).header:
                 print(message.format(path, mcFits(path).header['OBJECT'], \
                                          mcFits(path).header['OBJCTRA'], mcFits(path).header['OBJCTDEC']))
+            else:
+                print("No RA/DEC info for object "+path)
+
             blazar, distance = closest_blazar(blazar_data, path)
             print(f"\tClosest one = {blazar['IAU_name_mc']}")
             
