@@ -593,7 +593,7 @@ def inner_detections(path_fits, cat, border=15, format_cat='FITS_LDAC'):
     return data[inner_sources]
 
 def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
-    format_cat='FITS_LDAC', border=15, tol_pixs=10, crotation=3):
+                  format_cat='FITS_LDAC', border=15, tol_pixs=10, crotation=3):
     # Reading FITS file
     input_fits = mcFits(path_fits)
     input_head = input_fits.header
@@ -885,6 +885,7 @@ def get_best_astrocal(calibration_dir):
     print(f'Calibrations done = {len(cal_fits)}')
     cal_results = defaultdict(list)
     for cf in cal_fits:
+        print("HOLAAAAA")
         astro_fits = mcFits(cf)
         cal_results['PATH'] = cf
         for k in ['WCSMATCH', 'EXPTIME']:

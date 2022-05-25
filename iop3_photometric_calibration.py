@@ -783,6 +783,8 @@ def main():
         return 9
 
     info_target = data_matched[source_problem]
+    print(source_problem)
+    print(info_target['ALPHA_J2000_E'])
     ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
     ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
 
@@ -870,8 +872,8 @@ def main():
             message = "Ordinary and extraordinary fluxes auto = ({}, {})"
             print(message.format    (info_target['FLUX_AUTO_O'], info_target['FLUX_AUTO_E']))
             raise
-
-    if np.isnan(mag_zeropoint) or mag_zeropoint is None:
+    print(mag_zeropoint)
+    if mag_zeropoint is None or np.isnan(mag_zeropoint):
         print(f'PHOTOMETRY,ERROR,"Could not compute MAG_ZEROPOINT for \'{input_fits}\'"')
         return 8
 

@@ -224,7 +224,7 @@ def main():
     
     plotBIAS = oReduction.masterBIAS.replace('.fits', '.png')
     title = f'{oReduction.date} masterBIAS'
-    mcBIAS.plot(title)
+    mcBIAS.plot(title=title)
 
     plotBIASHist = oReduction.masterBIAS.replace('.fits', '_histogram.png')
     histo_par = {'xlabelsize':8,
@@ -278,7 +278,7 @@ def main():
         # Plotting FLAT and histogram
         plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fits', '.png')
         title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
-        mcFLAT.plot(title)
+        mcFLAT.plot(title=title)
         plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
 
         mcFLAT.plot_histogram(plotFLATHist, title=title, \
@@ -351,7 +351,7 @@ def main():
         title_pattern = "{} - {} - {:.1f} s"
         title = title_pattern.format(sci['DATE-OBS'], \
             sci['OBJECT'], float(sci['EXPTIME']))
-        mcRED.plot(title)
+        mcRED.plot(title=title)
 
         # Plotting histogram
         plotSCIHist = mcRED.path.replace('.fits', '_histogram.png')
