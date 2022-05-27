@@ -105,17 +105,17 @@ def polarimetry_osn(df):
     #values for T090
     qoff = 0.0645
     uoff = 0.0574
-    phi=math.radians(0)
-    
+    Phi=math.radians(0)
+    dPhi=math.radians(0)
+
     #values for 150
-    qoff = 0.0058
+    #qoff = 0.0058
     dqoff = 0.001
-    uoff = 0.0334
+    #uoff = 0.0334
     duoff = 0.003
  
-    
-    Phi=math.radians(9.)
-    dPhi=math.radians(2.3)
+    #Phi=math.radians(9.)
+    #dPhi=math.radians(2.3)
 
     #values of T150 from polarization.pdf
     #qoff=0.031
@@ -126,7 +126,6 @@ def polarimetry_osn(df):
     #uoff=0
     #Phi=0
     #dPhi=0
-
     try:
         I_0 = (df['FLUX_APER'][df['ANGLE'] == 0]).values[0]
         dI_0 = (df['FLUXERR_APER'][df['ANGLE'] == 0]).values[0]

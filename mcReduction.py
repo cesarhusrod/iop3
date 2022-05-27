@@ -449,10 +449,11 @@ class mcReduction:
                 pol_angle = oSCIENCE.header['INSPOROT']
                 if float(pol_angle) > 70:
                     print(f'ERROR: instrument angle value ({pol_angle}) is not valid')
-                    continue            
+                    continue
                 flat = self.masterFLAT[round(float(pol_angle), 1)]
             else:
                 pol_angle = oSCIENCE.header['FILTER']
+                print(pol_angle)
                 flat = self.masterFLAT[pol_angle]
             if show_info:
                 print(f"Polarization angle set to -> {pol_angle}")

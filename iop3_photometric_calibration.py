@@ -1115,14 +1115,17 @@ def main():
     else:
         if astro_header['FILTER']=='R':
             angle = -999.0
+        elif astro_header['FILTER']=='R_45':
+            angle = float(-45)
         else:
             angle = float(astro_header['FILTER'].replace('R',''))
+            
     pair_params['ANGLE'] = [round(angle, ndigits=1)] * 2
     pair_params['OBJECT'] = [astro_header['OBJECT']] * 2
     if 'MJD-OBS' in astro_header:
         pair_params['MJD-OBS'] = [astro_header['MJD-OBS']] * 2
     else:
-        pair_params['MJD-OBS'] = [astro_header['JD']] * 2
+        pair_params['MJD-OBS'] = [astro_header['JD'] - 2400000.5 * 2
     pair_params['DATE-OBS'] = [''] * 2
     if 'DATE-OBS' in astro_header:
         pair_params['DATE-OBS'] = [astro_header['DATE-OBS']] * 2
