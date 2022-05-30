@@ -26,6 +26,8 @@ import jinja2 # HTML templates packages for documentation and logging
 
 import mcReduction
 from mcFits import *
+import matplotlib
+matplotlib.use('Agg')
 
 def report(csv_file, output_dir, template_file, title=''):
     """Create output HTML report with CSV input data.
@@ -228,7 +230,7 @@ def main():
     else:
         plotBIAS = oReduction.masterBIAS.replace('.fit', '.png')
     title = f'{oReduction.date} masterBIAS'
-    mcBIAS.plot(title)
+    mcBIAS.plot(title=title)
 
     if 'fits' in oReduction.masterBIAS:
         plotBIASHist = oReduction.masterBIAS.replace('.fits', '_histogram.png')
@@ -288,11 +290,16 @@ def main():
         else:
             plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fit', '.png')
         title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
+<<<<<<< HEAD
         mcFLAT.plot(title)
         if 'fits' in oReduction.masterFLAT[pol_ang]:
             plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
         else:
             plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fit', '_histogram.png')
+=======
+        mcFLAT.plot(title=title)
+        plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
+>>>>>>> main
 
         mcFLAT.plot_histogram(plotFLATHist, title=title, \
             histogram_params=histo_par)
@@ -376,7 +383,7 @@ def main():
         title_pattern = "{} - {} - {:.1f} s"
         title = title_pattern.format(sci['DATE-OBS'], \
             sci['OBJECT'], float(sci['EXPTIME']))
-        mcRED.plot(title)
+        mcRED.plot(title=title)
 
         # Plotting histogram
         if 'fits' in mcRED.path:

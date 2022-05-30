@@ -24,7 +24,6 @@ import argparse
 import subprocess
 import re
 import math
-from datetime import datetime,timedelta
 from collections import defaultdict
 from collections import OrderedDict
 import matplotlib
@@ -40,7 +39,6 @@ from matplotlib import pyplot as plt
 import aplpy # FITS plotting library
 
 from astropy.io import fits # FITS library
-from astropy.time import Time
 import astropy.wcs as wcs
 
 # Coordinate system transformation package and modules
@@ -58,7 +56,7 @@ import jinja2
 
 
 # Photutils (aperture flux measurements)
-# from photutils.aperture import aperture_photometry, CircularAperture, CircularAnnulus
+from photutils.aperture import aperture_photometry, CircularAperture, CircularAnnulus
 
 # =================================
 from astropy.utils.exceptions import AstropyWarning, AstropyDeprecationWarning
@@ -215,10 +213,8 @@ def plot_cat(path_fits, plot_out_path, cat, astro_coords=False, cat_format='ASCI
     """
     # Read input FITS
     i_fits = mcFits(path_fits)
-    if 'MAPCAT' in path_fits:
-        fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
-    else:
-        fits_par = i_fits.get_data(keywords=['NAXIS1', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
+    fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
+    
     # Plotting detections
     data_cat = read_sext_catalog(cat, format=cat_format)
     
@@ -255,17 +251,17 @@ def get_radec_limits(path_fits):
     com1 = f'xy2sky -d {path_fits} 0 0'
     com2 = f'xy2sky -d {path_fits} {fits.header["NAXIS1"]} {fits.header["NAXIS2"]}'
 
-    # print(f'{com1}')
+    print(f'{com1}')
     proc1 = subprocess.Popen(com1, shell=True, stdout=subprocess.PIPE)
     out1 = proc1.stdout.read().decode('utf-8')[:-2]
     data1 = [float(d) for d in out1.split()[:2]]
-    # print(f'data1 = {data1}')
+    print(f'data1 = {data1}')
    
-    # print(f'{com2}')
+    print(f'{com2}')
     proc2 = subprocess.Popen(com2, shell=True, stdout=subprocess.PIPE)
     out2 = proc2.stdout.read().decode('utf-8')[:-2]
     data2 = [float(d) for d in out2.split()[:2]]
-    # print(f'data2 = {data2}')
+    print(f'data2 = {data2}')
    
 
     ras = [data1[0], data2[0]]
@@ -296,50 +292,79 @@ def read_blazar_file(path, verbose=False):
         c.append("{} {}".format(ra, dec))
 
     mapcat_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
-        obstime="J2000")
+    obstime="J2000")
     df['ra2000_mc_deg'] = mapcat_coords.ra.deg
     df['dec2000_mc_deg'] = mapcat_coords.dec.deg
     
     return df
 
-def closest_blazar(astronomical_deg_coords, blazar_path):
-    """
-    Get closest blazar to astronomical_deg_coords.
+def closest_blazar(blazar_path, path_fits):
+    """"""
+    # Getting header informacion
+    i_fits = mcFits(path_fits)
+    input_head = i_fits.header
     
-    Args:
-        astronomical_deg_coords (tuple or list): Astronomical coordinates (ra, dec) in degrees.
-        blazar_path (str): path to blazars info file.
-        
-    Returns:
-        pandas.DataFrame: Info about closest blazar/s.
-    """
-    # read blazars file
-    data = read_blazar_file(blazar_path)
-    
-    icoords = "{} {}".format(*(astronomical_deg_coords)) # tuple/list expansion
+    # Central FITS coordinates
+    icoords = "{} {}".format(input_head['CRVAL1'], input_head['CRVAL2'])
     input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
     obstime="J2000")
-    
+
+    blazar_data = read_blazar_file(blazar_path)
     # Blazars subset...
-    df_blazars = data[data['IAU_name_mc'].notna()]  # take target sources from data
+    df_blazars = blazar_data[blazar_data['IAU_name_mc'].str.len() > 0]
     c  = []
-    for ra, dec in zip(df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
+    for ra, dec in zip(df_blazars['ra2000_mc_deg'], df_blazars['dec2000_mc_deg']):
         c.append("{} {}".format(ra, dec))
-    blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
-    obstime="J2000")
+    blazar_coords = SkyCoord(c, frame=FK5, unit=(u.deg, u.deg), \
+        obstime="J2000")
     
     # Closest MAPCAT source to FITS central coordinates
-    # Distance between this center FITS and MAPCAT targets
+    # Distance between this center FITS and MAPCAT targets (in degrees)
     distances = input_coords.separation(blazar_coords)
     
     # Closest source in complete set...
     i_min = distances.deg.argmin()
     
-    blz_name = df_blazars['IAU_name_mc'].values[i_min]
-    # print(f"Blazar closest source name = {blz_name}")
-    cond = data['IAU_name_mc'] == blz_name
+    return df_blazars.iloc[i_min], distances.deg[i_min]
+
+# def closest_blazar(astronomical_deg_coords, blazar_path):
+#     """
+#     Get closest blazar to astronomical_deg_coords.
     
-    return data[cond], distances.deg.min()
+#     Args:
+#         astronomical_deg_coords (tuple or list): Astronomical coordinates (ra, dec) in degrees.
+#         blazar_path (str): path to blazars info file.
+        
+#     Returns:
+#         pandas.DataFrame: Info about closest blazar/s.
+#     """
+#     # read blazars file
+#     data = read_blazar_file(blazar_path)
+    
+#     icoords = "{} {}".format(*(astronomical_deg_coords)) # tuple/list expansion
+#     input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
+#     obstime="J2000")
+    
+#     # Blazars subset...
+#     df_blazars = data[data['IAU_name_mc'].notna()]  # take target sources from data
+#     c  = []
+#     for ra, dec in zip(df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
+#         c.append("{} {}".format(ra, dec))
+#     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
+#     obstime="J2000")
+    
+#     # Closest MAPCAT source to FITS central coordinates
+#     # Distance between this center FITS and MAPCAT targets
+#     distances = input_coords.separation(blazar_coords)
+    
+#     # Closest source in complete set...
+#     i_min = distances.deg.argmin()
+    
+#     blz_name = df_blazars['IAU_name_mc'].values[i_min]
+#     # print(f"Blazar closest source name = {blz_name}")
+#     cond = data['IAU_name_mc'] == blz_name
+    
+#     return data[cond], distances.deg.min()
 
 def detections_inside(data, ra_limits, dec_limits, \
     keywords={'RA': 'ra2000_mc_deg', 'DEC': 'dec2000_mc_deg'}):
@@ -368,7 +393,8 @@ def detections_inside(data, ra_limits, dec_limits, \
     return dt
 
 def match_sources(ra1, dec1, ra2, dec2, num_close=1):
-    """It matches catalog1 and catalog2. Coordinates for astrometric sky coordinates are given 
+    """
+    It matches catalog1 and catalog2. Coordinates for astrometric sky coordinates are given 
     by key_coord dictionaries (keywords 'RA' and 'DEC'). It returns num_close closest sources 
     in cat2 for each source in cat1.
     
@@ -384,9 +410,8 @@ def match_sources(ra1, dec1, ra2, dec2, num_close=1):
         tuple of tuples: (index/es in cat2 closest to cat1 ones, 2D-distances, 3d-distances).
             Each element is a tuple. Their len is given by cat1 sources.
     """
-    # First catalog source sky coordinates
     c1 = SkyCoord(ra = ra1 * u.degree, dec = dec1 * u.degree)
-    # Second catalog source sky coordinates
+    # sextractor catalog
     c2 = SkyCoord(ra = ra2 * u.degree, dec = dec2 * u.degree)
 
     return match_coordinates_sky(c1, c2, nthneighbor=num_close)
@@ -407,79 +432,6 @@ def check_saturation(sext_flags):
     bin_code = np.array([f"{format(int(flag), 'b') :0>8}"[-3] == '1' for flag in sext_flags], dtype=bool)
     
     return bin_code
-
-def get_mapcat_sources(input_fits, blazar_path):
-    """Search for MAPCAT sources included in area covered by FITS.
-
-    Args:
-        input_fits (str): FITS fille path.
-        blazar_path (str): Path of file that contains MAPCAT sources.
-
-    Returns:
-        pd.DataFrame: It contains MAPCAT info provided by 'balazar_path'
-            about sources in sky 'input_fits' area.
-    """
-    # RA,DEC limits...
-    sky_limits = get_radec_limits(input_fits)
-    
-    # getting blazars info inside FITS sky area
-    blazars_data = read_blazar_file(blazar_path)
-    df_mc = detections_inside(blazars_data, \
-        (sky_limits['ra_min'], sky_limits['ra_max']), \
-        (sky_limits['dec_min'], sky_limits['dec_max']))
-    
-    return df_mc
-
-def assoc_sources(catalog1, catalog2, max_deg_dist=0.0006, suffix='O'):
-    """Match each source from 'catalog1' to closest one of 'catalog2'.
-
-    Max matched distance betwwen sources is given by 'max_deg_dist' value.
-
-    Args:
-        catalog1 (pd.DataFrame): First catalog.
-        catalog2 (pd.DataFrame): Second catalog.
-        max_deg_dist (float, optional): Max distance between match sources in degrees. Defaults to 0.006.
-        suffix (str, optional): Suffix to apply to output merged catalog. Defaults to 'O'.
-
-    Returns:
-        pd.DataFrame: Merged info from associated sources.
-    """
-    catalog2 = catalog2.reset_index()
-    
-      # Matching SExtractor detections with closest ORDINARY MAPCAT sources: 
-    # Values returned: matched source indexes, 2D-distances, 3D-distances
-    ra1 = catalog2['ra2000_mc_deg'].values
-    dec1 = catalog2['dec2000_mc_deg'].values
-    ra2 = catalog1['ALPHA_J2000'].values
-    dec2 = catalog1['DELTA_J2000'].values
-    idx, d2d, d3d = match_sources(ra1, dec1, ra2, dec2, num_close=1)
-
-    # Selecting SExtractor closest sources
-    data = catalog1.iloc[idx]
-    data = data.reset_index()
-
-    # matching catalog sources
-    data['DISTANCE_DEG'] = list(d2d.deg)
-
-    # Concatenating
-    df_merge = pd.concat([catalog2, data], axis=1)
-    print(f'(suffix, distances) =({suffix}, {d2d.deg})')
-    # getting close enough matches
-    fboo = df_merge['DISTANCE_DEG'] < max_deg_dist
-    if fboo.sum() == 0:  # no near sources
-        print('Merged catalogs')
-        print(df_merge[['IAU_name_mc', 'ra2000_mc_deg', 'dec2000_mc_deg', \
-            'ALPHA_J2000', 'DELTA_J2000', 'DISTANCE_DEG']])
-    df_merge = df_merge[fboo]
-
-
-    # renaming columns
-    cols = {k: f'{k}_{suffix}' for k in df_merge.columns.values}
-    df_merge.rename(columns = cols, inplace = True)
-
-    # print(f' --------- Columnas para el merge del tipo {suffix} = {df_merge.columns.values}')
-
-    return df_merge
 
 def compute_zeropoint(input_fits, merged_data, output_png=None):
     """Compute zeropoint and plots saturated and not-saturated calibrators location.
@@ -540,6 +492,7 @@ def compute_zeropoint(input_fits, merged_data, output_png=None):
         color=['green', 'green', 'red', 'red'], coords=coords, \
         dictParams={'invert':'True'})
 
+    # non-saturated calibrators total flux (Ordinary + Extraordinary)
     # Using SExtractor AUTO measures (not APER)
     if 'MAPCAT' in input_fits:
         calibrators_total_flux = (merged_data['FLUX_AUTO_O'] + \
@@ -553,6 +506,148 @@ def compute_zeropoint(input_fits, merged_data, output_png=None):
     
     return zps.mean(), zps.std(), len(zps)
 
+def get_mapcat_sources(input_fits, blazar_path):
+    """Search for MAPCAT sources included in area covered by FITS.
+
+    Args:
+        input_fits (str): FITS fille path.
+        blazar_path (str): Path of file that contains MAPCAT sources.
+
+    Returns:
+        pd.DataFrame: It contains MAPCAT info provided by 'balazar_path'
+            about sources in sky 'input_fits' area.
+    """
+    # RA,DEC limits...
+    sky_limits = get_radec_limits(input_fits)
+    
+    # getting blazars info inside FITS sky area
+    blazars_data = read_blazar_file(blazar_path)
+    df_mc = detections_inside(blazars_data, \
+        (sky_limits['ra_min'], sky_limits['ra_max']), \
+        (sky_limits['dec_min'], sky_limits['dec_max']))
+    
+    return df_mc
+
+def assoc_sources(df_sext, df_mapcat, max_deg_dist=0.0006, suffix='O'):
+    """_summary_
+
+    Args:
+        df_sext (pd.DataFrame): SExtractor detections Pandas DataFrame
+        df_mapcat (pd.DataFrame): IOP3 sources Pandas DataFrame
+        max_deg_dist (float, optional): Maximum distance in arcs between IOP3 source coordinades and SExtractor detection. Defaults to 0.006.
+        suffix (str, optional): Suffix to associated field name catalogs. Defaults to 'O'.
+
+    Returns:
+        pd.DataFrame: Information from both entries (IOP3 and SExtractor sources) associated following closest distance criterium.
+    """
+    df_mapcat = df_mapcat.reset_index()
+
+    # Matching SExtractor detections with closest ORDINARY MAPCAT sources: 
+    # Values returned: matched source indexes, 2D-distances, 3D-distances
+    ra1 = df_mapcat['ra2000_mc_deg'].values
+    dec1 = df_mapcat['dec2000_mc_deg'].values
+    ra2 = df_sext['ALPHA_J2000'].values
+    dec2 = df_sext['DELTA_J2000'].values
+    idx, d2d, d3d = match_sources(ra1, dec1, ra2, dec2, num_close=1)
+
+    # Selecting SExtractor closest sources
+    df_sext = df_sext.iloc[idx]
+    df_sext = df_sext.reset_index()
+
+    # matching catalog sources
+    df_sext['DISTANCE_DEG'] = list(d2d.deg)
+
+    # Concatenating
+    df_merge = pd.concat([df_mapcat, df_sext], axis=1)
+    print(f'(suffix, distances) =({suffix}, {d2d.deg})')
+    # getting close enough matches
+    fboo = df_merge['DISTANCE_DEG'] < max_deg_dist
+    if fboo.sum() == 0:  # no near sources
+        print('Merged catalogs')
+        print(df_merge[['IAU_name_mc', 'ra2000_mc_deg', 'dec2000_mc_deg', \
+            'ALPHA_J2000', 'DELTA_J2000', 'DISTANCE_DEG']])
+    df_merge = df_merge[fboo]
+
+
+    # renaming columns
+    cols = {k: f'{k}_{suffix}' for k in df_merge.columns.values}
+    df_merge.rename(columns = cols, inplace = True)
+
+    # print(f' --------- Columnas para el merge del tipo {suffix} = {df_merge.columns.values}')
+
+    return df_merge
+
+
+# def merge_mapcat_sextractor(cat, df_mc, input_fits, max_deg_dist=0.0006):
+#     """_summary_
+
+#     Args:
+#         cat (_type_): _description_
+#         df_mc_o (_type_): _description_
+#         input_fits (_type_): _description_
+#         max_deg_dist (float, optional): _description_. Defaults to 0.006.
+
+#     Returns:
+#         _type_: _description_
+#     """
+#     root, ext = os.path.splitext(input_fits) 
+#     i_fits = mcFits(input_fits)
+#     header = i_fits.header
+
+#     data_match_o = assoc_sources(cat, df_mc, max_deg_dist=max_deg_dist, suffix='O')
+
+#     try:
+#         f_source = data_match_o['IAU_name_mc_O'].str.len() > 0
+#     except TypeError:
+#         print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
+#         return 1 
+#     # if len(df_mapcat[f_source].index) == 0:
+#     if f_source.sum() == 0:
+#         print(data_match_o[['id_mc_O', 'IAU_name_mc_O', 'DISTANCE_DEG_O']])
+#         print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
+#         return 2 
+#     else:
+#         print(f'Target = {data_match_o[f_source]}') 
+    
+#     # Plotting MAPCAT sources
+#     if len(df_mc.index) > 0:
+#         mc_ra = data_match_o['ra2000_mc_deg_O'].values
+#         mc_dec = data_match_o['dec2000_mc_deg_O'].values 
+#         sources_mapcat_png = f'{root}_mapcat_sources.png'
+#         title_temp = "{}, {} ({} s)"
+#         title = title_temp.format(header['OBJECT'], header['DATE-OBS'], header['EXPTIME'])
+#         i_fits.plot(sources_mapcat_png, title=title, astroCal=True, color='magenta', \
+#             coords=(mc_ra, mc_dec), dictParams={'aspect':'auto', 'invert':'True'})
+#         print('Out PNG ->', sources_mapcat_png)
+#     else:
+#         print(f'ERROR: No closer enough MAPCAT sources found for this input FITS: {input_fits}')
+#         return 3
+    
+#     # Printing info about MAPCAT-SExtractor sources
+#     # str_match_mapcat = " MAPCAT (name, ra, dec, Rmag, Rmagerr) = ({}, {}, {}, {}, {})"
+#     # str_match_sext = "SExtractor (ra, dec, mag_auto, magerr_auto) = ({}, {}, {}, {})"
+#     # str_dist = "Distance = {}\n-----------------------"
+#     # for j, row in data_match_o.iterrows():
+#     #     print(str_match_mapcat.format(row['name_mc_O'], row['ra2000_mc_deg_O'], row['dec2000_mc_deg_O'], \
+#     #         row['Rmag_mc_O'], row['Rmagerr_mc_O']))
+#     #     print(str_match_sext.format(row['ALPHA_J2000_O'], row['DELTA_J2000_O'], \
+#     #         row['MAG_AUTO_O'], row['MAGERR_AUTO_O']))
+#     #     print(str_dist.format(row['DISTANCE_DEG_O']))
+
+#     # Extraordinary counterparts location
+#     # rough coordinates (relative to ordinary source locations)
+#     df_mc_e = df_mc.copy()
+#     df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+#     data_match_e = assoc_sources(cat, df_mc_e, max_deg_dist=max_deg_dist, suffix='E')
+
+#     if len(data_match_e.index) != len(data_match_o.index):
+#         print(f'(len(data_match_e), len(data_match_o)) = ({len(data_match_e.index)}, {len(data_match_o.index)})')
+#         print('PHOTOMETRY,ERROR,"Different number of ORDINARY and EXTRAORDINARY sources."')
+#         return 4
+
+#     data_matched = pd.concat([data_match_o, data_match_e], axis=1)
+
+#     return data_matched
 
 def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
     """_summary_
@@ -587,6 +682,8 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
     else:
         print(f'Target = {data_match_o[f_source]}') 
     
+    print('-------- ORD. DATA MATCHED ----------')
+    print(data_match_o.info())
     # Plotting MAPCAT sources
     if len(df_mc.index) > 0:
         mc_ra = data_match_o['ra2000_mc_deg_O'].values
@@ -635,26 +732,81 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
 
     return data_matched
 
+def background_flux(x_pix, y_pix, fits_path, \
+    inner_aper_radius=10., outer_aper_radius=12.):
+    """Compute background noise in annular areas
+    given by one or more pair of (x, y) pixel coordinates and
+    anular areas given by inner and outer radius (again in pixels).
+
+    Args:
+        x_pix (float or iterable): x pixel coordinate/s.
+        y_pix (float or iterable): x pixel coordinate/s. Same length than 'x_pix'.
+        fits_path (str): FITS image path where aperture will be measured.
+        inner_aper_radius (float): internal annulus aperture radius in pixels.
+        outer_aper_radius (float): external annulus aperture radius in pixels. 
+            Outer radius should be greater than inner one.
+    
+    Returns:
+        tuple: (list(annulus_fluxes), list(annulus_areas_in_pixels))
+    """
+    
+    positions = [(x, y) for x, y in zip(list(x_pix), list(y_pix))]
+    annulus_aperture = CircularAnnulus(positions, r_in=inner_aper_radius, \
+        r_out=outer_aper_radius)
+
+    i_fits = mcFits( fits_path) 
+    data = i_fits.data 
+
+    phot_table = aperture_photometry(data, annulus_aperture)
+
+    bkg = phot_table['aperture_sum'].value
+    bkg_mean = bkg / annulus_aperture.area
+
+    return bkg, bkg_mean
+
+def aperture_flux(x_pix, y_pix, fits_path, aper_pix):
+    """Compute aperture flux inside a circular region.
+
+    Args:
+        x_pix (float or iterable): x pixel coordinate/s.
+        y_pix (float or iterable): x pixel coordinate/s. Same length than 'x_pix'.
+        fits_path (str): FITS image path where aperture will be measured.
+        aper_pix (float or iterable): aperture radius in pixels.
+        sustract_background (bool, optional): If True, backgroun is computed and 
+            sustracter form aperture flux. Defaults to False.
+        inner_aper_annulus (float): Internal annulus aperture radius in pixels.
+        outer_aper_annulus (float): Internal annulus aperture radius in pixels.
+    
+    Returns:
+        tuple: (list(aperture_fluxes), list(areas_in_pixels))
+    """
+    positions = [(x, y) for x, y in zip(list(x_pix), list(y_pix))]
+    
+    i_fits = mcFits( fits_path) 
+    data = i_fits.data 
+
+    aperture = CircularAperture(positions, r=aper_pix)
+    phot_table = aperture_photometry(data, aperture) 
+    phot_table["aperture_sum"].info.format = "%.8g" 
+
+    areas = [ap.area for ap in aperture]
+
+    return list(phot_table["aperture_sum"].value), areas
+
 def main():
-    parser = argparse.ArgumentParser(prog='iop3_photometric_calibration.py', \
+    parser = argparse.ArgumentParser(prog='iop3_photometry.py', \
     conflict_handler='resolve',
-    description='''Main program that perfoms input FITS photometric calibration. ''',
+    description='''Main program that perfoms input FITS aperture photometry. ''',
     epilog='''''')
     parser.add_argument("config_dir", help="Configuration parameter files directory")
     parser.add_argument("output_dir", help="Output base directory for FITS calibration")
     parser.add_argument("input_fits", help="Astrocalibrated input FITS file")
-    parser.add_argument("--border_image",
-       action="store",
-       dest="border_image",
-       type=int,
-       default=15,
-       help="Number of pixels close to border. They will be ignored in computations [default: %(default)s].")
     parser.add_argument("--aper_pix",
        action="store",
        dest="aper_pix",
        type=float,
        default=None,
-       help="FWHM for computing photometry [default: %(default)s].")
+       help="Aperture in pixels for BLAZAR photometry measuring [default: %(default)s].")
     parser.add_argument("--blazars_info",
        action="store",
        dest="blazars_info",
@@ -662,10 +814,6 @@ def main():
        default='blazar_photo_calib_last.csv',
        help="File name (located in config_dir) with information about blazar/star targets [default: %(default)s].")
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
-    parser.add_argument("--overwrite", dest='overwrite', action='store_true', \
-        help='Pipeline overwrite previous calibrations.')
-    parser.add_argument("--use_mean_fwhm", dest='use_mean_fwhm', action='store_true', \
-        help='For each consecutive OBJECT observations use mean FWHM for commputing aperture.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
@@ -689,37 +837,32 @@ def main():
         print(str_err.format(args.input_fits))
         return 3
 
+    if args.aper_pix is None or math.isnan(args.aper_pix):
+        print(f'PHOTOMETRY,ERROR,"Not valid {args.aper_pix} value for aperture."')
+        return 4
+
+    # date run info
+    # Using input path for getting observation night date... (Is this the best way or should I read FITS header?)
+    dt_run = re.findall('/(\d{6})/', args.input_fits)[0]
+    date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
+
     input_fits = os.path.abspath(args.input_fits)
     os.chdir(args.output_dir)
     print(f"\nWorking directory set to '{args.output_dir}'\n")
 
     # Reading input fits header
-    print(input_fits)
     i_fits = mcFits(input_fits)
-    astro_header = i_fits.header
+    header = i_fits.header
 
-    # search for photometry results file
-    photo_res_path = glob.glob(os.path.join(args.output_dir, '*photocal_res.csv'))
-
-    # Check for previous photometric calibration
-    if 'MAGZPT' in astro_header and len(photo_res_path) > 0 and not args.overwrite:
-        print(f'Input file "{input_fits}" already photo-calibrated. Nothing was done!')
-        return 4
-    
     text = 'OBJECT and Polarization angle = {}\nEXPTIME = {} s'
-    print(text.format(astro_header['OBJECT'], astro_header['EXPTIME']))
+    print(text.format(header['OBJECT'], header['EXPTIME']))
 
     # ---------------------- MAPCAT sources info -----------------------
     blazar_path = os.path.join(args.config_dir, args.blazars_info)
-    # blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_last.csv')
-    # df_mapcat = read_blazar_file(blazar_path)
-
-    center_fits = (astro_header['CRVAL1'], astro_header['CRVAL2'])
-    print(f'center FITS coordinates = {center_fits}')
-    nearest_blazar, min_dist_deg = closest_blazar(center_fits, blazar_path)
+    # center_fits = (header['CRVAL1'], header['CRVAL2'])
+    nearest_blazar, min_dist_deg = closest_blazar(blazar_path, input_fits)
     
-    print(f'Closest blazar distance to FITS\' center= {min_dist_deg} (deg)')
-
+    print(f'Closest blazar distance = {min_dist_deg} (deg)')
     if min_dist_deg > 0.5: # distance in degrees
         print('!' * 100)
         print('ERROR: Not enough close blazar or HD star found (distance <= 0.5 deg)')
@@ -732,17 +875,11 @@ def main():
   
     ################ WORKING ON ASTROCALIBRATED FITS ################
     
-    print('*' * 50)
-    message = "Number of sources used in astrometric calibration: {} (of {})"
-    print(message.format(astro_header['WCSMATCH'], astro_header['WCSNREF']))
-    print('*' * 50)
-
     # Getting MAPCAT sources in area covered by input_fits
     df_mc_o = get_mapcat_sources(input_fits, blazar_path)
     
     # print("MAPCAT filtered info...")
     print(df_mc_o.info())
-    print(df_mc_o)
     print(f'Number of MAPCAT sources inside FITS sky area = {len(df_mc_o.index)}')
 
     root, ext = os.path.splitext(input_fits)
@@ -750,212 +887,150 @@ def main():
     sext_conf = os.path.join(args.config_dir, 'sex.conf')
     # dir_out = os.path.split(cat)[0]
     
-    # Using SExtractor for detecting sources in FITS
+    # Setting aperture for photometry
     mc_aper = args.aper_pix
-    if not mc_aper or math.isnan(mc_aper):
-        # mc_aper = nearest_blazar['aper_mc'].iloc[0]
-        # if np.isnan(np.array([mc_aper])[0]):
-        #     mc_aper = astro_header['FWHM']
-        print(f'PHOTOCALIBRATION,ERROR,"{mc_aper} is not a valid value for Photometric APERTURE"')
-        return -99
-    
+    # if not mc_aper or math.isnan(mc_aper):
+    #     mc_aper = nearest_blazar['aper_mc'].iloc[0]
+    #     if np.isnan(np.array([mc_aper])[0]):
+    #         mc_aper = header['FWHM']
     # Round to 1 decimal digit
     mc_aper = round(mc_aper, 1)
-    
-    # Round to integer
-    # mc_aper = round(mc_aper)
 
-    res = i_fits.detect_sources(sext_conf, cat, \
-        additional_params=sext_params_detection(input_fits), \
-        photo_aper=mc_aper, aper_image=True, verbose=True)
+    # Using SExtractor for detecting sources in FITS
+    a_params = sext_params_detection(input_fits)
+    a_params['PARAMETERS_NAME'] = os.path.join(args.config_dir, 'apertures.param')
+
+    print('----------- ADDITIONAL SExtractor input parameters --------')
+    print(f'additional_params={a_params}')
+    print(f'cat={cat}')
+    print(f'mc_aper={mc_aper}')
+    print(f"mag_zeropoint={header['MAGZPT']}")
+    res = i_fits.detect_sources(sext_conf, cat, additional_params=a_params, \
+        photo_aper=mc_aper, aper_image=True, mag_zeropoint=header['MAGZPT'])
     if res:
-        print('PHOTOCALIBRATION,ERROR,"SExtractor did not work properly"')
+        print('PHOTOMETRY,ERROR,"SExtractor did not work properly"')
         return 6
 
     sources_sext_png = f'{root}_sextractor_sources.png'
     if plot_cat(input_fits, sources_sext_png, cat, astro_coords=True, cat_format='FITS_LDAC'):
-        print(f'PHOTOCALIBRATION,ERROR,"Could not plot {sources_sext_png}"')
-        return 8
+        print(f'PHOTOMETRY,ERROR,"Could not plot {sources_sext_png}"')
+        return 7
     print('Out PNG ->', sources_sext_png)
 
     # Merging data: MAPCAT & SExtractor
-    df_SExtractor = read_sext_catalog(cat, format='FITS_LDAC')
-    data_matched = merge_mapcat_sextractor(df_SExtractor, df_mc_o, input_fits, max_deg_dist=0.002)
+    df_sext = read_sext_catalog(cat, format='FITS_LDAC')
+    data_matched = merge_mapcat_sextractor(df_sext, df_mc_o, input_fits, max_deg_dist=0.0006)
 
-    print('------- DATA MATCHED------')
-    print(data_matched)
     try:
         source_problem = data_matched['IAU_name_mc_O'].str.len() > 0
     except TypeError:
-        return 9
-
-    info_target = data_matched[source_problem]
-    print(source_problem)
-    print(info_target['ALPHA_J2000_E'])
-    ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
-    ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
-
-    #Get reference star
-    #CUIDAO QUE ESTO NO VA A FUNCIONAR PARA LAS HD stars
-    
-    if is_blz:
-        ra_blz=ra_mc[source_problem]
-        dec_blz=dec_mc[source_problem]
-        ra_stars=ra_mc[~source_problem]
-        dec_stars=dec_mc[~source_problem]
-        
-        dist=np.sqrt((ra_blz-ra_stars)**2+(dec_blz-dec_stars)**2)
-        ref_idx=np.argmin(dist)+1
-        source_problem[ref_idx]=True
-
-        refstar_Rmag=df_mc['Rmag_mc'].values[source_problem][1]
-
-        indexes_refstar=[idx_o[source_problem][1], idx_e[source_problem][1]]
-        print(f'[Ordinary, Extraordinary] SExtractor indexes of reference star = {indexes_refstar}')
-
-    # Plotting source problem
-    # Showing detailed info about SExtractor counterparts
-    if 'fits' in input_fits:
-        source_pair_png = input_fits.replace('.fits', '_source_pair.png')
-    else:
-        source_pair_png = input_fits.replace('.fit', '_source_pair.png')
-
-    print('Out PNG ->', source_pair_png)
-    title_temp = "SExtractor Pair Detections {}, {} ({} s)"
-    title = title_temp.format(astro_header['OBJECT'], astro_header['DATE-OBS'], \
-        astro_header['EXPTIME'])
-    i_fits.plot(source_pair_png, title=title, astroCal=True, \
-        coords=[(ra_o, dec_o), (ra_e, dec_e)], color=['red', 'blue']) 
-
-    # Parameters to store...
-    cal_data = defaultdict(list)
-    
-    # Photometric calibration
-    mag_zeropoint = None
-    std_mag_zeropoint = None
-    num_sat = 0
-    calibrators_png = ''
-
-    # MAPCAT calibrators
-    calibrators = data_matched[~source_problem]
-    # If there are IOP3 calibrators in field covered by FITS
-    if len(calibrators.index) > 0:                
-        # Computing ZEROPOINT
-        root, ext = os.path.splitext(input_fits)
-        calibrators_png = root + '_photo-calibrators.png'
-        # At this point, SExtractor MAG_AUTO is used for getting magnitude zero-point.
-        # If a calibrator is saturated, then is rejected for mangitude zero-point computation.
-        mag_zeropoint, std_mag_zeropoint, num_calibrators = compute_zeropoint(input_fits, \
-            calibrators, output_png=calibrators_png)
-
-        # getting saturated calibrators
-        flags_cal_o = calibrators['FLAGS_O'].values
-        flags_cal_e = calibrators['FLAGS_E'].values
-        try:
-            ord_sat = check_saturation(flags_cal_o)    
-            ext_sat = check_saturation(flags_cal_e)    
-            # If ordinary or extraordinary counterpart is saturated, source 
-            # is considered as saturated.
-            sat_calibrator = np.logical_or(ord_sat, ext_sat)
-            num_sat = sat_calibrator.sum()
-        except: 
-            print(f'PHOTOCALIBRATION,ERROR,"Non valid calibrator FLAGS\nO = {flags_cal_o}\nE = {flags_cal_e}"')
-            mag_zeropoint = -99
-            std_mag_zeropoint = 0
-            num_calibrators = 0
-
-        # Plotting calibrators
-        mc_calib_png = f'{root}_sources_mc_calib.png'
-        print('Out PNG ->', mc_calib_png)
-        title_temp = "Calibrators in {}, {} ({} s)"
-        title = title_temp.format(astro_header['OBJECT'], astro_header['DATE-OBS'], \
-            astro_header['EXPTIME'])
-
-        # aliases
-        ra_cal_o = calibrators['ra2000_mc_deg_O'].values
-        dec_cal_o = calibrators['dec2000_mc_deg_O'].values
-        ra_cal_e = calibrators['ra2000_mc_deg_E'].values
-        dec_cal_e = calibrators['dec2000_mc_deg_E'].values
-
-        i_fits.plot(mc_calib_png, title=title, astroCal=True, \
-            color=['green', 'green'], \
-            coords=[(ra_cal_o, dec_cal_o), (ra_cal_e, dec_cal_e)], \
-            dictParams={'aspect':'auto', 'invert':'True'})
-        cal_data['MC_CALIB_PNG'] = [mc_calib_png]
-    else:
-        num_calibrators = 1  
-        num_sat = 1
-        
-        # because Mag = ZP - 2.5 * log10(Flux) => ZP = Mag + 2.5 * log10(Flux)
-        # Then, as HD is a polarized source, I'll take as FLUX the sum of both
-        # (Flux_o + Flux_e)
-        try:
-            # SExtractor AUTO measures used in photometric calibration
-            # total_flux = (data['FLUX_AUTO'][indexes_target]).sum()
-            if 'MAPCAT' in input_fits:
-                fluxes = info_target['FLUX_AUTO_O'] + info_target['FLUX_AUTO_E']
-            else:
-                fluxes = info_target['FLUX_AUTO_O']
-
-            total_flux = fluxes.values.sum()
-            mag_zeropoint = info_target['Rmag_mc_O'].values[0] + \
-                2.5 * np.log10(total_flux)
-            std_mag_zeropoint = 0
-        except ValueError:
-            message = "Ordinary and extraordinary fluxes auto = ({}, {})"
-            print(message.format    (info_target['FLUX_AUTO_O'], info_target['FLUX_AUTO_E']))
-            raise
-    print(mag_zeropoint)
-    if mag_zeropoint is None or np.isnan(mag_zeropoint):
-        print(f'PHOTOMETRY,ERROR,"Could not compute MAG_ZEROPOINT for \'{input_fits}\'"')
         return 8
 
-    # date run info
-    i_fits = mcFits(args.input_fits)
-
-    dt_run = i_fits.run_date()
-    date_run = dt_run.strftime("%Y-%m-%d")
-
-    print(f"Photometric Zero-point = {round(mag_zeropoint, 2)}")
-    print(f"STD(Photometric Zero-point) = {round(std_mag_zeropoint, 2)}")
-
-    # --------------- Updating FITS header --------------------- #
-    params = OrderedDict()
-    params['MAGZPT'] = round(mag_zeropoint, 2)
-    params['STDMAGZP'] = round(std_mag_zeropoint, 2)
-    params['NSZPT'] = num_calibrators
-    params['APERPIX'] = mc_aper
-    params['BLZRNAME'] = info_target['IAU_name_mc_O'].values[0]
-    print(f'Header params = {params}')
-
-    # Composing cards
-    cards = [('MAGZPT', round(mag_zeropoint, 2), 'MAPCAT Photometric zeropoint'), \
-        ('STDMAGZP', round(std_mag_zeropoint, 2), 'MAPCAT STD(Photometric zeropoint)'), \
-        ('NSZPT', num_calibrators, 'MAPCAT number of calibrators used in ZEROPOINT estimation'), \
-        ('APERPIX', mc_aper, 'Aperture in pixel for photometry calibration'), \
-        ('BLZRNAME', info_target['IAU_name_mc_O'].values[0], 'IAU name of BLAZAR'), \
-        ('RUN_DATE', date_run, 'Night run date')]
-    
-    if i_fits.update_header(cards):
-        print(f'PHOTOCALIBRATION,ERROR,"Could not update photocalibration header in \'{input_fits}\'"')
+    if source_problem.sum() == 1:
+            info_target = data_matched[source_problem]
+    else:
+        print(f'ASTROCALIBRATION,ERROR,"No target source found."')
         return 9
 
-    cal_data['PATH'].append(input_fits)
-    cal_data['RUN_DATE'].append(date_run)
-    if calibrators_png and os.path.exists(calibrators_png):
-        cal_data['CALIBRATORS_PNG'] = [calibrators_png]
+    # Geting X,Y coordinates
+    x_o, y_o = info_target['X_IMAGE_O'].values[0], info_target['Y_IMAGE_O'].values[0]
+    x_e, y_e = info_target['X_IMAGE_E'].values[0], info_target['Y_IMAGE_E'].values[0]
+
+    # COMPUTING APERTURE FLUXES. Now we have MAG_ZEROPOINT-------------------
+    # Loading FITS_LDAC format SExtractor catalog
+    data = read_sext_catalog(cat, format='FITS_LDAC')
+    
+    
+    # root, ext = os.path.splitext(input_fits)
+    # fits_name = os.path.split(root)[1]
+    
+    pair_params = defaultdict(list)
+
+    pair_params['ID-MC'] = [info_target['id_mc_O'].iloc[0]]
+    pair_params['ID-BLAZAR-MC'] = [info_target['id_blazar_mc_O'].values[0]]
+    # pair_params['TYPE'] = ['O', 'E']
+    if 'INSPOROT' in header:
+        angle = float(header['INSPOROT'])
     else:
-        cal_data['CALIBRATORS_PNG'] = ''
-    cal_data['N_CALIBRATORS'] = [num_calibrators]
-    cal_data['N_SAT_CALIBRATORS'] = [num_sat]
-    cal_data['SEXTDET_PNG'] = [sources_sext_png]
-    cal_data['MAPCAT_SOURCES_PNG'] = [f'{root}_mapcat_sources.png']
-    cal_data['SOURCE_PAIRS_PNG'] = [source_pair_png]
+        if header['FILTER']=='R':
+            angle = -999.0
+        elif header['FILTER']=='R_45':
+            angle = float(-45)
+        else:
+            angle = float(header['FILTER'].replace('R',''))
+            
+    pair_params['ANGLE'] = [round(angle, ndigits=1)]
+    pair_params['OBJECT'] = [header['OBJECT']]
+    if 'MJD-OBS' in header:
+        pair_params['MJD-OBS'] = [header['MJD-OBS']] * 2
+    else:
+        pair_params['MJD-OBS'] = [header['JD'] - 2400000.5 * 2
+    pair_params['MJD-OBS'] = [header['MJD-OBS']]
+    pair_params['DATE-OBS'] = ['']
+    if 'DATE-OBS' in header:
+        pair_params['DATE-OBS'] = [header['DATE-OBS']]
+    else:
+        pair_params['DATE-OBS'] = [header['DATE']]
+    mc_name = info_target['name_mc_O'].values[0]
+    mc_iau_name = info_target['IAU_name_mc_O'].values[0]
+    pair_params['MC-NAME'] = [mc_name]
+    pair_params['MC-IAU-NAME'] = [mc_iau_name]
+    pair_params['MAGZPT'] = [header['MAGZPT']]
+    pair_params['RUN_DATE'] = [date_run]
+    pair_params['EXPTIME'] = [header['EXPTIME']]
+    pair_params['APERPIX'] = [mc_aper]
+    pair_params['RJD-50000'] = [header['MJD-OBS'] - 50000 + 0.5]
+    pair_params['FWHM'] = [header['FWHM']]
+
+    # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
+    print('----------- INFO TARGET ----------')
+    print(info_target)
+    # Ordinary
+    coo_O = f"{info_target['ALPHA_J2000_O'].values[0]} {info_target['DELTA_J2000_O'].values[0]}"
+    coordinates_O = SkyCoord(coo_O, frame=FK5, unit=(u.deg, u.deg), obstime="J2000") 
+    info_target['RA_J2000_O'] = [coordinates_O.ra.to_string(unit=u.hourangle, sep=' ', \
+        precision=4, pad=True)]
+    info_target['DEC_J2000_O'] = [coordinates_O.dec.to_string(unit=u.deg, sep=' ', \
+        precision=4, alwayssign=True, pad=True)]
+    # Extraordinary
+    coo_E = f"{info_target['ALPHA_J2000_E'].values[0]} {info_target['DELTA_J2000_E'].values[0]}"
+    coordinates_E = SkyCoord(coo_E, frame=FK5, unit=(u.deg, u.deg), obstime="J2000") 
+    info_target['RA_J2000_E'] = [coordinates_E.ra.to_string(unit=u.hourangle, sep=' ', \
+        precision=4, pad=True)]
+    info_target['DEC_J2000_E'] = [coordinates_E.dec.to_string(unit=u.deg, sep=' ', \
+        precision=4, alwayssign=True, pad=True)]
+
+    # Adding aperture (in pixels)
+    info_target['APERPIX'] = [mc_aper]
+    info_target['FWHM'] = [i_fits.header['FWHM']]
+    if 'SECPIX' in i_fits.header:
+        info_target['SECPIX'] = [i_fits.header['SECPIX']]
+    else:
+        mean_secpix = np.nanmean(np.array([i_fits.header['SECPIX1'], i_fits.header['SECPIX2']]))
+        info_target['SECPIX'] = [round(mean_secpix, 2)]
+    info_target['DATE-OBS'] = [i_fits.header['DATE-OBS']]
+    info_target['MJD-OBS'] = [i_fits.header['MJD-OBS']]
+    info_target['RJD-50000'] = [i_fits.header['MJD-OBS'] - 50000 + 0.5]
+    info_target['EXPTIME'] = [i_fits.header['EXPTIME']]
+    info_target['ANGLE'] = [round(angle, ndigits=1)]
+    info_target['MAGZPT'] = [round(header['MAGZPT'], 2)]
+
+    # df = pd.DataFrame(pair_params)
+    csv_out = f'{root}_photometry.csv'
+    info_target.to_csv(csv_out, index=False)
+
+    # Imprimo el contenido del fichero
+    print('Useful parameters for polarimetric computations:')
+    print(info_target)
+
+    # Write aperture in input FITS header
+    # In any case, aperture is written in FITS header as APERPIX keyword
+    new_card = [('APERPIX', round(args.aper_pix, 1), 'Aperture (pix) used in photometry')]
+    i_fits.update_header(cards=new_card)
     
-    df = pd.DataFrame(cal_data)
-    df.to_csv(csv_out, index=False)
+
     return 0
-    
+
 # -------------------------------------
 if __name__ == '__main__':
     print(main())

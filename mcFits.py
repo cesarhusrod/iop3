@@ -13,20 +13,22 @@ __author__ = 'Cesar Husillos'
 
 VERSION:
     1.1 Cleaned initial version (2021-11-03)
+    1.2 Refactoring of code
 """
 
 
 from collections import defaultdict
 import os
 import subprocess
-# import copy
 import re
+from datetime import datetime,timedelta
 from io import StringIO
 
 # Astronomical packages
 import aplpy  # FITS plotting library
 from astropy.io import fits  # FITS library
 from astropy.wcs import WCS
+from astropy.time import Time
 
 # Numerical packages
 import numpy as np
@@ -40,48 +42,58 @@ matplotlib.use('Agg')
 # Coordinate system transformation package and modules
 from astropy import units as u
 from astropy.coordinates import SkyCoord  # High-level coordinates
-# from PyAstronomy import pyasl # for changing coordinates format
 
-# import statsmodels.api as smapi  # Linear fitting module
-# from scipy import optimize
+def check_saturation(sext_flags):
+    """Check for saturated SExtractor FLAGS in 'sext_flags'.
 
-def _read_sextractor_catalog(catalog):
-    """
-    It reads SExtractor output catalog.
-
-    This function reads files in text or FITS/LDAC format
-    produced by SExtractor.
-
-    Args:
-        catalog (str): path to SExtractor output file.
-
-    Returns:
-        ndarray: numpy.ndarray with SExtractor detection parameters.
-
-    Raises:
-        Exception: Any type, depending on failing code line.
-
-    """
-    data_sextractor = None
+    As SExtractor manual says, if some source pixel si saturated then FLAGS take
+    3th bit of FLAG to 1. That is, value 4 = 2^2 (3th bit) is activated
     
-    if os.path.splitext(catalog)[1] == '.fits' or os.path.splitext(catalog)[1] == '.fit':
-        hdul = fits.open(catalog)
-        data_sextractor = hdul[2].data  # assuming first extension is a table
+    Args:
+        sext_flags (np.array): SExtractor FLAGS array.
+        
+    Returns:
+        np.array of booleans: True means saturated FLAG.
+    """
+    # Binary codification and bit check
+    bin_code = np.array([f"{format(int(flag), 'b') :0>8}"[-3] == '1' for flag in sext_flags], dtype=bool)
+    
+    return bin_code
+
+def read_sext_catalog(path, format='ASCII', verbose=False):
+    """
+    Read SExtractor output catalog given by 'path'.
+    Args:
+        path (str): SExtractor catalog path
+        format (str): 'ASCII' or 'FTIS_LDAC' output SExtractor formats.
+        verbose (bool): IT True, it prints process info.
+        
+    Returns:
+        pandas.DataFrame: Data from SExtractor output catalog.
+    """
+    if format == 'ASCII':
+        cat = ''
+        with open(path) as fin:
+            cat = fin.read()
+        campos = re.findall(r'#\s+\d+\s+([\w_]*)', cat)
+        if verbose:
+            print(f'Header catalog keywords = {campos}')
+
+        data_sext = np.genfromtxt(path, names=campos)
+        # Working with pandas DataFrame
+        # data_sext = pd.DataFrame({k:np.atleast_1d(data_sext[k]) for k in campos})
     else:
-        fields = list()
-        with open(catalog) as f_input:
-            line = f_input.readline()
-            while line.startswith('#'):
-                try:
-                    fields.append(line.split()[2])
-                except:
-                    pass
-                line = f_input.readline()
+        sext = fits.open(path)
+        data_sext = sext[2].data
+        #data_sext = pd.DataFrame(data)
+    
+    return data_sext
 
-        data_sextractor = np.genfromtxt(catalog, names=fields)
-
-    return data_sextractor
-
+def execute_command(cmd, out=subprocess.PIPE, err=subprocess.PIPE, shell=True):
+    """It executes command and checks results."""
+    result = subprocess.run(cmd, stdout=out, stderr=err, shell=shell, check=True)
+    
+    return result
 
 def _linear_fit(x, ord):
     """
@@ -104,7 +116,7 @@ def _linear_fit(x, ord):
 
 
 class mcFits:
-    def __init__(self, path, index=0, border=0, saturation=40000):
+    def __init__(self, path, index=0, border=0, saturation=45000):
         self._path = path
         self._index = index
         self._save = False
@@ -121,12 +133,22 @@ class mcFits:
 
         # Checking and setting border parameter
         self._border = 0
-        if (np.array(self._data.shape) - 2 * int(border)).all():
+        if int(border) < 0: 
+            print('REDUCTION,WARNING,"Border can not set to negative values. Set to 0."')
+            self._border = 0
+        elif (self._header['NAXIS1'] < 2 * int(border)) or \
+            (self._header['NAXIS2'] < 2 * int(border)):
+            print('REDUCTION,WARNING,"Border too high. Set to 0."')
+            self._border = 0
+        else:
             self._border = int(border)
 
         # Checking and setting saturation
         try:
             self.saturation = int(saturation)
+            if self.saturation < 0:
+                print('REDUCTION,WARNING,"Saturation can not set to negative values. Set to 45000."')
+                self.saturation = 45000
         except ValueError:
             raise
 
@@ -185,6 +207,21 @@ class mcFits:
         info += f'{self.saturation!r})'
         return info
 
+    def run_date(self):
+        """Returns Python datetime object of FITS night run
+
+        Returns:
+            datetime.datetime: Run night observation date.
+        """
+        ofits = mcFits(self._path)
+        t = Time(ofits.header["DATE-OBS"], format="isot", scale="utc")
+        t_dt = t.to_datetime()
+        
+        if t_dt.hour < 12: # fits taken in previous day
+            t_dt = t_dt - timedelta(days=1)
+    
+        return t_dt
+
     def stats(self, exclude_borders=True):
         """
         Basic statistical parameters from FITS data.
@@ -208,6 +245,7 @@ class mcFits:
         if exclude_borders and self._border > 0:
             new_data = self.data[self._border:-self._border,
                                  self._border:-self._border]
+        # print(f'Stats from shaped data = {new_data.shape}')
         dictStats = dict()
         dictStats['MIN'] = new_data.min()
         dictStats['MAX'] = new_data.max()
@@ -281,590 +319,331 @@ class mcFits:
 
         return 0
 
-    def plotFits(self, plot_path, title=None, colorbar=True, \
-        coords=None, ref_coords='world', astrocal=False, \
-        colors=['green', 'red', 'blue'], dparams={'aspect':'auto'}):
-        """
-        It creates 'plot_path' image file using data from current FITS.
-
+    def plot(self, outputImage=None, title=None, colorBar=True, coords=None, \
+    ref_coords='world', astroCal=False, color='green', \
+    dictParams={'aspect':'auto', 'vmin': 1, 'invert': True}, format='png'):
+        """Plot 'inputFits' as image 'outputImage'.
+        
         Args:
-            plotpath (str): path to output plot.
-            title (str): title of plot.
-            colorbar (bool): If True, colorbar is added to plot.
-            coords (list): List of tuples of arrays (o lists). Each element of list
-                is an independent region for plotting on image.
-            ref_coords (str): Allowed values are:
-                * 'world', if FITS is calibrated astrometically,
-                * 'pixel', in other case
-            colors (list): Each element is a string with name of color.
-            dparams (dict): Additional shape parameters of plot.
-
-        Returns:
-            int: 0 if everything was fine.
-
+            inputFits (str): FITS input path.
+            outputImage (str): Output plot path.
+            title (str): Plot title.
+            colorBar (bool): If True, colorbar is added to right side of output plot.
+            coords (list or list of list): [ras, decs] or [[ras, decs], ..., [ras, decs]]
+            ref_coords (str): 'world' or 'pixel'.
+            astroCal (bool): True if astrocalibration was done in 'inputFits'.
+            color (str or list): valid color identifiers. If 'coords' is a list of lists,
+                then 'color' must be a list with length equals to lenght of 'coords' parameter.
+            dictParams (dict): aplpy parameters.
+            format (str): output plot file format.
+            
+        Return:
+            0 is everything was fine. Exception in the other case.
+            
         Raises:
-            Exception: depending on failing line of code.
-
+            IndexError if list lenghts of 'coords' and 'color' are different.
+            
         """
-
         gc = aplpy.FITSFigure(self.path, dpi=300)
         #gc.set_xaxis_coord_type('scalar')
         #gc.set_yaxis_coord_type('scalar')
-        gc.show_grayscale(**dparams)
+        gc.show_grayscale(**dictParams)
         #gc.recenter(512, 512)
         gc.tick_labels.set_font(size='small')
-        if title:
-            gc.set_title(title)
-        if colorbar:
-            gc.add_colorbar()
-            gc.colorbar.show()
-        gc.add_grid()
-        gc.grid.set_color('orange')
-        if astrocal:
-            gc.grid.set_xspacing(1./60) # armin
-
-        gc.grid.show()
-        gc.grid.set_alpha(0.7)
-        if coords:
-            for i, c in coords.enumerate():
-                ra, dec = c[0], c[1]
-                gc.show_markers(ra, dec, edgecolor=colors[i], facecolor='none',
-                                marker='o', coords_frame=ref_coords, s=40, alpha=1)
-        gc.save(plot_path)
-        gc.close()
-
-        return 0
-
-
-    def plot(self, title=None, out_path=None, colorBar=True, regions=list(),
-             coords=list(), coord_color='magenta', dpi=300,
-             parameters={'aspect': 'auto'}):
-        """
-        Another plotting FITS data function.
-
-        It is a wrapper of aplpy.FITSFigure class that plots FITS data.
-        Output plot is located at the same path of input image. Extension
-        is changed to '.png'.
-
-        Args:
-            title (str): Title plot.
-            colorBar (bool): If True, color bar is added to plot.
-            coords (list): [[x_coords], [y_coords]] list of points 
-                to draw in plot.
-            coord_color (str): valid color name.
-            dpi (int): plot resolution in "dot per inch" units.
-            parameters (dict): valid aplpy.FITSFigure.show_grayscale 
-                parameters dictionary.
-
-        Returns:
-            int: 0, if everything was fine.
-
-        Raises:
-            Exception: depending on failing line of code.
-
-        """
-        gc = aplpy.FITSFigure(self._path, dpi=dpi)
-        # gc.set_xaxis_coord_type('scalar')
-        # gc.set_yaxis_coord_type('scalar')
-        gc.show_grayscale(**parameters)
-        # gc.recenter(512, 512)
-        gc.tick_labels.set_font(size='small')
-        gc.tick_labels.set_xposition('bottom')
-        gc.tick_labels.set_yposition('right')
-        # gc.tick_labels.set_xformat('d.ddddd')
-        # gc.tick_labels.set_yformat('d.ddddd')
         if title:
             gc.set_title(title)
         if colorBar:
             gc.add_colorbar()
             gc.colorbar.show()
-        for reg in regions:
-            gc.show_regions(reg)
-        if len(coords) > 0:  # only wcs coordinates
-            gc.show_circles(coords[0], coords[1], radius=5. / 60 / 60,
-                            edgecolor=coord_color)
         gc.add_grid()
+        gc.tick_labels.set_xposition('bottom')
+        gc.tick_labels.set_yposition('left')
+        gc.tick_labels.show()
         gc.grid.set_color('orange')
-        # gc.grid.set_xspacing('tick')
-        # gc.grid.set_yspacing('tick')
+        if astroCal:
+            gc.grid.set_xspacing(1./60) # armin
+
         gc.grid.show()
         gc.grid.set_alpha(0.7)
-        if out_path:
-            gc.save(out_path)
-        else:   
-            if 'fits' in self._path:
-                gc.save(self._path.replace('.fits', '.png'))
+        if coords:
+            if type(coords[0]) == type(list()) or type(coords[0]) == type((1,)):
+                for i, l in enumerate(coords):
+                    ra, dec = l[0], l[1]
+                    gc.show_markers(ra, dec, edgecolor=color[i], facecolor='none', \
+                        marker='o', coords_frame=ref_coords, s=40, alpha=1)
             else:
-                gc.save(self._path.replace('.fit', '.png'))
+                ra, dec = coords[0], coords[1]
+                gc.show_markers(ra, dec, edgecolor=color, facecolor='none', \
+                    marker='o', coords_frame=ref_coords, s=40, alpha=1)
+        if outputImage is None:
+            root, ext = os.path.splitext(self.path)
+            outputImage = f'{root}.{format}'
+        gc.save(outputImage, format=format)
         gc.close()
 
         return 0
 
-
-    def plot_higher_than(self, out_plot, max_value=4000, title=None,
-                         show_center=True, dpi=300, color="orange",
-                         parameters={'markersize': 2, 'origin': 'lower'}):
-        """
-        This function plot sparse 'matrix2D' with 'markersize'
-        and saves it in 'out_plot' after setting 'title'.
-
-        A bit longer description.
+    def statistics(self, border=15, sat_threshold=50000):
+        """_summary_
 
         Args:
-            variable (type): description
+            sat_threshold (int, optional): _description_. Defaults to 50000.
 
         Returns:
-            type: description
-
-        Raises:
-            Exception: description
-
+            _type_: _description_
         """
-        mat = np.flip(self.data, 0)
-        saturated = np.where(mat >= max_value, 1, 0)
-        my_figure, my_axis = plt.subplots()
-        my_axis.spy(saturated, **parameters)
-        my_axis.set_title(title)
-        # grid properties
-        if show_center:
-            x_center = int(int(self._header['NAXIS1']) / 2)
-            y_center = int(int(self._header['NAXIS2']) / 2)
-            my_axis.set_xticks(np.array([x_center]), minor=False)  # center of image
-            my_axis.set_yticks(np.array([y_center]), minor=False)  # center of image
-        my_axis.grid(color=color, alpha=0.7, which='both')
-        plt.savefig(out_plot, dpi=dpi)
-        plt.close()
+        new_data = self.data
+        if border > 0:
+            new_data = self.data[border:-border, border:-border]
+        dictStats = dict()
+        dictStats['MINIMUM'] = new_data.min()
+        dictStats['MAXIMUM'] = new_data.max()
+        dictStats['MEAN'] = new_data.mean()
+        dictStats['STD'] = new_data.std()
+        dictStats['MEDIAN'] = np.median(new_data)
+        dictStats['NPIX'] = self.header['NAXIS1'] * self.header['NAXIS2']
+        dictStats['NSAT'] = (new_data >= sat_threshold).sum()
+        dictStats['EXPTIME'] = self.header['EXPTIME']
+        dictStats['FILENAME'] = os.path.split(self.path)[1]
+        dictStats['STD/MEAN'] = dictStats['STD'] / dictStats['MEAN']
+        mean = dictStats['MEAN']
+        median = dictStats['MEDIAN']
+        dictStats['MEAN_MEDIAN'] = np.round((mean - median) / (mean + median) * 100, 3)
+
+        return dictStats
+
+    def sext_params_detection(self, border=15, sat_threshold=45000):
+        """It analyzes FITS data and return best input parameters for maximize detection.
+        
+        Args:
+            border (int): Border size. It won't be used in statistics computation.
+            sat_threshold (int): threshold pixel value considered as saturated.
+            
+        Returns:
+            dict: Dictionary with best detection parameters for SExtractor.
+        """
+        
+        params = {}
+        # default values
+        params['FILTER'] = 'N'
+        params['CLEAN'] = 'N'
+        params['DETECT_MINAREA'] = 25
+        params['ANALYSIS_THRESH'] = 1.0
+        params['DETECT_THRESH'] = 1.0
+        params['DEBLEND_MINCONT'] = 0.005
+        if 'CCDGAIN' in self.header:
+            params['GAIN'] = self.header['CCDGAIN']
+
+        # getting info about FITS
+        dt = self.statistics(border=border, sat_threshold=sat_threshold)
+
+        if dt['EXPTIME'] > 1:
+            params['FILTER'] = 'Y'
+            params['CLEAN'] = 'Y'
+            # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
+            # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
+            params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
+        
+        if dt['STD/MEAN'] > 2: # noisy
+            params['ANALYSIS_THRESH'] = 1.5
+            params['DETECT_THRESH'] = 1.5
+        # elif dt['STD/MEAN'] > 5: # very noisy
+        #     params['ANALYSIS_THRESH'] = 2.5
+        #     params['DETECT_THRESH'] = 2.5
+
+        return params
+
+    def detect_sources(self, sext_conf, cat_out, \
+        additional_params={}, photo_aper=None, mag_zeropoint=None, \
+        back_image=False, segment_image=False, aper_image=False, \
+        verbose=True):
+        """SExtractor call for FITS source detection.
+
+        Args:
+            sext_conf (str): Path to SExtractor configuration file.
+            cat_out (str): Path for output catalog.
+            plot_out (str, optional): Path for output detected sources. Defaults to None.
+            additional_params (dict, optional): Updated parameters for SExtractor. Defaults to {}.
+            photo_aper (float, optional): Aperture in pixels for fotometry. Defaults to None.
+            mag_zeropoint (float, optional): Photometric zero point. Defaults to None.
+            back_image (bool, optional): If True, SExtractor create background map. Defaults to False.
+            segment_image (bool, optional): If True, SExtractor create segmentation map. Defaults to False.
+            border (int, optional): With of image close to borders that is ignored. Defaults to 15.
+            sat_threshold (float, optional): Pixel threshold value. If greater, pixel is considered as saturated.
+            verbose (bool, optional): If True, additional info is printed. Defaults to True.
+
+        Returns:
+            int: 0, if everything was fine.
+        """       
+        pixscale = self.header['INSTRSCL']
+
+        # Adtitional ouput info
+        root, ext = os.path.splitext(self.path)
+        back_path = f'{root}_back.fits'
+        segm_path = f'{root}_segment.fits'
+        aper_path = f'{root}_apertures.fits'
+
+        check_types = ['BACKGROUND', 'SEGMENTATION', 'APERTURES']
+        check_names = [back_path, segm_path, aper_path]
+        options = [back_image, segment_image, aper_image]
+        
+        # SExtractor parameters    
+        params = {}
+
+        if back_image or segment_image or aper_image:
+            params['CHECKIMAGE_TYPE'] = ','.join([p for p, o in zip(check_types, options) if o == True])
+            params['CHECKIMAGE_NAME'] = ','.join([p for p, o in zip(check_names, options) if o == True])
+        
+        cmd = f"source-extractor -c {sext_conf} -CATALOG_NAME {cat_out} -PIXEL_SCALE {pixscale} "
+        if photo_aper:
+            cmd += f"-PHOT_APERTURES {photo_aper} "
+        
+        
+        fwhm = self.header.get('FWHM', None)
+        if fwhm:
+            fwhm_arcs = float(fwhm) * float(pixscale)
+            cmd += f"-SEEING_FWHM {fwhm_arcs} "
+        
+        if mag_zeropoint:
+            cmd += f"-MAG_ZEROPOINT {mag_zeropoint} "
+        
+        for k, v in additional_params.items():
+            params[k] = v
+        
+        # Formatting parameters to command line syntax
+        com_params = [f'-{k} {v}' for k, v in params.items()]
+        
+        # adding parameters to command
+        cmd = cmd + ' '.join(com_params)
+        
+        # last parameter for command
+        cmd = f'{cmd} {self.path}'
+
+        if verbose:
+            print(cmd)
+        
+        res = execute_command(cmd)
+
+        if res.returncode:
+            print(res)
+            return res.returncode
 
         return 0
 
-    def plot_lower_than(self, out_plot, low_value=0, title=None,
-                        show_center=True, dpi=300, color="orange",
-                        parameters={'markersize': 2, 'origin': 'lower'}):
-        """
-        It plots FITS matrix values lower than 'low_value'.
+    def fwhm_from_cat(self, cat_out, cat_format='FITS_LDAC'):
+        # Filtering detections
+        data = read_sext_catalog(cat_out, format=cat_format)
+         
+        # checking Saturation    
+        fboo = check_saturation(data['FLAGS']) # saturated booleans
+        if ~fboo.sum() > 15:
+            data = data[~fboo]
+        # filtering by ellipticity
+        foo = data['ELLIPTICITY'] < 0.1
+        if foo.sum() > 10:
+            print(f'{foo.sum()} sources passed ELLIPTICITY filter')
+            data = data[foo]
+        # filtering to isolated sources
+        foo = data['FLAGS'] == 0
+        if foo.sum() > 5:
+            print(f'{foo.sum()} sources passed FLAGS filter')
+            data = data[foo]
+        # filtering to STARS
+        foo = data['CLASS_STAR'] > 0.8
+        if foo.sum() > 3:
+            print(f'{foo.sum()} sources passed CLASS_STAR filter')
+            data = data[foo]
 
-        A bit longer description.
+        cards = [('SOFTDET', 'SExtractor', 'Source detection software'), \
+            ('FWHM', round(data['FWHM_IMAGE'].mean(), 2), 'Mean pix FWHM'), \
+            ('FWHMSTD', round(data['FWHM_IMAGE'].std(), 2), 'Std pix FWHM'), \
+            ('FWNSOURC', data['FWHM_IMAGE'].size, 'FWHM number of sources used'), \
+            ('FWHMFLAG', data['FLAGS'].max(), 'SExtractor max source FLAG'), \
+            ('FWHMELLI', round(data['ELLIPTICITY'].max(), 2), 'SExtractor max ELLIP'), \
+            ('PIXSCALE', self._header['INSTRSCL'], 'Scale [arcs/pix]'),
+            ('CSTARMIN', round(data['CLASS_STAR'].min(), 2), 'SExtractor min CLASS_STAR')]
+
+        return cards
+
+    def get_fwhm(self, sext_conf, cat_out, cat_format='FITS_LDAC', plot=True, other_params={}):
+        """FWHM FITS computation.
 
         Args:
-            out_plot (str): Output plot path
-            title (str): Plot title (default = None)
-            low_value (int): Pixel values lower than this are plotted
-                            (default = None)
-            show_center (bool): If True, a plus symbol marks image center
-                                (default = True)
-            dpi (int): Plot dots per inche resolution (default = 300)
-            color (str): Color name or hexadecimal code for center mark
-                            (default = 'orange')
-            parameters (dict): Params to pass to 'spy' matplotlib function.
-                                (default = {'markersize':2, 'origin':'lower'})
+            sext_conf (str): Path to SExtractor configuration file.
+            cat_out (str): SExtractor output path file.
+            cat_format (str, optional): SExtractor output file format. 
+                Valid values: 'FITS_LDAC' ans 'ASCII'. Defaults to 'FITS_LDAC'.
+            plot (bool, optional): If True, FITS plot is generated. Sources used in
+                FWHM computations are plotted in. Defaults to True.
+            other_params (dict, optional): Parameters that overwrite default ones in
+                SExtractor configuration file. Defaults to {}.
 
         Returns:
-            type: description
-
-        Raises:
-            Exception: description
-
+            list: List of cards (keyword, value, comment). It can be used for updating 
+                FITS header.
         """
+        cards = []
+        data = None
 
-        """This function plot sparse 'matrix2D' with 'markersize'
-        and saves it in 'out_plot' after setting 'title'."""
-        mat = np.flip(self.data, 0)
-        saturated = np.where(mat < 0, 1, 0)
-        my_figure, my_axis = plt.subplots()
-        my_axis.spy(saturated, **parameters)
-        my_axis.set_title(title)
-        # grid properties
-        if show_center:
-            x_center = int(int(self._header['NAXIS1']) / 2)
-            y_center = int(int(self._header['NAXIS2']) / 2)
-            my_axis.set_xticks(np.array([x_center]), minor=False)  # center of image
-            my_axis.set_yticks(np.array([y_center]), minor=False)  # center of image
-        my_axis.grid(color=color, alpha=0.7, which='both')
-        plt.savefig(out_plot, dpi=dpi)
-        plt.close()
+        res = self.detect_sources(sext_conf, cat_out, additional_params=other_params)
 
-        return 0
+        if not res:
+            cards = self.fwhm_from_cat(cat_out, cat_format=cat_format)
+            
+        if plot:
+            root, ext = os.path.splitext(cat_out)
+            plot_out = f'{root}.png'
+            coords = [data['X_IMAGE'], data['Y_IMAGE']]
+            
+            self.plot(plot_out, 'FWHM selected sources', coords=coords, ref_coords='pixel')
 
-    def fwhm_def_params(self):
-        """
-        SExtractor default detection parameters for FWHM estimation.
-        
-        They depends on EXPTIME header keyword value.
-        
+        return cards
+  
+    def update_header_fwhm(self, sext_conf, cat_out, cat_format='FITS_LDAC', other_params={}):
+        """Add or update calibration pairs (key, value) related with 
+        FITS FWHM.
+
         Args:
-            None
-        
+            sext_conf (str): SExtractor configuration file path. 
+            cat_out (str): Output SExtractor file.
+            cat_format (str, optional): Output SExtractor file format. Defaults to 'FITS_LDAC'.
+            other_params (dict, optional): Parameters and their values that overwrite 
+                SExtractor configuration. Defaults to {}.
+
         Returns:
-            Dictionay with SExtractor relevant detection parameters and their values.
-            
+            int: 0, if everything was fine.
         """
-        detect_params = {}
+        cards = self.get_fwhm(sext_conf, cat_out, cat_format=cat_format, other_params=other_params)
+        print(cards)
         
-        if float(self._header['EXPTIME']) >= 0:
-            detect_params['FILTER'] = detect_params.get('FILTER', 'N')
-            detect_params['CLEAN'] = detect_params.get('CLEAN', 'N')
-            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 13)
-            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 1.0)
-            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 1.0)
-            detect_params['DEBLEND_MINCONT'] = detect_params.get('DEBLEND_MINCONT', 0.1)
-        
-        if float(self._header['EXPTIME']) >= 0.2:
-            # spurious detections for Y_IMAGE = 1 (lower border)
-            detect_params['CLEAN'] = detect_params.get('CLEAN', 'Y')
-            detect_params['DEBLEND_MINCONT'] = detect_params.get('DEBLEND_MINCONT', 0.005)
-            
-        if float(self._header['EXPTIME']) >= 1:
-            detect_params['FILTER'] = detect_params.get('FILTER', 'Y')
-            detect_params['CLEAN'] = detect_params.get('CLEAN', 'Y')
-            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 9)
-            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 1.0)
-            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 1.0)
-            
-        if float(self._header['EXPTIME']) >= 80:
-            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 13)
-            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 2.5)
-            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 2.5)
-        
-        if float(self._header['EXPTIME']) >= 180:
-            detect_params['DETECT_MINAREA'] = detect_params.get('DETECT_MINAREA', 9)
-            detect_params['ANALYSIS_THRESH'] = detect_params.get('ANALYSIS_THRESH', 1.6)
-            detect_params['DETECT_THRESH'] = detect_params.get('DETECT_THRESH', 1.6)
-            
-        return detect_params
+        return self.update_header(cards)
     
-
-    def extract_sources(self, detect_params, overwrite=False,
-                        show_info=True):
-        """
-        Source extraction from FITS file.
-
-        It parse input parameters and set best parameters depending on
-        FITS exposure time ('EXPTIME') in order to improve SExtractor 
-        source detection.
+    def update_header(self, cards):
+        """Add or update FITS header with keywords values given by 'cards' param.
 
         Args:
-            detect_params (dict): valid SExtractor input parameters.
-            overwrite (bool): if True, ouput SExtractor catalog is overwritten.
-            show_info (bool): If True, additional processing info is produced.
-
+            cards (list): List of tuples with following format (keyword, value, comment)
+            
         Returns:
-            int: 0, if everythong was fine.
+            int: 0, if everything was fine."""
 
-        Raises:
-            Exception: type depends on failing line of code.
-
-        """
-        
-        # Preconfigured values depending on exptime
-        def_params = self.fwhm_def_params()
-        
-        # If not explicitily set, they are append to input argument called 'detect_params'
-        for k, v in def_params.items():
-            if k not in detect_params:
-                detect_params[k] = v
+        with fits.open(self.path, mode='update') as hdul:
+            hdr = hdul[0].header
+            
+            new_cards = []
+            for card in cards:
+                if card[0] in hdr:
+                    # updating existing keywords
+                    hdr[card[0]] = card[1]
+                else:
+                    # appending new info to FITS Header
+                    new_cards.append(card)
                 
-        com = ["sex"]
-
-        out_dirs = list()
-
-        # Mandatory KEYWORDS
-        mandatory_keywords = ['CONFIG_FILE', 'CATALOG_NAME']
-        for k in mandatory_keywords:
-            if k not in detect_params.keys():
-                print(f"ERROR: Mandatory keyword '{k}' not found in input parameter list.")
-                print("ABORTING execution!!")
-                return 1
-
-        if os.path.exists(detect_params['CATALOG_NAME']) and not overwrite:
-            print('INFO: Output catalog "%s" already found. Nothing done.' %
-                  detect_params['CATALOG_NAME'])
-            return 0
-
-        # Mandatory KEYWORDS
-        com.append('-c %s' % detect_params["CONFIG_FILE"])
-        com.append('-CATALOG_NAME %s' % detect_params["CATALOG_NAME"])
-
-        detection_keywords = "-CHECKIMAGE_TYPE "
-        detection_values = "-CHECKIMAGE_NAME "
-        keys = list()
-        values = list()
-
-        for k, v in detect_params.items():
-            # Special format keywords
-            if k in ['BACKGROUND', 'SEGMENTATION', 'APERTURES']:
-                keys.append(k)
-                values.append(v)
-                dire = os.path.split(v)[0]
-                if len(dire) and not os.path.exists(dire):
-                    out_dirs.append(dire)
-            elif k in mandatory_keywords:
-                pass # already processed
-            else:
-                # The others
-                com.append(f"-{k} {v}")
-
-        # Keywords that may be present in header
-        if 'PIXEL_SCALE' not in detect_params.keys():
-            if 'INSTRSCL' in self._header:
-                com.append(f"-PIXEL_SCALE {str(self._header['INSTRSCL'])} ")
-        if 'SEEING_FWHM' not in detect_params.keys():
-            if 'FWHM' in self._header:  # in arcsecs
-                fw = float(self._header['FWHM']) * float(self._header['INSTRSCL'])
-                com.append(f"-SEEING_FWHM {fw} ")
-        if 'MAG_ZEROPOINT' not in detect_params.keys():
-            if 'MAGZPT' in self._header:
-                com.append(f"-MAG_ZEROPOINT {self._header['MAGZPT']}")
-        # Adding special format keyword:value pairs
-        if keys:
-            com.append("%s %s" % (detection_keywords, ','.join(keys)))
-            com.append("%s %s" % (detection_values, ','.join(values)))
-
-        # Creating directories for SExtractor output files
-        for odir in out_dirs:
-            if not os.path.exists(odir):
-                try:
-                    os.makedirs(odir)
-                except IOError:
-                    print(f"ERROR: Couldn't create output directory '{odir}'")
-                    raise
-
-        com.append(self._path)  # Last SExtractor parameter
-
-        str_com = ' '.join(com)
-        if show_info:
-            print(str_com)
-
-        # Executing SExtractor call
-        subprocess.Popen(str_com, shell=True).wait()
+            # ------------ Writing FWHM computed ---------------------
+            hdr.extend(new_cards, end=True)
+            hdul.flush()
 
         return 0
-
-    def plot_pix_sources(self, detect_params, number_brigthest_sources=1000,
-                         overwrite=True, color='magenta', show_info=True):
-        """
-        A short description.
-
-        A bit longer description.
-
-        Args:
-            variable (type): description
-
-        Returns:
-            type: description
-
-        Raises:
-            Exception: description
-
-        """
-        if overwrite:
-            if self.extract_sources(detect_params=detect_params,
-                                    overwrite=overwrite, show_info=show_info):
-                return 1
-        data_sextractor = _read_sextractor_catalog(detect_params['CATALOG_NAME'])
-
-        # sorting by ascending MAGNITUDE
-        order = data_sextractor['MAG_BEST'].argsort()
-        if data_sextractor['X_IMAGE'].size > 0:
-            if order.size > number_brigthest_sources:
-                order = order[:number_brigthest_sources]
-        # Plotting
-        wcs = WCS(self.header)
-        my_axis = plt.subplot(projection=wcs)
-        # The following line makes it so that the zoom level no longer changes,
-        # otherwise Matplotlib has a tendency to zoom out when adding overlays.
-        my_axis.set_autoscale_on(False)
-        # Add three markers at (40, 30), (100, 130), and (130, 60). The facecolor is
-        # a transparent white (0.5 is the alpha value).
-        my_axis.scatter(data_sextractor['X_IMAGE'][order],
-                        data_sextractor['Y_IMAGE'][order], s=100,
-                        edgecolor='magenta', facecolor=(1, 1, 1, 0))  # transparent
-        out_plot = self.path.replace('.fits', '_pix_detections.png')
-        plt.savefig(out_plot, dpi=300)
-        plt.close()
-
-        return 0
-
-    def make_region_sextractor(self, detect_params, number_brigthest_sources=1000,
-                               overwrite=True, color='magenta', show_info=True):
-        """
-        A short description.
-
-        A bit longer description.
-
-        Args:
-            variable (type): description
-
-        Returns:
-            type: description
-
-        Raises:
-            Exception: description
-
-        """
-        if self.extract_sources(detect_params, overwrite=overwrite,
-                                show_info=show_info):
-            return 1
-
-        # # Plotting detected SExtractor sources
-        # dire, astro_fits_name = os.path.split(astrom_out_fits)
-        # aper_image_png = aper_image.replace('.fits', '_aper.png')
-        # detections_png = os.path.join(metafiles_dir, astro_png_name)
-        # plot(aper_image, aper_image_png,
-        #          title='Apertures image for %s' % input_name, colorBar=False)
-
-        # SExtractor catalog
-        if show_info:
-            print('Detection catalog =', detect_params['CATALOG_NAME'])
-
-        data_sextractor = self.__read_cat(detect_params['CATALOG_NAME'])
-
-        if data_sextractor['X_IMAGE'].size > 0:
-            # sorting by ascending MAGNITUDE
-            order = data_sextractor['MAG_BEST'].argsort()
-            if order.size > number_brigthest_sources:
-                order = order[:number_brigthest_sources]
-            lines_out = ['# # Region file format: DS9 version 4.1']
-            lines_out.append('global color="%s" ' % color +
-                             'dashlist=8 3 width=1 ' +
-                             'font="helvetica 10 normal roman" select=1 ' +
-                             'highlite=1 dash=0 fixed=0 edit=1 move=1 ' +
-                             'delete=1 include=1 source=1')
-            lines_out.append('physical')
-            for x_image, y_image in zip(data_sextractor['X_IMAGE'][order],
-                                        data_sextractor['Y_IMAGE'][order]):
-                lines_out.append('circle(%(x)d,%(y)d,13) # width=2' %
-                                 {'x': int(x_image), 'y': int(y_image)})
-            out_region_file = self._path.replace('.fits', '.reg')
-            with open(out_region_file, 'w') as fout:
-                fout.write("\n".join(lines_out))
-            print('INFO: Output region file in "%s"' % out_region_file)
-        else:
-            return 1
-
-        return 0
-
-    def compute_fwhm(self, detect_params, save=True, overwrite=True,
-                     show_info=True):
-        """
-        It computes Full Width and Half Maximum value for FITS image.
-
-        It executes SExtractor, filter best detections taking into account
-           - ellipticity,
-           - far from border and isolated 
-           - and star flux profile 
-        and compute statistics for getting image FWHM.
-
-        Ellipticity and flags are output SExtractor parameters than change if
-        minimum number of sources is not reached.
-
-        Args:
-            detect_params (dict): valid SExtractor parameters.
-            save (bool): If True, FWHM parameters are written into FITS header.
-            overwrite (bool): If True, SExtractor is executed again, even 
-                previous detection was done.
-            show_info (bool): If True, aditional processing info is printed by console.
-
-        Returns:
-            dict: As keywords (referred to FWHM) are
-                ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN', 'MAX_ELLIP', 'FLAG']
-
-        Raises:
-            Exception: type depends on failing line of code.
-
-        """
-        self._save = save  # This property is used for overwriting FITS info
-        if self.extract_sources(detect_params, overwrite, show_info):
-            return 1
-
-        field_names = ['X_IMAGE', 'Y_IMAGE', 'MAG_BEST', 'NUMBER',
-                       'ELLIPTICITY', 'FLAGS', 'CLASS_STAR', 'FWHM_IMAGE']
-        data_sextractor = np.genfromtxt(detect_params['CATALOG_NAME'],
-                                        names=field_names)
-        data_sextractor = np.atleast_1d(data_sextractor) # Mabel contribution
-
-        cond = np.ones(data_sextractor.shape[0], dtype=bool)
-        # data_fwhm = copy.deepcopy(data_sextractor)
-        flag_value = data_sextractor['FLAGS'].max()
-        ellipticity = data_sextractor['ELLIPTICITY'].max()
-        if data_sextractor.shape[0] > 10:
-            # Selecting best detections
-            ellipticity = 0
-            flag_value = 0
-            for flag_value in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]:
-                # non-saturated, non-deblended sources
-                condition1 = data_sextractor['FLAGS'] == flag_value
-                if data_sextractor[condition1].shape[0] > 10:
-                    for ellipticity in np.arange(0, 1.1, 0.1):    
-                        # circular sources
-                        condition2 = data_sextractor['ELLIPTICITY'] < ellipticity
-                        if data_sextractor[condition1 & condition2].shape[0] > 2:
-                            # there are more than three sources for compute statistics
-                            cond = condition1 & condition2
-                            break
-
-        if data_sextractor[cond].shape[0] == 0:
-            print('WARNING: No values after filtering process.')
-            print(f'Detection parameters = {detect_params}')
-            return {'MEAN': None,
-                    'STD': None,
-                    'MIN': None,
-                    'MAX': None,
-                    'MEDIAN': None,
-                    'MAX_ELLIP': ellipticity,
-                    'FLAG': flag_value}
-        
-        if show_info:
-            # printing info
-            print("Original sources number ->", data_sextractor['X_IMAGE'].size)
-            print("Filtered sources number->", data_sextractor[cond]['X_IMAGE'].size)
-            print("FWHM_IMAGE", "CLASS_STAR", "ELLIPTICITY")
-            for fwhm, class_star, ellip in zip(data_sextractor[cond]['FWHM_IMAGE'],
-                                                     data_sextractor[cond]['CLASS_STAR'],
-                                                     data_sextractor[cond]['ELLIPTICITY']):
-                print(fwhm, '--', class_star, '--', ellip)
-
-        # appending info to FITS Header
-        new_cards = list()
-        if 'MAPCAT' in detect_params['CATALOG_NAME']:
-            candidateCards = [('SOFTDET', 'SExtractor', 'Source detection software'),
-                              ('FWHM', round(data_sextractor[cond]['FWHM_IMAGE'].mean(), 2),
-                               'Mean pix FWHM'),
-                              ('FWHMSTD', round(data_sextractor[cond]['FWHM_IMAGE'].std(), 2),
-                               'Std pix FWHM'),
-                              ('FWNSOURC', data_sextractor[cond]['FWHM_IMAGE'].size,
-                               'FWHM number of sources used'),
-                              ('FWHMFLAG', flag_value, 'SExtractor source FLAG'),
-                              ('FWHMELLI', round(ellipticity, 2), 'SExtractor max ELLIP'),
-                              ('PIXSCALE', self._header['INSTRSCL'], 'Scale [arcs/pix]')]
-        
-        else:
-            candidateCards = [('SOFTDET', 'SExtractor', 'Source detection software'),
-                              ('FWHM', round(data_sextractor[cond]['FWHM_IMAGE'].mean(), 2),
-                               'Mean pix FWHM'),
-                              ('FWHMSTD', round(data_sextractor[cond]['FWHM_IMAGE'].std(), 2),
-                               'Std pix FWHM'),
-                              ('FWNSOURC', data_sextractor[cond]['FWHM_IMAGE'].size,
-                               'FWHM number of sources used'),
-                              ('FWHMFLAG', flag_value, 'SExtractor source FLAG'),
-                              ('FWHMELLI', round(ellipticity, 2), 'SExtractor max ELLIP')]
-        for card in candidateCards:
-            if card[0] in self._header:
-                self._header[card[0]] = card[1]
-            else:
-                new_cards.append(card)
-                
-        # ------------ Writing FWHM computed ---------------------
-        self._header.extend(new_cards, end=True)
-        self._save = True
-
-        return {'MEAN': data_sextractor[cond]['FWHM_IMAGE'].mean(),
-                'STD': data_sextractor[cond]['FWHM_IMAGE'].std(),
-                'MIN': data_sextractor[cond]['FWHM_IMAGE'].min(),
-                'MAX': data_sextractor[cond]['FWHM_IMAGE'].max(),
-                'MEDIAN': np.median(data_sextractor[cond]['FWHM_IMAGE']),
-                'MAX_ELLIP': ellipticity,
-                'FLAG': flag_value
-                }
 
     def _filter_duplicated(self, detect_params,
                            searching_params={'min_dist_x': 25, 'max_dist_x': 38,
@@ -1071,8 +850,9 @@ class mcFits:
             return 1
 
         # SExtractor catalog
-        data_sextractor = _read_sextractor_catalog(self.path.replace('.fits',
-                                                                     '.cat'))
+        root, ext = os.path.splitext(self.path)
+        cat_path = f'{root}.cat'
+        data_sextractor = read_sext_catalog(cat_path, format='ASCII')
 
         # segmentation image
         mc_segment = mcFits(detect_params['SEGMENTATION'])
@@ -1111,235 +891,18 @@ class mcFits:
         return 0
 
     
-    # ---------------------- Astrometric calibration ----------------------
-    @staticmethod
-    def mc_pointing_sources(input_file):
-        """
-        A short description.
-
-        A bit longer description.
-
-        Args:
-            variable (type): description
-
-        Returns:
-            type: description
-
-        Raises:
-            Exception: description
-
-        """
-
-        sources = pd.read_csv(input_file)
-        right_ascencions = list()
-        declinations = list()
-
-        for cra, cdec in zip(sources['RA'].values, sources['DEC'].values):
-            coordinates = SkyCoord('%s %s' % (cra, cdec), unit=(u.hourangle, u.deg))
-            right_ascencions.append(coordinates.ra.deg)
-            declinations.append(coordinates.dec.deg)
-
-        sources['RADEG'] = np.array(right_ascencions)
-        sources['DECDEG'] = np.array(declinations)
-
-        return sources
-
-    def astrometric_calibration(self, mc_sources_file, detect_params={},
-                                num_sources=40, tol_arcs=10, overwrite=False,
-                                show_info=True):
-        """
-        A short description.
-
-        A bit longer description.
-
-        Args:
-            variable (type): description
-
-        Returns:
-            dict: astrometric fitting parameters (pr None if ti was not possible)
-
-        """
-        if overwrite or not os.path.exists(detect_params['CATALOG_NAME']):
-            if self.extract_sources(detect_params, overwrite=overwrite):
-                return 1
-
-        # Sorting
-        cat_sort = detect_params['CATALOG_NAME'].replace('.cat', '_sorted.cat')
-        # Sorting by magnitude
-        com = "sort -n +2.0 %(c1)s | head -%(ns)d > %(c2)s" % {
-            'c1': detect_params['CATALOG_NAME'], 'c2': cat_sort, 'ns': num_sources}
-        print('Sorting command ->', com)
-        subprocess.Popen(com, shell=True).wait()
-
-        # self.plot_pix_sources(detect_params=detect_params, number_brigthest_sources=40,
-        #                            overwrite=False)
-
-        # Blazar sources file
-        mc_sources = self.mc_pointing_sources(mc_sources_file)
-        # Getting pointing coordinates
-        obj = self.header['OBJECT'].split()[0]
-        source = None
-        # by default ra, dec from File
-        right_ascencion, declination = self.header['RA'], self.header['DEC']
-        for index, k in enumerate(mc_sources['IAU Name'].values):
-            if obj == k:
-                source = mc_sources.iloc[index]
-                break
-        if source is not None:
-            print('%s: Changing RA,DEC from FITS (%s, %s) to blazar Catalog (%s, %s)' % (
-                source['IAU Name'], str(self.header['RA']), str(self.header['DEC']),
-                str(source['RADEG']), str(source['DECDEG'])))
-            right_ascencion, declination = source['RADEG'], source['DECDEG']
-
-        # Fixed name for astrometric FITS result
-        calfits = self.path.replace('.fits', '_astrocal.fits')
-
-        # First calibration try: using FITS coordinates (RA, DEC)
-        print('-- First calibration try: using FITS coordinates ({right_ascencion}, {declination}) --')
-        str_com = 'imwcs -vew -d {} -y 3 -p {} -j {} {} -c tmc -t {} -o {} {}'
-        com = str_com.format(cat_sort, self.header['INSTRSCL'], right_ascencion,
-                             declination, tol_arcs, calfits, self.path)
-
-        print('Executing astrometric calibration command:')
-        print(com)
-        print('-' * 60)
-
-        # delete previous log files
-        for ntry in [1, 2]:
-            log = self.path.replace('.fits', '_imwcs_stderr_%d.log' % ntry)
-            if os.path.exists(log):
-                os.remove(log)
-            log2 = self.path.replace('.fits', '_imwcs_stdout_%d.log' % ntry)
-            if os.path.exists(log2):
-                os.remove(log2)
-
-        stderr_cal_log_file = self.path.replace('.fits', '_imwcs_stderr_1.log')
-        stdout_cal_log_file = self.path.replace('.fits', '_imwcs_stdout_1.log')
-
-        with open(stdout_cal_log_file, 'w') as fout:
-            with open(stderr_cal_log_file, 'w') as ferr:
-                subprocess.Popen(com, shell=True, stdout=fout, stderr=ferr).wait()
-        print(f'stderr calibration process log file: {stderr_cal_log_file}')
-        print(f'stdout calibration process log file: {stdout_cal_log_file}')
-
-        # Check first astrometric calibration try
-        fpars = self.parse_calibration_logs(stderr_cal_log_file,
-                                            stdout_cal_log_file)
-
-        calib2 = (fpars is None) or (('NMATCHCAL' in fpars) and (int(fpars['NMATCHCAL']) < 15) and (source is not None))
-
-        if calib2:
-            # try FITS central coordinates
-            right_ascencion, declination = self.header['RA'], self.header['DEC']
-            print('-- SECOND CALIBRATION TRY: FITS coordinates ({right_ascencion}, {declination}) --')
-            if show_info:
-                print('INFO: Not enough sources used for good calibration results.')
-                print('\tTrying MAPCAT coordinates for this OBJECT')
-            com = f"imwcs -v -e -d {cat_sort} -w -y 2 -p {self.header['INSTRSCL']} "
-            com += f"-j {right_ascencion} {declination} -c tmc -t {tol_arcs} "
-            com += f"-o {calfits} {self.path}"
-
-            print('Executing astrometric calibration command:')
-            print(f"\t{com}")
-            print('-' * 60)
-            # Registering result in log files
-            stderr_cal_log_file = self.path.replace('.fits', '_imwcs_stderr_2.log')
-            stdout_cal_log_file = self.path.replace('.fits', '_imwcs_stdout_2.log')
-            with open(stdout_cal_log_file, 'w') as fout:
-                with open(stderr_cal_log_file, 'w') as ferr:
-                    subprocess.Popen(com, shell=True, stdout=fout, stderr=ferr).wait()
-
-            print(f'stderr calibration process log file: {stderr_cal_log_file}')
-            print(f'stdout calibration process log file: {stdout_cal_log_file}')
-
-            fpars = self.parse_calibration_logs(stderr_cal_log_file,
-                                                stdout_cal_log_file)
-
-        return fpars
-
-    def parse_calibration_logs(self, log_stderr, log_stdout):
-        """
-        A short description.
-
-        A bit longer description.
-
-        Args:
-            variable (type): description
-
-        Returns:
-            type: description
-
-        Raises:
-            Exception: description
-
-        """
-        # Log files resulting after astrometric calibration process
-
-        # log_stderr = self.path.replace('.fits', f'_astrocal_imwcs_stderr_{n_try}.log')
-        # log_stdout = self.path.replace('.fits', f'_astrocal_imwcs_stdout_{n_try}.log')
-        if not os.path.exists(log_stdout):
-            print(f'ERROR: No STDOUT calibration log available: \n\t{log_stdout}')
-            return None
-        if not os.path.exists(log_stderr):
-            print(f'ERROR: No STDOUT calibration log available: \n\t{log_stderr}')
-            return None
-        fit_params = dict()  # output parameters
-
-        # -------------------------- first file (imwcs STDOUT) -----------------------------
-        # log_file = self.path.replace('.fits', '_imwcs2.log')
-        text_out = open(log_stdout).read()
-
-        # working on regular expressions for extracting calibration info
-        scale_rotation = re.findall(r'Arcsec/Pixel=\s+([\d.-]+)\s+([\d.-]+)\s+Rotation=\s+([\d.-]+)\s+degrees', text_out)[0]
-        fit_params['CDELT1'],  fit_params['CDELT2'], fit_params['ROTDEG'] = [float(sr) for sr in scale_rotation]
-
-        fit_params['CRVAL1'], fit_params['CRVAL2'], fit_params['EQUINOX'], fit_params['CRPIX1'], fit_params['CRPIX2'] = re.findall(r'Optical axis=\s+([\d.:+-]+)\s+([\d:.+-]+)\s+(J2000)\s+x=\s+([\d.-]+)\s+y=\s+([\d.-]+)', text_out)[0]
-        fit_params['CRPIX1'] = float(fit_params['CRPIX1'])
-        fit_params['CRPIX2'] = float(fit_params['CRPIX2'])
-
-        sources = ['2mass_id,ra2000,dec2000,MagJ,X,Y,magi,dra,ddec,sep']
-        matches = re.findall("([\d.]+)\s+([\d.:]+)\s+([\d.:-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)", text_out)
-        for m in matches:
-            sources.append(','.join(list(m)))
-        data_out = StringIO('\n'.join(sources))
-        fit_params['SOURCES'] = pd.read_csv(data_out, sep=",")
-
-        res = re.findall(r"dxy=\s+([\d.]+)", text_out)
-        fit_params['DISTARCS'] = res[0]
-
-        res = re.findall(r'nmatch=\s+(\d+)\s+nstars=\s+(\d+) between tmc and \S+\s+niter=\s+(\d+)', \
-            text_out)
-        fit_params['NMATCH'], fit_params['NSTARS'], fit_params['NITER'] = [int(r) for r in res[0]]
-
-        # ---------------------------- Second file (imwcs STDERR) ---------------------------
-        text_err = open(log_stderr).read()
-
-        patterns = {
-            'CTYPE1': r'CTYPE1\s+=\s+(\S+)',
-            'CTYPE2': r'CTYPE2\s+=\s+(\S+)',
-            'CRVAL1': r'CRVAL1\s+=\s+([\d.-]+)',
-            'CRVAL2': r'CRVAL2\s+=\s+([\d.-]+)',
-            'CRPIX1': r'CRPIX1\s+=\s+([\d.-]+)',
-            'CRPIX2': r'CRPIX2\s+=\s+([\d.-]+)',
-            'CD1_1': r'CD1_1\s+=\s+([\d.-]+)',
-            'CD1_2': r'CD1_2\s+=\s+([\d.-]+)',
-            'CD2_1': r'CD2_1\s+=\s+([\d.-]+)',
-            'CD2_2': r'CD2_2\s+=\s+([\d.-]+)'
-        }
-        for key, pattern in patterns.items():
-            if key in ['CTYPE1', 'CTYPE2']:
-                fit_params[key] = re.findall(pattern, text_err)[-1]
-            else:
-                fit_params[key] = float(re.findall(pattern, text_err)[-1])
-        
-        return fit_params
-
+    
     def get_astroheader(self):
+        """Get header info used for set relation between pixel (x,y) and 
+        sky (ra,dec) coordinates.
 
+        Returns:
+            dict: keywords related with astrometric FITS calibration.
+        """
         astro_keys = ['CRVAL1', 'CRVAL2', 'EPOCH', 'CRPIX1', 'CRPIX2', 'SECPIX', \
             'SECPIX1', 'SECPIX2', 'CDELT1', 'CDELT2', 'CTYPE1', 'CTYPE2', \
             'CD1_1', 'CD1_2', 'CD2_1', 'CD2_2', 'WCSRFCAT', 'WCSIMCAT', \
             'WCSMATCH', 'WCSNREF', 'WCSTOL', 'RA', 'DEC', 'EQUINOX', \
             'CROTA1', 'CROTA2', 'WCSSEP', 'IMWCS']
 
-        return {k:self.header[k] for k in astro_keys if k in self.header}
+        return {k:self.header.get(k, None) for k in astro_keys}
