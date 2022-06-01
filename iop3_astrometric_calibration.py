@@ -1393,6 +1393,8 @@ def plot_cat(path_fits, plot_out_path, cat, astro_coords=False, \
     i_fits = mcFits(path_fits)
     fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
     
+    
+    
     # Plotting detections
     data_cat = read_sext_catalog(cat, format=cat_format)
     
@@ -1512,6 +1514,15 @@ def main():
     # Getting header informacion
     i_fits = mcFits(copy_input_fits)
     input_head = i_fits.header
+
+    if 'INSTRSCL' not in i_fits.header:
+        if 'T090' in input_fits:
+            i_fits.header['INSTRSCL']=0.387
+        elif 'T150' in input_fits:
+            i_fits.header['INSTRSCL']=0.232
+        if i_fits.header['NAXIS1']==1024:
+            i_fits.header['INSTRSCL']=2*i_fits.header['INSTRSCL']
+
 
     obj = input_head['OBJECT']
     exptime = input_head['EXPTIME']

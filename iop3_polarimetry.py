@@ -108,22 +108,24 @@ def polarimetry_osn(df):
 
     Formula taken from "F. Moreno and O. Muñoz polarization.pdf"
     """
-    df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
-
-    #values for T090
-    qoff = 0.0645
-    uoff = 0.0574
-    Phi=math.radians(0)
-    dPhi=math.radians(0)
-
-    #values for 150
-    #qoff = 0.0058
-    dqoff = 0.001
-    #uoff = 0.0334
-    duoff = 0.003
+    #df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
+    if df['SECPIX'].values[0] == 0.38 or df['SECPIX'].values[0] == 0.77:
+        #values for T090
+        qoff = 0.0645
+        uoff = 0.0574
+        dquoff = 0.001
+        duoff = 0.003
+        Phi=math.radians(0)
+        dPhi=math.radians(0)
+    if df['SECPIX'].values[0] == 0.23 or df['SECPIX'].values[0] == 0.46: 
+        #values for 150
+        qoff = 0.0058
+        dqoff = 0.001
+        uoff = 0.0334
+        duoff = 0.003
  
-    #Phi=math.radians(9.)
-    #dPhi=math.radians(2.3)
+        Phi=math.radians(9.)
+        dPhi=math.radians(2.3)
 
     #values of T150 from polarization.pdf
     #qoff=0.031
@@ -134,17 +136,26 @@ def polarimetry_osn(df):
     #uoff=0
     #Phi=0
     #dPhi=0
+    
+    I_0 = (df['FLUX_APER_O'][df['ANGLE'] == 0]).values[0]
+    dI_0 = (df['FLUXERR_APER_O'][df['ANGLE'] == 0]).values[0]
+    I_45 = (df['FLUX_APER_O'][df['ANGLE'] == 45]).values[0]
+    dI_45 = (df['FLUXERR_APER_O'][df['ANGLE'] == 45]).values[0]
+    I_90 = (df['FLUX_APER_O'][df['ANGLE'] == 90]).values[0]
+    dI_90 = (df['FLUXERR_APER_O'][df['ANGLE'] == 90]).values[0]
+    I_135 = (df['FLUX_APER_O'][df['ANGLE'] == -45]).values[0]
+    dI_135 = (df['FLUXERR_APER_O'][df['ANGLE'] == -45]).values[0]
     try:
-        I_0 = (df['FLUX_APER'][df['ANGLE'] == 0]).values[0]
-        dI_0 = (df['FLUXERR_APER'][df['ANGLE'] == 0]).values[0]
-        I_45 = (df['FLUX_APER'][df['ANGLE'] == 45]).values[0]
-        dI_45 = (df['FLUXERR_APER'][df['ANGLE'] == 45]).values[0]
-        I_90 = (df['FLUX_APER'][df['ANGLE'] == 90]).values[0]
-        dI_90 = (df['FLUXERR_APER'][df['ANGLE'] == 90]).values[0]
-        I_135 = (df['FLUX_APER'][df['ANGLE'] == -45]).values[0]
-        dI_135 = (df['FLUXERR_APER'][df['ANGLE'] == -45]).values[0]
+        I_0 = (df['FLUX_APER_O'][df['ANGLE'] == 0]).values[0]
+        dI_0 = (df['FLUXERR_APER_O'][df['ANGLE'] == 0]).values[0]
+        I_45 = (df['FLUX_APER_O'][df['ANGLE'] == 45]).values[0]
+        dI_45 = (df['FLUXERR_APER_O'][df['ANGLE'] == 45]).values[0]
+        I_90 = (df['FLUX_APER_O'][df['ANGLE'] == 90]).values[0]
+        dI_90 = (df['FLUXERR_APER_O'][df['ANGLE'] == 90]).values[0]
+        I_135 = (df['FLUX_APER_O'][df['ANGLE'] == -45]).values[0]
+        dI_135 = (df['FLUXERR_APER_O'][df['ANGLE'] == -45]).values[0]
     except:
-        return -99, -99, -99, -99, -99, -99, -99, -99
+        return -99, -99, -99, -99, -99, -99, -99, -99, -99, -99
 
     #Check if there is a value with big deviation from the rest:
     fluxes = np.array([I_0, I_45, I_90, I_135])
@@ -209,7 +220,7 @@ def polarimetry_osn(df):
     Theta = (1/2) * math.degrees(math.atan2(u,q) + Theta_0)
     dTheta = dP/P * 28.6
     
-    
+    print(P, dP, Theta, dTheta, q, dq, u, du, flag, dev_from_mean.max())
     return P, dP, Theta, dTheta, q, dq, u, du, flag, dev_from_mean.max()
 
 def polarimetry(df):
@@ -425,11 +436,13 @@ def compute_polarimetry(data_object):
     # print(data_object.info())
     # print(data_object)
     try:
-        if (data_object['ANGLE']==22.5).any()==True:
+        if (data_object['ALPHA_J2000_O'].values[0] != data_object['ALPHA_J2000_E'].values[0]):
+            #This is MAPCAT
             P, dP, Theta, dTheta, RQ, dRQ, RU, dRU = polarimetry(data_object)
             flag="N/S"
             flux_std=-999
         else:
+            #This is OSN 
             P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flag, flux_std = polarimetry_osn(data_object)
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
@@ -456,7 +469,8 @@ def compute_polarimetry(data_object):
     # m = mean(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
     # e_m = std(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
     # print(data_object.info())
-    if (data_object['ANGLE']==22.5).any()==True:
+    if (data_object['ALPHA_J2000_O'].values[0] != data_object['ALPHA_J2000_E'].values[0]):
+        #This is MAPCAT
         fluxes = data_object['FLUX_APER_O'] + data_object['FLUX_APER_E']
     else:
         fluxes = data_object['FLUX_APER_O']
@@ -583,7 +597,7 @@ def make_groups2(data_res):
     indexes = []
     # print(df)
     for j, row in df.iterrows():
-        print('')
+        #print('')
         # indexes = list(angles.values())
         # print(f'row = {row}')
         if prev_blazar_name is None:
@@ -594,31 +608,36 @@ def make_groups2(data_res):
             pass
         elif (row['ANGLE'] == prev_angle) and (row['IAU_name_mc_O'] == prev_blazar_name) and \
             (row['EXPTIME'] == prev_exptime):
+            
             # repeated observation. Overwrite previous one
             # angles[row['ANGLE']] == j
+            
             pass
-        elif (row['IAU_name_mc_O'] != prev_blazar_name) or row['ANGLE'] < prev_angle or \
+        elif (row['IAU_name_mc_O'] != prev_blazar_name) and isinstance(row['IAU_name_mc_O'], str) or row['ANGLE'] < prev_angle or \
             row['EXPTIME'] != prev_exptime: # (len(indexes) > 3):
+            # be sure is not a calibration star
             # saving last group
             # indexes = list(angles.values())
             # print(f'indexes = {indexes}')
             # df_group = pd.concat([df.iloc[indexes], df.iloc[indexes]])
             df_group = df.iloc[indexes]
             df_group.sort_values(by=['DATE-OBS'], ascending=True)
-            # print(df_group.loc[:,['ANGLE', 'TYPE', 'EXPTIME', 'MC-IAU-NAME', 'DATE-OBS', 'FLUX_APER', 'FLUXERR_APER']])
-            groups.append(df_group)
+            if df_group['IAU_name_mc_O'].shape[0] > 0:
+                #Don't save empty groups (because of calibration star?)
+                # print(df_group.loc[:,['ANGLE', 'TYPE', 'EXPTIME', 'MC-IAU-NAME', 'DATE-OBS', 'FLUX_APER', 'FLUXERR_APER']])
+                groups.append(df_group)
             # angles.clear()
-            indexes.clear()
-            
+                indexes.clear()
         # In any case:
-        # 1. Updating previous row data
-        prev_blazar_name = row['IAU_name_mc_O']
-        prev_angle = row['ANGLE']
-        prev_exptime = row['EXPTIME']
-        #  2. adding or updating indexes
-        # angles[row['ANGLE']] = j 
-        indexes.append(j)
-
+        # 1. Updating previous row data is its not a calibration star
+        if isinstance(row['IAU_name_mc_O'], str):
+            prev_blazar_name = row['IAU_name_mc_O']
+            prev_angle = row['ANGLE']
+            prev_exptime = row['EXPTIME']
+            #  2. adding or updating indexes
+            # angles[row['ANGLE']] = j 
+            indexes.append(j)
+            print(row['ANGLE'])
     #  if angles:
     if indexes:
         # print('')
@@ -729,13 +748,14 @@ def main():
     # processing .res files
     # results = glob.glob(os.path.join(args.calib_base_dir, '*-*/*_photocal_res.csv'))
     results = glob.glob(os.path.join(args.calib_base_dir, '*-*/*_photometry.csv'))
+    
     # sort by name == sort by date (ASC)
     
     if not results:
         str_err = 'ERROR: No *_photometry.csv files found.'
         print(str_err)
         return 1
-
+    
     results.sort()
     pprint.pprint(results)
     print(f"\nFound {len(results)} '*_photometry.csv' files.\n")
@@ -758,14 +778,14 @@ def main():
     # Getting data from every VALID *_final.csv file into a new dataframe
     # data_proc = pd.concat([pd.concat([pd.read_csv(cp), pd.read_csv(cp)])  for cp in cal_process])
     data_res = pd.concat([pd.read_csv(r) for r in results])
-
+    
     # Store photometry in CSV file, for further analysis
     data_res_csv = os.path.join(args.output_dir, f'photometry_{date_run}.csv')
     data_res.to_csv(data_res_csv, index=False)
     
 
-    print(data_res.info())
-    print(data_proc.info())
+    # print(data_res.info())
+    # print(data_proc.info())
 
     # return -99
 
@@ -778,7 +798,10 @@ def main():
     # dictionary for storing results...
     pol_rows = []
     pol_data = DefaultDict(list)
-    
+    #data_res = data_res.sort_values(by=['DATE-OBS'])
+    for i in range(data_res.shape[0]):
+        print(data_res['DATE-OBS'].values[i], data_res['ANGLE'].values[i])
+    print(data_res['DATE-OBS'], data_res['ANGLE'])
     groups = make_groups2(data_res)
     for group in groups:
         name = group['IAU_name_mc_O'].values[0]
@@ -820,6 +843,10 @@ def main():
             print(f'mean_secpix = {mean_secpix}')
             return -199
         
+        #CORREGIR ESTO EN PHOTOMETRY
+        print(float((res_pol['APERPIX'].replace('[','')).replace(']','')))
+        print(mean_secpix)
+        res_pol['APERPIX']=float((res_pol['APERPIX'].replace('[','')).replace(']',''))
         res_pol['APERAS'] = res_pol['APERPIX'] * mean_secpix
         rp_sigma = res_pol['Sigma']
         # if rp_sigma < 0.01:
@@ -834,6 +861,9 @@ def main():
         index_obs = 2 # groups of three or four observations
         if len(group.index) <= 3:
             index_obs = 1
+        if len(group.index) <= 1:
+            index_obs = 0
+        
         obs_date = group['RJD-50000'].values[index_obs]
         pol_data['RJD-50000'] = obs_date
         row = [date_run, obs_date, group['IAU_name_mc_O'].values[0].strip()]
@@ -848,8 +878,14 @@ def main():
         pol_rows.append(row)
 
     # writing output night polarimetry file
-    name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
+    if 'MAPCAT' in args.calib_base_dir:
+        name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
+    elif 'T090' in args.calib_base_dir:
+        name_out_file = 'T090_polR_{}.res'.format(date_run)
+    elif 'T150' in args.calib_base_dir:
+        name_out_file = 'T150_polR_{}.res'.format(date_run)
     out_res = os.path.join(args.output_dir, name_out_file)
+    
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
         str_out = '\n{:12s} {:9.4f}  {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>14}{:>10}'
@@ -859,7 +895,12 @@ def main():
             fout.write(str_out.format(*lines))
 
     # --------------------- CSV file
-    name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
+    if 'MAPCAT' in args.calib_base_dir:
+        name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
+    elif 'T090' in args.calib_base_dir:
+        name_out_csv = 'T090_polR_{}.csv'.format(date_run)
+    elif 'T150' in args.calib_base_dir:
+        name_out_csv = 'T150_polR_{}.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
@@ -886,155 +927,6 @@ def main():
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df.to_csv(out_csv, index=False)
     
-    return 0
-
-    # sort by MJD
-    data_res = data_res.sort_values(by=['MJD-OBS'])
-
-    # Extract filter polarization angle and target name as new dataframe columns
-    # data_res['ANGLE'] = data_res['OBJECT'].str.extract(r'\s([\d.]+)\s')
-    
-
-    if 'deg' in data_res['OBJECT'].values[0]:
-        data_res['OBJECT'] = np.array([' '.join(na.split(' ')[:-2]) for na in data_res['OBJECT'].values])
-        
-    # data_res['NAME'] = data_res['OBJECT'].str.extract(r'([a-zA-z0-9+-]+)\s')
-    #print(data_res)
-    #print(data_res.info())
-    #return -99
-    #Getting unique names
-    object_names = data_res['MC-IAU-NAME'].unique()
-    print('^' * 100)
-    print('OBJECTS = ', object_names)
-    print('^' * 100)
-
-    pol_rows = []
-
-    # dictionary for storing results...
-    pol_data = DefaultDict(list)
-
-    # Processing each target object
-    for name in object_names:
-        data_sets = object_measures(data_res, name)
-            
-        for data_object in data_sets:
-            print('group')
-            print('-' * 60)
-            print(data_object[['TYPE','OBJECT','ANGLE','MAG_APER', 'MAGERR_APER', 'FLUX_APER', 'FLUXERR_APER']])
-
-            try:
-                res_pol = compute_polarimetry(data_object)
-                if res_pol['P'] is None:
-                    print('POLARIMETRY,WARNING,"Could not compute Polarization for this set of measurements"')
-                    continue
-            except ZeroDivisionError:
-                message = 'POLARIMETRY,ERROR,"EXCEPTION ZeroDivisionError: Found Zero Division Error in group processing; OBJECT={} DATE-OBS={}'
-                message = message.format(name, data_object['DATE-OBS'])
-                print(message)
-                continue
-            except ValueError:
-                message = 'POLARIMETRY,ERROR,"EXCEPTION ValueError: Found Value Error in group processing; OBJECT={} DATE-OBS={}'
-                message = message.format(name, data_object['DATE-OBS'])
-                print(message)
-                continue
-
-            res_pol['DATE_RUN'] = date_run
-            res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
-            res_pol['APERPIX'] = data_object['APERPIX'].values[0]
-            # arcsec per pixel as mean values of astrometric calibration computaion in RA and DEC.
-            is_ord = data_object['TYPE'] == 'O'
-            mean_secpix = (np.nanmean(data_object[is_ord]['SECPIX1'].values) + np.nanmean(data_object[is_ord]['SECPIX2'].values)) / 2
-            if np.isnan(mean_secpix):
-                print(f'mean_secpix = {mean_secpix}')
-                print(data_object[is_ord]['SECPIX1'].values)
-                print(data_object[is_ord]['SECPIX2'].values)
-                return -199
-            
-            res_pol['APERAS'] = res_pol['APERPIX'] * mean_secpix
-            rp_sigma = res_pol['Sigma']
-            # if rp_sigma < 0.01:
-            #     rp_sigma = 0.01
-            
-            for k, v in res_pol.items():
-                if k == 'Sigma':
-                    pol_data[k].append(rp_sigma)
-                    continue
-                pol_data[k].append(v)
-
-            index_obs = 2 # groups of three or four observations
-            if len(data_object['MJD-OBS'][data_object['TYPE'] == 'O']) < 3:
-                index_obs = 1
-            if len(data_object['MJD-OBS'][data_object['TYPE'] == 'O']) == 1:
-                index_obs = 0
-            obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[index_obs]
-            pol_data['MJD-50000'].append(obs_date)
-            row = [date_run, obs_date - 50000, name.strip()]
-            
-            row = row + [res_pol['P'], res_pol['dP'], \
-                res_pol['Theta'], res_pol['dTheta'], \
-                res_pol['Q'], res_pol['dQ'], \
-                res_pol['U'], res_pol['dU'], \
-                res_pol['R'], rp_sigma, \
-                res_pol['APERPIX'], res_pol['APERAS'], res_pol['NUM_ROTATION'], \
-                res_pol['flag'], \
-                res_pol['flux_std']             ]
-            pol_rows.append(row)
-             #print('Lines to write down:')
-             #pprint.pprint(pol_rows)
-
-    # writing output night polarimetry file
-    
-    if 'MAPCAT' in args.calib_base_dir:
-        name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
-    elif 'T090' in args.calib_base_dir:
-        name_out_file = 'T090_polR_{}.res'.format(date_run)
-    elif 'T150' in args.calib_base_dir:
-        name_out_file = 'T150_polR_{}.res'.format(date_run)
-    out_res = os.path.join(args.output_dir, name_out_file)
-    print('out_res = ', out_res)
-    with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>4}    {:s}   {:>14.3f}'
-        header = 'DATE_RUN     MJD-50000   Object                 P+-dP(%)        Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION   flag    flux_std'
-        fout.write(header)
-        for lines in pol_rows:
-            fout.write(str_out.format(*lines))
-
-    # --------------------- CSV file
-    if 'MAPCAT' in args.calib_base_dir:
-        name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
-    elif 'T090' in args.calib_base_dir:
-        name_out_csv = 'T090_polR_{}.csv'.format(date_run)
-    elif 'T150' in args.calib_base_dir:
-        name_out_csv = 'T150_polR_{}.csv'.format(date_run)
-    out_csv = os.path.join(args.output_dir, name_out_csv)
-    try:
-        cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
-            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'MJD-50000', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'flag', 'flux_std']
-        df = pd.DataFrame(pol_data, columns=cols)
-    except:
-        print("pol_data")
-        for k, v in pol_data.items():
-            print(f"{k} -> {len(v)}")
-        raise
-    # Formatting
-    df['MJD-50000'] = df['MJD-50000'].map(lambda x: '{0:.4f}'.format(x))
-    df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
-    df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
-    df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))
-    df['dTheta'] = df['dTheta'].map(lambda x: '{0:.3f}'.format(x))
-    df['Q'] = df['Q'].map(lambda x: '{0:.4f}'.format(x))
-    df['dQ'] = df['dQ'].map(lambda x: '{0:.4f}'.format(x))
-    df['U'] = df['U'].map(lambda x: '{0:.4f}'.format(x))
-    df['dU'] = df['dU'].map(lambda x: '{0:.4f}'.format(x))
-    df['R'] = df['R'].map(lambda x: '{0:.3f}'.format(x))
-    df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
-    df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
-    df['flag'] = df['flag'].map(lambda x: '{0:s}'.format(x))
-    df['flux_std'] = df['flux_std'].map(lambda x: '{0:.3f}'.format(x))
-    
-    df.to_csv(out_csv, index=False)
-
     return 0
 
 if __name__ == '__main__':

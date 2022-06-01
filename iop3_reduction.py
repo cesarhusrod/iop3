@@ -290,16 +290,11 @@ def main():
         else:
             plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fit', '.png')
         title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
-<<<<<<< HEAD
         mcFLAT.plot(title)
         if 'fits' in oReduction.masterFLAT[pol_ang]:
             plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
         else:
             plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fit', '_histogram.png')
-=======
-        mcFLAT.plot(title=title)
-        plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
->>>>>>> main
 
         mcFLAT.plot_histogram(plotFLATHist, title=title, \
             histogram_params=histo_par)
@@ -367,8 +362,10 @@ def main():
         else:
             dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fit', '.cat')
         dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
+        
         try:
-            mcRED.compute_fwhm(dictSEx)
+            #mcRED.compute_fwhm(dictSEx)
+            mcRED.get_fwhm(sext_conf=dictSEx['CONFIG_FILE'], cat_out=dictSEx['CATALOG_NAME'])
             mcRED = 0 # Forcing to write FWHM dataSEX
             mcRED = mcFits(path_red, border=border_image)
         except Exception as e:

@@ -615,7 +615,10 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
     # Extraordinary counterparts location
     # rough coordinates (relative to ordinary source locations)
     df_mc_e = df_mc.copy()
-    df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+    if 'MAPCAT' in input_fits:
+        df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+    else:
+        df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg']
     data_match_e = assoc_sources(df_sext, df_mc_e, max_deg_dist=max_deg_dist, suffix='E')
 
     print('-----EXTRAORD. DATA ASSOC-----')
@@ -790,28 +793,30 @@ def main():
         return 9
 
     info_target = data_matched[source_problem]
+    info_stars = data_matched[~source_problem]
     print(source_problem)
-    print(info_target['ALPHA_J2000_E'])
     ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
     ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
 
+    ra_stars, dec_stars = info_stars['ALPHA_J2000_O'].values[0], info_stars['DELTA_J2000_O'].values[0]
+
     #Get reference star
     #CUIDAO QUE ESTO NO VA A FUNCIONAR PARA LAS HD stars
+    if len(source_problem)>1:
+        is_blz=True
     
     if is_blz:
-        ra_blz=ra_mc[source_problem]
-        dec_blz=dec_mc[source_problem]
-        ra_stars=ra_mc[~source_problem]
-        dec_stars=dec_mc[~source_problem]
-        
+        ra_blz=ra_o
+        dec_blz=dec_o
+                
         dist=np.sqrt((ra_blz-ra_stars)**2+(dec_blz-dec_stars)**2)
         ref_idx=np.argmin(dist)+1
         source_problem[ref_idx]=True
+        print(source_problem)
+        refstar_Rmag=info_stars['Rmag_mc_O'].values[0]
 
-        refstar_Rmag=df_mc['Rmag_mc'].values[source_problem][1]
-
-        indexes_refstar=[idx_o[source_problem][1], idx_e[source_problem][1]]
-        print(f'[Ordinary, Extraordinary] SExtractor indexes of reference star = {indexes_refstar}')
+        #indexes_refstar=[idx_o[source_problem][1], idx_e[source_problem][1]]
+        #print(f'[Ordinary, Extraordinary] SExtractor indexes of reference star = {indexes_refstar}')
 
     # Plotting source problem
     # Showing detailed info about SExtractor counterparts
@@ -953,6 +958,7 @@ def main():
     cal_data['SOURCE_PAIRS_PNG'] = [source_pair_png]
     
     df = pd.DataFrame(cal_data)
+    csv_out = f'{root}_photocal_process_info.csv'    
     df.to_csv(csv_out, index=False)
     return 0
     

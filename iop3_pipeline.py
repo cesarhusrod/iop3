@@ -144,7 +144,7 @@ def subsets(data):
     return sub_s
 
 def object_groups(data_object):
-    """"It returns a list of data subsets.
+    """It returns a list of data subsets.
     
     The number of subsets depends on the number of series of observations taken 
     night for the same object. The usual number of elements for each subset
@@ -603,7 +603,7 @@ def main():
     # return -1
     # ****************** 2nd STEP: Input reduced images calibration  ************* #
     pol_sources = False # It checks that more than one blazar was calibrated successfully
-        if 'MAPCAT' in input_dir:
+    if 'MAPCAT' in input_dir:
         df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
     else:
         df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
@@ -680,7 +680,10 @@ def main():
         for index, row in df_blazars.iterrows():
             reduced = row['PATH'].replace('raw', 'reduction')
         
-            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            if 'MAPCAT' in input_dir:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            else:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             cal_dir = os.path.join(proc_dirs['calibration_dir'], im_time)
 
@@ -706,8 +709,8 @@ def main():
                     if res.returncode:
                         print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
                 
-    # Photometric calibration
-    calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fits')))
+    # Photometric calibration 
+    calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fit*')))
     # print(calibrated)
     df_astrocal_blazars = create_dataframe(calibrated, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT', 'BLZRNAME', 'FWHM'])
     # print(df_astrocal_blazars[df_astrocal_blazars['BLZRNAME'].isnull()]['PATH'].values)
@@ -836,7 +839,10 @@ def main():
     
         # processing stars...
         for index, row in df_stars.iterrows():
-            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            if 'MAPCAT' in input_dir:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            else:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             cal_dir = os.path.join(proc_dirs['calibration_dir'], im_time)
             
@@ -886,7 +892,7 @@ def main():
 
     #  3rd STEP: Getting aperture photometry
     if not args.skip_photometry:
-        astro_photo_calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fits')))
+        astro_photo_calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fit*')))
         print(f'PHOTOMETRY,INFO,"{len(astro_photo_calibrated)} files for getting photometry."')
         for ap_calib in astro_photo_calibrated:
             i_fits = mcFits(ap_calib)

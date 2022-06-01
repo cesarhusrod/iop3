@@ -712,7 +712,10 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
     # Extraordinary counterparts location
     # rough coordinates (relative to ordinary source locations)
     df_mc_e = df_mc.copy()
-    df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+    if 'MAPCAT' in input_fits:
+        df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+    else:
+        df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg']
     data_match_e = assoc_sources(df_sext, df_mc_e, max_deg_dist=max_deg_dist, suffix='E')
 
     print('-----EXTRAORD. DATA ASSOC-----')
@@ -888,7 +891,7 @@ def main():
     # dir_out = os.path.split(cat)[0]
     
     # Setting aperture for photometry
-    mc_aper = args.aper_pix
+    mc_aper = float(args.aper_pix)
     # if not mc_aper or math.isnan(mc_aper):
     #     mc_aper = nearest_blazar['aper_mc'].iloc[0]
     #     if np.isnan(np.array([mc_aper])[0]):
@@ -928,10 +931,28 @@ def main():
 
     if source_problem.sum() == 1:
             info_target = data_matched[source_problem]
+            info_stars = data_matched[~source_problem]
     else:
         print(f'ASTROCALIBRATION,ERROR,"No target source found."')
         return 9
 
+    ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
+    ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
+    ra_stars, dec_stars = info_stars['ALPHA_J2000_O'].values[0], info_stars['DELTA_J2000_O'].values[0]
+
+    if len(source_problem)>1:
+        is_blz=True
+        if is_blz:
+            ra_blz=ra_o
+            dec_blz=dec_o
+                
+            dist=np.sqrt((ra_blz-ra_stars)**2+(dec_blz-dec_stars)**2)
+            ref_idx=np.argmin(dist)+1
+            source_problem[ref_idx]=True
+            refstar_Rmag=info_stars['Rmag_mc_O'].values[0]
+    
+    info_target = data_matched[source_problem]
+    
     # Geting X,Y coordinates
     x_o, y_o = info_target['X_IMAGE_O'].values[0], info_target['Y_IMAGE_O'].values[0]
     x_e, y_e = info_target['X_IMAGE_E'].values[0], info_target['Y_IMAGE_E'].values[0]
@@ -962,10 +983,11 @@ def main():
     pair_params['ANGLE'] = [round(angle, ndigits=1)]
     pair_params['OBJECT'] = [header['OBJECT']]
     if 'MJD-OBS' in header:
-        pair_params['MJD-OBS'] = [header['MJD-OBS']] * 2
+        pair_params['MJD-OBS'] = header['MJD-OBS']
+        pair_params['RJD-50000'] = [header['MJD-OBS'] - 50000 + 0.5]
     else:
-        pair_params['MJD-OBS'] = [header['JD'] - 2400000.5 * 2
-    pair_params['MJD-OBS'] = [header['MJD-OBS']]
+        pair_params['MJD-OBS'] = header['JD'] - 2400000.5
+        pair_params['RJD-50000'] = [header['JD'] - 2400000.5 - 50000 + 0.5]
     pair_params['DATE-OBS'] = ['']
     if 'DATE-OBS' in header:
         pair_params['DATE-OBS'] = [header['DATE-OBS']]
@@ -979,41 +1001,56 @@ def main():
     pair_params['RUN_DATE'] = [date_run]
     pair_params['EXPTIME'] = [header['EXPTIME']]
     pair_params['APERPIX'] = [mc_aper]
-    pair_params['RJD-50000'] = [header['MJD-OBS'] - 50000 + 0.5]
+    
     pair_params['FWHM'] = [header['FWHM']]
 
     # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
     print('----------- INFO TARGET ----------')
     print(info_target)
     # Ordinary
-    coo_O = f"{info_target['ALPHA_J2000_O'].values[0]} {info_target['DELTA_J2000_O'].values[0]}"
-    coordinates_O = SkyCoord(coo_O, frame=FK5, unit=(u.deg, u.deg), obstime="J2000") 
-    info_target['RA_J2000_O'] = [coordinates_O.ra.to_string(unit=u.hourangle, sep=' ', \
-        precision=4, pad=True)]
-    info_target['DEC_J2000_O'] = [coordinates_O.dec.to_string(unit=u.deg, sep=' ', \
-        precision=4, alwayssign=True, pad=True)]
-    # Extraordinary
-    coo_E = f"{info_target['ALPHA_J2000_E'].values[0]} {info_target['DELTA_J2000_E'].values[0]}"
-    coordinates_E = SkyCoord(coo_E, frame=FK5, unit=(u.deg, u.deg), obstime="J2000") 
-    info_target['RA_J2000_E'] = [coordinates_E.ra.to_string(unit=u.hourangle, sep=' ', \
-        precision=4, pad=True)]
-    info_target['DEC_J2000_E'] = [coordinates_E.dec.to_string(unit=u.deg, sep=' ', \
-        precision=4, alwayssign=True, pad=True)]
+    #coordinates_O=np.array([])
+    info_target['RA_J2000_O']=info_target['ALPHA_J2000_O'] #To get the same shape
+    info_target['DEC_J2000_O']=info_target['DELTA_J2000_O'] #To get the same shape
+   
+    info_target['RA_J2000_E']=info_target['ALPHA_J2000_E'] #To get the same shape
+    info_target['DEC_J2000_E']=info_target['DELTA_J2000_E'] #To get the same shape
+    
+    for i in range(0,info_target.shape[0]):
+        coo_O = f"{info_target['ALPHA_J2000_O'].values[i]} {info_target['DELTA_J2000_O'].values[i]}"
+        coordinates_O = SkyCoord(coo_O, frame=FK5, unit=(u.deg, u.deg), obstime="J2000")
+
+        coo_E = f"{info_target['ALPHA_J2000_E'].values[i]} {info_target['DELTA_J2000_E'].values[i]}"
+        coordinates_E = SkyCoord(coo_E, frame=FK5, unit=(u.deg, u.deg), obstime="J2000")
+        
+
+        #Ordinary
+        info_target['RA_J2000_O'][i] = [coordinates_O.ra.to_string(unit=u.hourangle, sep=' ', \
+                                                                    precision=4, pad=True)]
+        info_target['DEC_J2000_O'][i] = [coordinates_O.dec.to_string(unit=u.deg, sep=' ', \
+                                                                      precision=4, alwayssign=True, pad=True)]
+
+        #Extraordinary
+        info_target['RA_J2000_E'][i] = [coordinates_E.ra.to_string(unit=u.hourangle, sep=' ', \
+                                                                    precision=4, pad=True)]
+        info_target['DEC_J2000_E'][i] = [coordinates_E.dec.to_string(unit=u.deg, sep=' ', \
+                                                                      precision=4, alwayssign=True, pad=True)]
+    
 
     # Adding aperture (in pixels)
-    info_target['APERPIX'] = [mc_aper]
-    info_target['FWHM'] = [i_fits.header['FWHM']]
+    print([mc_aper])
+    info_target['APERPIX'] = [[mc_aper]] * info_target.shape[0]
+    info_target['FWHM'] = [i_fits.header['FWHM']] * info_target.shape[0]
     if 'SECPIX' in i_fits.header:
-        info_target['SECPIX'] = [i_fits.header['SECPIX']]
+        info_target['SECPIX'] = [i_fits.header['SECPIX']] * info_target.shape[0]
     else:
         mean_secpix = np.nanmean(np.array([i_fits.header['SECPIX1'], i_fits.header['SECPIX2']]))
-        info_target['SECPIX'] = [round(mean_secpix, 2)]
-    info_target['DATE-OBS'] = [i_fits.header['DATE-OBS']]
-    info_target['MJD-OBS'] = [i_fits.header['MJD-OBS']]
-    info_target['RJD-50000'] = [i_fits.header['MJD-OBS'] - 50000 + 0.5]
-    info_target['EXPTIME'] = [i_fits.header['EXPTIME']]
-    info_target['ANGLE'] = [round(angle, ndigits=1)]
-    info_target['MAGZPT'] = [round(header['MAGZPT'], 2)]
+        info_target['SECPIX'] = [round(mean_secpix, 2)] * info_target.shape[0]
+    info_target['DATE-OBS'] = [i_fits.header['DATE-OBS']] * info_target.shape[0]
+    info_target['MJD-OBS'] = [pair_params['MJD-OBS']] * info_target.shape[0]
+    info_target['RJD-50000'] = [pair_params['MJD-OBS'] - 50000 + 0.5] * info_target.shape[0]
+    info_target['EXPTIME'] = [i_fits.header['EXPTIME']] * info_target.shape[0]
+    info_target['ANGLE'] = [round(angle, ndigits=1)] * info_target.shape[0]
+    info_target['MAGZPT'] = [round(header['MAGZPT'], 2)] * info_target.shape[0]
 
     # df = pd.DataFrame(pair_params)
     csv_out = f'{root}_photometry.csv'
@@ -1021,8 +1058,10 @@ def main():
 
     # Imprimo el contenido del fichero
     print('Useful parameters for polarimetric computations:')
-    print(info_target)
-
+    print(info_target.keys())
+    for a in info_target.values:
+        print(a)
+    
     # Write aperture in input FITS header
     # In any case, aperture is written in FITS header as APERPIX keyword
     new_card = [('APERPIX', round(args.aper_pix, 1), 'Aperture (pix) used in photometry')]
