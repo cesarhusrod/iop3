@@ -290,7 +290,7 @@ def main():
         else:
             plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fit', '.png')
         title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
-        mcFLAT.plot(title)
+        mcFLAT.plot(title=title)
         if 'fits' in oReduction.masterFLAT[pol_ang]:
             plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
         else:

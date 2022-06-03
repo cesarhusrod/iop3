@@ -137,14 +137,6 @@ def polarimetry_osn(df):
     #Phi=0
     #dPhi=0
     
-    I_0 = (df['FLUX_APER_O'][df['ANGLE'] == 0]).values[0]
-    dI_0 = (df['FLUXERR_APER_O'][df['ANGLE'] == 0]).values[0]
-    I_45 = (df['FLUX_APER_O'][df['ANGLE'] == 45]).values[0]
-    dI_45 = (df['FLUXERR_APER_O'][df['ANGLE'] == 45]).values[0]
-    I_90 = (df['FLUX_APER_O'][df['ANGLE'] == 90]).values[0]
-    dI_90 = (df['FLUXERR_APER_O'][df['ANGLE'] == 90]).values[0]
-    I_135 = (df['FLUX_APER_O'][df['ANGLE'] == -45]).values[0]
-    dI_135 = (df['FLUXERR_APER_O'][df['ANGLE'] == -45]).values[0]
     try:
         I_0 = (df['FLUX_APER_O'][df['ANGLE'] == 0]).values[0]
         dI_0 = (df['FLUXERR_APER_O'][df['ANGLE'] == 0]).values[0]
@@ -596,6 +588,8 @@ def make_groups2(data_res):
     # angles = DefaultDict(int)
     indexes = []
     # print(df)
+    first_angles=np.array([0.0])
+
     for j, row in df.iterrows():
         #print('')
         # indexes = list(angles.values())
@@ -607,14 +601,13 @@ def make_groups2(data_res):
             # angles[row['ANGLE']] = j 
             pass
         elif (row['ANGLE'] == prev_angle) and (row['IAU_name_mc_O'] == prev_blazar_name) and \
-            (row['EXPTIME'] == prev_exptime):
-            
+            (row['EXPTIME'] == prev_exptime):   
             # repeated observation. Overwrite previous one
-            # angles[row['ANGLE']] == j
-            
+            # angles[row['ANGLE']] == 
             pass
-        elif (row['IAU_name_mc_O'] != prev_blazar_name) and isinstance(row['IAU_name_mc_O'], str) or row['ANGLE'] < prev_angle or \
-            row['EXPTIME'] != prev_exptime: # (len(indexes) > 3):
+        elif (row['IAU_name_mc_O'] != prev_blazar_name) and isinstance(row['IAU_name_mc_O'], str) or \
+            row['EXPTIME'] != prev_exptime or (row['ANGLE'] != prev_angle and  row['ANGLE'] == 0.0): 
+            # (len(indexes) > 3):
             # be sure is not a calibration star
             # saving last group
             # indexes = list(angles.values())
@@ -637,7 +630,7 @@ def make_groups2(data_res):
             #  2. adding or updating indexes
             # angles[row['ANGLE']] = j 
             indexes.append(j)
-            print(row['ANGLE'])
+            
     #  if angles:
     if indexes:
         # print('')
@@ -799,9 +792,6 @@ def main():
     pol_rows = []
     pol_data = DefaultDict(list)
     #data_res = data_res.sort_values(by=['DATE-OBS'])
-    for i in range(data_res.shape[0]):
-        print(data_res['DATE-OBS'].values[i], data_res['ANGLE'].values[i])
-    print(data_res['DATE-OBS'], data_res['ANGLE'])
     groups = make_groups2(data_res)
     for group in groups:
         name = group['IAU_name_mc_O'].values[0]
