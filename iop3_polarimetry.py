@@ -855,7 +855,7 @@ def main():
             index_obs = 0
         
         obs_date = group['RJD-50000'].values[index_obs]
-        pol_data['RJD-50000'] = obs_date
+        pol_data['RJD-50000'].append(obs_date)
         row = [date_run, obs_date, group['IAU_name_mc_O'].values[0].strip()]
         
         row = row + [res_pol['P'], res_pol['dP'], \
@@ -878,8 +878,8 @@ def main():
     
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f}  {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>14}{:>10}'
-        header = 'DATE_RUN     RJD-50000   Object            P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME'
+        str_out = '\n{:12s} {:12.6f}  {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>14}{:>10}'
+        header = 'DATE_RUN        RJD-50000   Object            P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
@@ -903,7 +903,7 @@ def main():
             print(f"{k} -> {len(v)}")
         raise
     # Formatting
-    df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.4f}'.format(x))
+    df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.6f}'.format(x))
     df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
     df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
     df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))

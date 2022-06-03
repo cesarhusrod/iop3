@@ -540,12 +540,13 @@ def compute_zeropoint(input_fits, merged_data, output_png=None):
         color=['green', 'green', 'red', 'red'], coords=coords, \
         dictParams={'invert':'True'})
 
-    # Using SExtractor AUTO measures (not APER)
+    # non-saturated calibrators total flux (Ordinary + Extraordinary)
+    # Using SExtractor APER measures
     if 'MAPCAT' in input_fits:
-        calibrators_total_flux = (merged_data['FLUX_AUTO_O'] + \
-                                      merged_data['FLUX_AUTO_E'])[~sat_calibrator]
+        calibrators_total_flux = (merged_data['FLUX_APER_O'] + \
+                                      merged_data['FLUX_APER_E'])[~sat_calibrator]
     else:
-        calibrators_total_flux = merged_data['FLUX_AUTO_O'][~sat_calibrator]
+        calibrators_total_flux = merged_data['FLUX_APER_O'][~sat_calibrator]
     
     # Computing ZEROPOINT using non-saturated calibrators (or all of them if 
     # they are all saturated)
@@ -603,13 +604,13 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
     
     # Printing info about MAPCAT-SExtractor sources
     str_match_mapcat = " MAPCAT (name, ra, dec, Rmag, Rmagerr) = ({}, {}, {}, {}, {})"
-    str_match_sext = "SExtractor (ra, dec, mag_auto, magerr_auto) = ({}, {}, {}, {})"
+    str_match_sext = "SExtractor (ra, dec, mag_aper, magerr_aper) = ({}, {}, {}, {})"
     str_dist = "Distance = {}\n-----------------------"
     for j, row in data_match_o.iterrows():
         print(str_match_mapcat.format(row['name_mc_O'], row['ra2000_mc_deg_O'], row['dec2000_mc_deg_O'], \
             row['Rmag_mc_O'], row['Rmagerr_mc_O']))
         print(str_match_sext.format(row['ALPHA_J2000_O'], row['DELTA_J2000_O'], \
-            row['MAG_AUTO_O'], row['MAGERR_AUTO_O']))
+            row['MAG_APER_O'], row['MAGERR_APER_O']))
         print(str_dist.format(row['DISTANCE_DEG_O']))
 
     # Extraordinary counterparts location
@@ -908,7 +909,7 @@ def main():
             std_mag_zeropoint = 0
         except ValueError:
             message = "Ordinary and extraordinary fluxes auto = ({}, {})"
-            print(message.format    (info_target['FLUX_AUTO_O'], info_target['FLUX_AUTO_E']))
+            print(message.format(info_target['FLUX_AUTO_O'], info_target['FLUX_AUTO_E']))
             raise
     print(mag_zeropoint)
     if mag_zeropoint is None or np.isnan(mag_zeropoint):
