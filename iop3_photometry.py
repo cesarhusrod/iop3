@@ -528,7 +528,7 @@ def get_mapcat_sources(input_fits, blazar_path):
     
     return df_mc
 
-def assoc_sources(df_sext, df_mapcat, max_deg_dist=0.0006, suffix='O'):
+def assoc_sources(df_sext, df_mapcat, max_deg_dist=0.006, suffix='O'):
     """_summary_
 
     Args:
@@ -649,7 +649,7 @@ def assoc_sources(df_sext, df_mapcat, max_deg_dist=0.0006, suffix='O'):
 
 #     return data_matched
 
-def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
+def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.006):
     """_summary_
 
     Args:
@@ -922,7 +922,7 @@ def main():
 
     # Merging data: MAPCAT & SExtractor
     df_sext = read_sext_catalog(cat, format='FITS_LDAC')
-    data_matched = merge_mapcat_sextractor(df_sext, df_mc_o, input_fits, max_deg_dist=0.0006)
+    data_matched = merge_mapcat_sextractor(df_sext, df_mc_o, input_fits, max_deg_dist=0.006)
 
     try:
         source_problem = data_matched['IAU_name_mc_O'].str.len() > 0
