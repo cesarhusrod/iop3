@@ -47,6 +47,7 @@ from astropy.coordinates import match_coordinates_sky  # Used for searching sour
 from astropy.coordinates import FK5  # Low-level frames
 import astropy.coordinates as coord
 import astropy.units as u
+from astropy.time import Time
 
 
 from mcFits import mcFits
@@ -949,7 +950,8 @@ def main():
     angle = float(header['INSPOROT'])
     pair_params['ANGLE'] = [round(angle, ndigits=1)]
     pair_params['OBJECT'] = [header['OBJECT']]
-    pair_params['MJD-OBS'] = [header['MJD-OBS']]
+    d_obs = Time(header['DATE-OBS'])
+    pair_params['MJD-OBS'] = [d_obs.mjd]
     pair_params['DATE-OBS'] = ['']
     if 'DATE-OBS' in header:
         pair_params['DATE-OBS'] = [header['DATE-OBS']]
@@ -963,7 +965,7 @@ def main():
     pair_params['RUN_DATE'] = [date_run]
     pair_params['EXPTIME'] = [header['EXPTIME']]
     pair_params['APERPIX'] = [mc_aper]
-    pair_params['RJD-50000'] = [header['MJD-OBS'] - 50000 + 0.5]
+    pair_params['RJD-50000'] = [d_obs.mjd - 50000 + 0.5]
     pair_params['FWHM'] = [header['FWHM']]
 
     # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
@@ -993,8 +995,8 @@ def main():
         mean_secpix = np.nanmean(np.array([i_fits.header['SECPIX1'], i_fits.header['SECPIX2']]))
         info_target['SECPIX'] = [round(mean_secpix, 2)]
     info_target['DATE-OBS'] = [i_fits.header['DATE-OBS']]
-    info_target['MJD-OBS'] = [i_fits.header['MJD-OBS']]
-    info_target['RJD-50000'] = [i_fits.header['MJD-OBS'] - 50000 + 0.5]
+    info_target['MJD-OBS'] = [Time(i_fits.header['DATE-OBS']).mjd]
+    info_target['RJD-50000'] = [Time(i_fits.header['DATE-OBS']).mjd - 50000 + 0.5]
     info_target['EXPTIME'] = [i_fits.header['EXPTIME']]
     info_target['ANGLE'] = [round(angle, ndigits=1)]
     info_target['MAGZPT'] = [round(header['MAGZPT'], 2)]
