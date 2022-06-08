@@ -485,7 +485,7 @@ def compute_polarimetry(data_object):
     result['dP'] = round(dP * 100, 3)
     result['Theta'] = round(Theta, 2)
     result['dTheta'] = round(dTheta, 2)
-    result['R'] =  round(mags.mean(), 2)
+    result['R'] =  round(mags.mean(), 5)
     result['Sigma'] = round(max([data_object['MAGERR_APER_O'].values.max(), \
         data_object['MAGERR_APER_E'].values.max()]), 4)
     result['Q'] = round(RQ, 4)
@@ -883,7 +883,7 @@ def main():
     
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>14}{:>10}'
+        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10}'
 
         header = 'DATE_RUN        RJD-50000   MJD   Object            P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME'
         fout.write(header)

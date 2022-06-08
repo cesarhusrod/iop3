@@ -514,8 +514,6 @@ def main():
     # Reading blazar file
     blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_last.csv')
     
-    if 'MAPCAT' in input_dir:
-        blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_MAPCAT.csv')
     blazar_data = read_blazar_file(blazar_path)
     
     # Does input verify pattern given above?
@@ -865,12 +863,12 @@ def main():
                     if res.returncode:
                         message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
                         print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
-                if not args.skip_photocal:    
-                    # Photometric calibration: stars have fixed aperture
-                    if 'fits' in os.path.split(row['PATH'])[1]:
-                        calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
-                    else:
-                        calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fit', '_final.fit'))
+            if not args.skip_photocal:    
+                # Photometric calibration: stars have fixed aperture
+                if 'fits' in os.path.split(row['PATH'])[1]:
+                    calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
+                else:
+                    calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fit', '_final.fit'))
                 cmd_photocal = ""
                 if args.overwrite:
                     cmd_photocal = "python iop3_photometric_calibration.py --overwrite {} {} {}"
