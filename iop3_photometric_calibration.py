@@ -794,27 +794,27 @@ def main():
         return 9
 
     info_target = data_matched[source_problem]
-    info_stars = data_matched[~source_problem]
-    print(source_problem)
+    
     ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
     ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
 
-    ra_stars, dec_stars = info_stars['ALPHA_J2000_O'].values[0], info_stars['DELTA_J2000_O'].values[0]
-
     #Get reference star
     #CUIDAO QUE ESTO NO VA A FUNCIONAR PARA LAS HD stars
+    is_blz=False
     if len(source_problem)>1:
         is_blz=True
     
     if is_blz:
         ra_blz=ra_o
         dec_blz=dec_o
+        info_stars = data_matched[~source_problem]
+        ra_stars, dec_stars = info_stars['ALPHA_J2000_O'].values[0], info_stars['DELTA_J2000_O'].values[0]
                 
         dist=np.sqrt((ra_blz-ra_stars)**2+(dec_blz-dec_stars)**2)
         ref_idx=np.argmin(dist)+1
         source_problem[ref_idx]=True
-        print(source_problem)
         refstar_Rmag=info_stars['Rmag_mc_O'].values[0]
+
 
         #indexes_refstar=[idx_o[source_problem][1], idx_e[source_problem][1]]
         #print(f'[Ordinary, Extraordinary] SExtractor indexes of reference star = {indexes_refstar}')

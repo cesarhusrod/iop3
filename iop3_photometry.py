@@ -801,7 +801,7 @@ def main():
     parser = argparse.ArgumentParser(prog='iop3_photometry.py', \
     conflict_handler='resolve',
     description='''Main program that perfoms input FITS aperture photometry. ''',
-    epilog='''''')
+    epilog=''' ''')
     parser.add_argument("config_dir", help="Configuration parameter files directory")
     parser.add_argument("output_dir", help="Output base directory for FITS calibration")
     parser.add_argument("input_fits", help="Astrocalibrated input FITS file")
@@ -932,18 +932,21 @@ def main():
 
     if source_problem.sum() == 1:
             info_target = data_matched[source_problem]
-            info_stars = data_matched[~source_problem]
+
     else:
         print(f'ASTROCALIBRATION,ERROR,"No target source found."')
         return 9
 
     ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
     ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
-    ra_stars, dec_stars = info_stars['ALPHA_J2000_O'].values[0], info_stars['DELTA_J2000_O'].values[0]
+    
 
+    is_blz=False
     if len(source_problem)>1:
         is_blz=True
         if is_blz:
+            info_stars = data_matched[~source_problem]
+            ra_stars, dec_stars = info_stars['ALPHA_J2000_O'].values[0], info_stars['DELTA_J2000_O'].values[0]
             ra_blz=ra_o
             dec_blz=dec_o
                 
@@ -1037,28 +1040,19 @@ def main():
 
     # Adding aperture (in pixels)
     print([mc_aper])
-    info_target['APERPIX'] = [[mc_aper]] * info_target.shape[0]
+    info_target['APERPIX'] = [mc_aper] * info_target.shape[0]
     info_target['FWHM'] = [i_fits.header['FWHM']] * info_target.shape[0]
     if 'SECPIX' in i_fits.header:
         info_target['SECPIX'] = [i_fits.header['SECPIX']] * info_target.shape[0]
     else:
         mean_secpix = np.nanmean(np.array([i_fits.header['SECPIX1'], i_fits.header['SECPIX2']]))
-
-    #info_target['SECPIX'] = [round(mean_secpix, 2)] * info_target.shape[0]
-    #info_target['DATE-OBS'] = [i_fits.header['DATE-OBS']] * info_target.shape[0]
-    #info_target['MJD-OBS'] = [pair_params['MJD-OBS']] * info_target.shape[0]
-    #info_target['RJD-50000'] = [pair_params['MJD-OBS'] - 50000 + 0.5] * info_target.shape[0]
-    #info_target['EXPTIME'] = [i_fits.header['EXPTIME']] * info_target.shape[0]
-    #info_target['ANGLE'] = [round(angle, ndigits=1)] * info_target.shape[0]
-    #info_target['MAGZPT'] = [round(header['MAGZPT'], 2)] * info_target.shape[0]
-
-    info_target['SECPIX'] = [round(mean_secpix, 2)]
-    info_target['DATE-OBS'] = [i_fits.header['DATE-OBS']]
-    info_target['MJD-OBS'] = [Time(i_fits.header['DATE-OBS']).mjd]
-    info_target['RJD-50000'] = [Time(i_fits.header['DATE-OBS']).mjd - 50000 + 0.5]
-    info_target['EXPTIME'] = [i_fits.header['EXPTIME']]
-    info_target['ANGLE'] = [round(angle, ndigits=1)]
-    info_target['MAGZPT'] = [round(header['MAGZPT'], 2)]
+        info_target['SECPIX'] = [round(mean_secpix, 2)] * info_target.shape[0]
+    info_target['DATE-OBS'] = [i_fits.header['DATE-OBS']] * info_target.shape[0]
+    info_target['MJD-OBS'] = [Time(i_fits.header['DATE-OBS']).mjd] * info_target.shape[0]
+    info_target['RJD-50000'] = [Time(i_fits.header['DATE-OBS']).mjd - 50000 + 0.5] * info_target.shape[0]
+    info_target['EXPTIME'] = [i_fits.header['EXPTIME']] * info_target.shape[0]
+    info_target['ANGLE'] = [round(angle, ndigits=1)] * info_target.shape[0]
+    info_target['MAGZPT'] = [round(header['MAGZPT'], 2)] * info_target.shape[0]
 
 
     # df = pd.DataFrame(pair_params)

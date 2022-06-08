@@ -109,7 +109,8 @@ def polarimetry_osn(df):
     Formula taken from "F. Moreno and O. Muñoz polarization.pdf"
     """
     #df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
-    if df['SECPIX'].values[0] == 0.38 or df['SECPIX'].values[0] == 0.77:
+    
+    if round(df['SECPIX'].values[0],2) == 0.38 or round(df['SECPIX'].values[0],2) == 0.77:
         #values for T090
         qoff = 0.0645
         uoff = 0.0574
@@ -117,7 +118,7 @@ def polarimetry_osn(df):
         duoff = 0.003
         Phi=math.radians(0)
         dPhi=math.radians(0)
-    if df['SECPIX'].values[0] == 0.23 or df['SECPIX'].values[0] == 0.46: 
+    elif round(df['SECPIX'].values[0],2) == 0.23 or round(df['SECPIX'].values[0],2) == 0.46: 
         #values for 150
         qoff = 0.0058
         dqoff = 0.001
@@ -126,6 +127,10 @@ def polarimetry_osn(df):
  
         Phi=math.radians(9.)
         dPhi=math.radians(2.3)
+
+    else:
+        print("COULD NOT DETERMINE TELESCOPE!")
+        return -99, -99, -99, -99, -99, -99, -99, -99, -99, -99
 
     #values of T150 from polarization.pdf
     #qoff=0.031
@@ -727,7 +732,7 @@ def main():
     description='''Main program. It searchs for every .res and final.fits files.
     Compute polarimetry parameters for each source (.res) and write
     output GLOBAL results file. ''',
-    epilog='''''')
+    epilog=''' ''')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
     parser.add_argument("calib_base_dir", help="Base directory for searching files.")
     parser.add_argument("output_dir", help="Output directory for storing results.")
@@ -814,7 +819,7 @@ def main():
         
         try:
             res_pol = compute_polarimetry(group)
-            if res_pol['P'] is None:
+            if res_pol['P'] is None or res_pol['P'] < 0.0:
                 print('POLARIMETRY,WARNING,"Could not compute Polarization for this set of measurements"')
                 continue
         except ZeroDivisionError:
@@ -833,10 +838,8 @@ def main():
             print(f'mean_secpix = {mean_secpix}')
             return -199
         
-        #CORREGIR ESTO EN PHOTOMETRY
-        print(float((res_pol['APERPIX'].replace('[','')).replace(']','')))
-        print(mean_secpix)
-        res_pol['APERPIX']=float((res_pol['APERPIX'].replace('[','')).replace(']',''))
+        #res_pol['APERPIX']=float((res_pol['APERPIX'].replace('[','')).replace(']',''))
+        
         res_pol['APERAS'] = res_pol['APERPIX'] * mean_secpix
         rp_sigma = res_pol['Sigma']
         # if rp_sigma < 0.01:
@@ -856,7 +859,9 @@ def main():
         
         obs_date = group['RJD-50000'].values[index_obs]
         pol_data['RJD-50000'].append(obs_date)
-        row = [date_run, obs_date, group['IAU_name_mc_O'].values[0].strip()]
+        mjd_date = float(group['MJD-OBS'].values[index_obs])
+        pol_data['MJD-OBS'].append(mjd_date)
+        row = [date_run, obs_date, mjd_date, group['IAU_name_mc_O'].values[0].strip()]
         
         row = row + [res_pol['P'], res_pol['dP'], \
             res_pol['Theta'], res_pol['dTheta'], \
@@ -878,8 +883,9 @@ def main():
     
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:12.6f}  {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>14}{:>10}'
-        header = 'DATE_RUN        RJD-50000   Object            P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME'
+        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>14}{:>10}'
+
+        header = 'DATE_RUN        RJD-50000   MJD   Object            P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
@@ -894,7 +900,7 @@ def main():
     out_csv = os.path.join(args.output_dir, name_out_csv)
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
-            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'ID-MC', \
+            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD', 'ID-MC', \
             'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
@@ -904,6 +910,7 @@ def main():
         raise
     # Formatting
     df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.6f}'.format(x))
+    df['MJD'] = df['MJD'].map(lambda x: '{0:.6f}'.format(x))
     df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
     df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
     df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))
@@ -912,7 +919,7 @@ def main():
     df['dQ'] = df['dQ'].map(lambda x: '{0:.4f}'.format(x))
     df['U'] = df['U'].map(lambda x: '{0:.4f}'.format(x))
     df['dU'] = df['dU'].map(lambda x: '{0:.4f}'.format(x))
-    df['R'] = df['R'].map(lambda x: '{0:.3f}'.format(x))
+    df['R'] = df['R'].map(lambda x: '{0:.4f}'.format(x))
     df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df.to_csv(out_csv, index=False)
