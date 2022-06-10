@@ -648,7 +648,7 @@ def main():
        dest="aper_pix",
        type=float,
        default=None,
-       help="FWHM for computing photometry [default: %(default)s].")
+       help="Aperture (in pixels) for computing photometry [default: %(default)s].")
     parser.add_argument("--blazars_info",
        action="store",
        dest="blazars_info",
@@ -780,20 +780,25 @@ def main():
     except TypeError:
         return 9
 
+    print(f"Source problem = '{source_problem}'")
     info_target = data_matched[source_problem]
-    ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
-    ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
+    print("Info target")
+    print(info_target)
+    source_pair_png = ''
+    if len(info_target.index) > 0:
+        ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
+        ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
 
-    # Plotting source problem
-    # Showing detailed info about SExtractor counterparts
-    source_pair_png = input_fits.replace('.fits', '_source_pair.png')
-    print('Out PNG ->', source_pair_png)
-    title_temp = "SExtractor Pair Detections {}, {} ({} s)"
-    title = title_temp.format(astro_header['OBJECT'], astro_header['DATE-OBS'], \
-        astro_header['EXPTIME'])
-    i_fits.plot(source_pair_png, title=title, astroCal=True, \
-        coords=[(ra_o, dec_o), (ra_e, dec_e)], color=['red', 'blue']) 
-
+        # Plotting source problem
+        # Showing detailed info about SExtractor counterparts
+        source_pair_png = input_fits.replace('.fits', '_source_pair.png')
+        print('Out PNG ->', source_pair_png)
+        title_temp = "SExtractor Pair Detections {}, {} ({} s)"
+        title = title_temp.format(astro_header['OBJECT'], astro_header['DATE-OBS'], \
+            astro_header['EXPTIME'])
+        i_fits.plot(source_pair_png, title=title, astroCal=True, \
+            coords=[(ra_o, dec_o), (ra_e, dec_e)], color=['red', 'blue']) 
+    
     # Parameters to store...
     cal_data = defaultdict(list)
     
@@ -869,7 +874,8 @@ def main():
             print(message.format(info_target['FLUX_AUTO_O'], info_target['FLUX_AUTO_E']))
             raise
 
-    if np.isnan(mag_zeropoint) or mag_zeropoint is None:
+    print(f'mag_zeropoint = {mag_zeropoint}')
+    if mag_zeropoint is None or np.isnan(mag_zeropoint) or mag_zeropoint is None:
         print(f'PHOTOMETRY,ERROR,"Could not compute MAG_ZEROPOINT for \'{input_fits}\'"')
         return 8
 
@@ -888,7 +894,11 @@ def main():
     params['STDMAGZP'] = round(std_mag_zeropoint, 2)
     params['NSZPT'] = num_calibrators
     params['APERPIX'] = mc_aper
-    params['BLZRNAME'] = info_target['IAU_name_mc_O'].values[0]
+    if len(info_target.index) > 0:
+        params['BLZRNAME'] = info_target['IAU_name_mc_O'].values[0]
+    else:
+        params['BLZRNAME'] = nearest_blazar['IAU_name_mc'].values[0]
+
     print(f'Header params = {params}')
 
     # Composing cards
@@ -896,15 +906,17 @@ def main():
         ('STDMAGZP', round(std_mag_zeropoint, 2), 'MAPCAT STD(Photometric zeropoint)'), \
         ('NSZPT', num_calibrators, 'MAPCAT number of calibrators used in ZEROPOINT estimation'), \
         ('APERPIX', mc_aper, 'Aperture in pixel for photometry calibration'), \
-        ('BLZRNAME', info_target['IAU_name_mc_O'].values[0], 'IAU name of BLAZAR'), \
+        ('BLZRNAME', params['BLZRNAME'], 'IAU name of BLAZAR'), \
         ('RUN_DATE', date_run, 'Night run date')]
     
+    print(f'PHOTOCALIBRATION,INFO,"Updating calibration keywords of FITS \'{args.input_fits}\'"')
     if i_fits.update_header(cards):
         print(f'PHOTOCALIBRATION,ERROR,"Could not update photocalibration header in \'{input_fits}\'"')
         return 9
 
     cal_data['PATH'].append(input_fits)
     cal_data['RUN_DATE'].append(date_run)
+    cal_data['CROTATION'].append(i_fits.header.get('CROTATION', ''))
     if calibrators_png and os.path.exists(calibrators_png):
         cal_data['CALIBRATORS_PNG'] = [calibrators_png]
     else:

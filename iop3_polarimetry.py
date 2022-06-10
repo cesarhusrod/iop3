@@ -296,7 +296,8 @@ def compute_polarimetry(data_object):
     
     result['RJD-5000'] = round(obs_date, 4)
     result['ID-MC'] = data_object['id_mc_O'].values[0]
-    result['ID-BLAZAR-MC'] = data_object['IAU_name_mc_O'].values[0]
+    result['ID-BLAZAR-MC'] = data_object['id_blazar_mc_O'].values[0]
+    result['MC-IAU-NAME'] = data_object['IAU_name_mc_O'].values[0]
     result['MC-NAME'] = data_object['name_mc_O'].values[0]
     result['EXPTIME'] = data_object['EXPTIME'].values[0] # .split()[0]      
     result['NUM_ROTATION'] = len(data_object.index)
@@ -730,10 +731,11 @@ def main():
     # --------------------- CSV file
     name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
+    
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME']
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'APERPIX', 'APERAS', 'NUM_ROTATION']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
@@ -755,133 +757,6 @@ def main():
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df.to_csv(out_csv, index=False)
     
-    return 0
-
-    # sort by MJD
-    data_res = data_res.sort_values(by=['MJD-OBS'])
-
-    # Extract filter polarization angle and target name as new dataframe columns
-    # data_res['ANGLE'] = data_res['OBJECT'].str.extract(r'\s([\d.]+)\s')
-    data_res['OBJECT'] = np.array([' '.join(na.split(' ')[:-2]) for na in data_res['OBJECT'].values])
-    # data_res['NAME'] = data_res['OBJECT'].str.extract(r'([a-zA-z0-9+-]+)\s')
-    #print(data_res)
-    #print(data_res.info())
-    #return -99
-    #Getting unique names
-    object_names = data_res['MC-IAU-NAME'].unique()
-    print('^' * 100)
-    print('OBJECTS = ', object_names)
-    print('^' * 100)
-
-    pol_rows = []
-
-    # dictionary for storing results...
-    pol_data = DefaultDict(list)
-
-    # Processing each target object
-    for name in object_names:
-        data_sets = object_measures(data_res, name)
-            
-        for data_object in data_sets:
-            print('group')
-            print('-' * 60)
-            print(data_object)
-
-            try:
-                res_pol = compute_polarimetry(data_object)
-                if res_pol['P'] is None:
-                    print('POLARIMETRY,WARNING,"Could not compute Polarization for this set of measurements"')
-                    continue
-            except ZeroDivisionError:
-                message = 'POLARIMETRY,ERROR,"EXCEPTION ZeroDivisionError: Found Zero Division Error in group processing; OBJECT={} DATE-OBS={}'
-                message = message.format(name, data_object['DATE-OBS'])
-                print(message)
-                continue
-            except ValueError:
-                message = 'POLARIMETRY,ERROR,"EXCEPTION ValueError: Found Value Error in group processing; OBJECT={} DATE-OBS={}'
-                message = message.format(name, data_object['DATE-OBS'])
-                print(message)
-                continue
-
-            res_pol['DATE_RUN'] = date_run
-            res_pol['EXPTIME'] = data_object['EXPTIME'].values[0]
-            res_pol['APERPIX'] = data_object['APERPIX'].values[0]
-            # arcsec per pixel as mean values of astrometric calibration computaion in RA and DEC.
-            is_ord = data_object['TYPE'] == 'O'
-            mean_secpix = (np.nanmean(data_object[is_ord]['SECPIX1'].values) + np.nanmean(data_object[is_ord]['SECPIX2'].values)) / 2
-            if np.isnan(mean_secpix):
-                print(f'mean_secpix = {mean_secpix}')
-                print(data_object[is_ord]['SECPIX1'].values)
-                print(data_object[is_ord]['SECPIX2'].values)
-                return -199
-            
-            res_pol['APERAS'] = res_pol['APERPIX'] * mean_secpix
-            rp_sigma = res_pol['Sigma']
-            # if rp_sigma < 0.01:
-            #     rp_sigma = 0.01
-            
-            for k, v in res_pol.items():
-                if k == 'Sigma':
-                    pol_data[k].append(rp_sigma)
-                    continue
-                pol_data[k].append(v)
-
-            index_obs = 2 # groups of three or four observations
-            if len(data_object['MJD-OBS'][data_object['TYPE'] == 'O']) < 3:
-                index_obs = 1
-            obs_date = data_object['MJD-OBS'][data_object['TYPE'] == 'O'].values[index_obs]
-            pol_data['RJD-50000'].append(obs_date - 50000)
-            row = [date_run, obs_date - 50000, name.strip()]
-            
-            row = row + [res_pol['P'], res_pol['dP'], \
-                res_pol['Theta'], res_pol['dTheta'], \
-                res_pol['Q'], res_pol['dQ'], \
-                res_pol['U'], res_pol['dU'], \
-                res_pol['R'], rp_sigma, \
-                res_pol['APERPIX'], res_pol['APERAS'], res_pol['NUM_ROTATION']]
-            pol_rows.append(row)
-            # print('Lines to write down:')
-            # pprint.pprint(pol_rows)
-
-    # writing output night polarimetry file
-    name_out_file = 'MAPCAT_polR_{}.res'.format(date_run)
-    out_res = os.path.join(args.output_dir, name_out_file)
-    print('out_res = ', out_res)
-    with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:9.4f}   {:18s}{:>10}{:>7}   {:>7}{:>7}   {:>14}{:>7}   {:>8}{:>7}{:>7}{:>8}{:>6}{:>14.3f}{:>4}'
-        header = 'DATE_RUN     RJD-50000   Object                 P+-dP(%)        Theta+-dTheta(deg.)     Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION'
-        fout.write(header)
-        for lines in pol_rows:
-            fout.write(str_out.format(*lines))
-
-    # --------------------- CSV file
-    name_out_csv = 'MAPCAT_polR_{}.csv'.format(date_run)
-    out_csv = os.path.join(args.output_dir, name_out_csv)
-    try:
-        cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
-            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION']
-        df = pd.DataFrame(pol_data, columns=cols)
-    except:
-        print("pol_data")
-        for k, v in pol_data.items():
-            print(f"{k} -> {len(v)}")
-        raise
-    # Formatting
-    df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.4f}'.format(x))
-    df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
-    df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
-    df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))
-    df['dTheta'] = df['dTheta'].map(lambda x: '{0:.3f}'.format(x))
-    df['Q'] = df['Q'].map(lambda x: '{0:.4f}'.format(x))
-    df['dQ'] = df['dQ'].map(lambda x: '{0:.4f}'.format(x))
-    df['U'] = df['U'].map(lambda x: '{0:.4f}'.format(x))
-    df['dU'] = df['dU'].map(lambda x: '{0:.4f}'.format(x))
-    df['R'] = df['R'].map(lambda x: '{0:.3f}'.format(x))
-    df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
-    df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
-    df.to_csv(out_csv, index=False)
-
     return 0
 
 if __name__ == '__main__':
