@@ -392,7 +392,7 @@ def polarimetry(df):
 
     # pol_vals = 'P = {}, dP = {} \nTheta = {}, dTheta = {}'
     # print(pol_vals.format(P * 100, dP * 100, Theta, dTheta))
-
+    print(P, dP, Theta, dTheta, RQ, dRQ, RU, dRU)
     return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU
 
 
@@ -426,7 +426,7 @@ def compute_polarimetry(data_object):
     result['MC-NAME'] = data_object['name_mc_O'].values[0]
     result['EXPTIME'] = data_object['EXPTIME'].values[0] # .split()[0]      
     result['NUM_ROTATION'] = len(data_object.index)
-
+    result['RMAG-LIT'] = data_object['Rmag_mc_O'].values[0]
     
     # Computing polarimetry parameters
     # print(data_object)
@@ -578,6 +578,7 @@ def make_groups2(data_res):
         list: Each item is a pandas Dataframe with 
     """
     groups = []
+    groups_stars = []
 
     # sort by MJD-OBS ascending
     df = data_res.sort_values(by=['RJD-50000'], ascending=True)
@@ -592,6 +593,7 @@ def make_groups2(data_res):
     prev_exptime = None
     # angles = DefaultDict(int)
     indexes = []
+    indexes_stars = []
     # print(df)
     first_angles=np.array([0.0])
 
@@ -611,7 +613,7 @@ def make_groups2(data_res):
             # angles[row['ANGLE']] == 
             pass
         elif (row['IAU_name_mc_O'] != prev_blazar_name) and isinstance(row['IAU_name_mc_O'], str) or \
-            row['EXPTIME'] != prev_exptime or (row['ANGLE'] != prev_angle and  row['ANGLE'] == 0.0): 
+            row['EXPTIME'] != prev_exptime or (row['ANGLE'] != prev_angle and  row['ANGLE'] == 0.0) or df.iloc[indexes].shape[0]>=4: 
             # (len(indexes) > 3):
             # be sure is not a calibration star
             # saving last group
@@ -627,7 +629,7 @@ def make_groups2(data_res):
             # angles.clear()
                 indexes.clear()
         # In any case:
-        # 1. Updating previous row data is its not a calibration star
+        # 1. Updating previous row data if its not a calibration star
         if isinstance(row['IAU_name_mc_O'], str):
             prev_blazar_name = row['IAU_name_mc_O']
             prev_angle = row['ANGLE']
@@ -635,7 +637,6 @@ def make_groups2(data_res):
             #  2. adding or updating indexes
             # angles[row['ANGLE']] = j 
             indexes.append(j)
-            
     #  if angles:
     if indexes:
         # print('')
@@ -646,8 +647,64 @@ def make_groups2(data_res):
         df_group = df.iloc[indexes]
         df_group.sort_values(by=['DATE-OBS'], ascending=True)
         groups.append(df_group)
+#NOW MAKE GROUPS FOR THE REFERENCE STARS    
+    prev_blazar_name = None
+    prev_angle = None
+    prev_exptime = None
 
-    return groups
+    for j, row in df.iterrows():
+        if not isinstance(row['IAU_name_mc_O'], str):
+        #print('')
+        # indexes = list(angles.values())
+        # print(f'row = {row}')
+            print(row['ANGLE'])
+            if prev_blazar_name is None:
+                # adding new observation
+                # prev_blazar_name = row['MC-IAU-NAME']
+                # prev_angle = row['ANGLE']
+                # angles[row['ANGLE']] = j 
+                pass
+            elif (row['ANGLE'] == prev_angle) and (row['IAU_name_mc_O'] == prev_blazar_name) and \
+                    (row['EXPTIME'] == prev_exptime):   
+                # repeated observation. Overwrite previous one
+                # angles[row['ANGLE']] == 
+                pass
+            elif  row['EXPTIME'] != prev_exptime or (row['ANGLE'] != prev_angle and row['ANGLE'] == 0.0) or df.iloc[indexes_stars].shape[0]>=4:
+                
+                # (len(indexes) > 3):
+                # be sure is not a calibration star
+                # saving last group
+                # indexes = list(angles.values())
+                # print(f'indexes = {indexes}')
+                # df_group = pd.concat([df.iloc[indexes], df.iloc[indexes]])
+                df_group = df.iloc[indexes_stars]
+                df_group.sort_values(by=['DATE-OBS'], ascending=True)
+                if df_group['IAU_name_mc_O'].shape[0] > 0:
+                #Don't save empty groups (because of calibration star?)
+                    # print(df_group.loc[:,['ANGLE', 'TYPE', 'EXPTIME', 'MC-IAU-NAME', 'DATE-OBS', 'FLUX_APER', 'FLUXERR_APER']])
+                    groups_stars.append(df_group)
+                # angles.clear()
+                    indexes_stars.clear()
+            # In any case:
+            # 1. Updating previous row data
+            prev_blazar_name = row['IAU_name_mc_O']
+            prev_angle = row['ANGLE']
+            prev_exptime = row['EXPTIME']
+            #  2. adding or updating indexes
+            # angles[row['ANGLE']] = j 
+            indexes_stars.append(j)
+            #  if angles:
+    if indexes_stars:
+        # print('')
+        # indexes = list(angles.values())
+        #df_group = pd.concat([df.iloc[indexes], df.iloc[indexes]])
+        # print(df_group.loc[:,['ANGLE', 'TYPE', 'EXPTIME', 'MC-IAU-NAME', 'DATE-OBS', 'FLUX_APER', 'FLUXERR_APER']])
+        #groups.append(df_group)
+        df_group = df.iloc[indexes_stars]
+        df_group.sort_values(by=['DATE-OBS'], ascending=True)
+        groups_stars.append(df_group)
+        
+    return groups, groups_stars
 
 
 def closest_object(ra_ref, dec_ref, ra_others, dec_others):
@@ -797,7 +854,133 @@ def main():
     pol_rows = []
     pol_data = DefaultDict(list)
     #data_res = data_res.sort_values(by=['DATE-OBS'])
-    groups = make_groups2(data_res)
+    groups, groups_stars = make_groups2(data_res)
+    for group in groups_stars:
+        name = group['name_mc_O'].values[0]
+        print(f'GROUP {name}')
+        print('-' * 30)
+        print(group[['IAU_name_mc_O', 'DATE-OBS', 'ANGLE', 'EXPTIME', 'FLUX_APER_O', 'FLUX_APER_E', 'FLUXERR_APER_O', 'FLUXERR_APER_E']])
+        print('')
+        res = check_group_coordinates(group, tol_arcs=3)
+        if res:
+            print(res)
+            c_o = SkyCoord(group['ALPHA_J2000_O'], group['DELTA_J2000_O'], \
+                frame=FK5, unit=(u.deg, u.deg), obstime="J2000")
+            c_e = SkyCoord(group['ALPHA_J2000_E'], group['DELTA_J2000_E'], \
+                frame=FK5, unit=(u.deg, u.deg), obstime="J2000")
+            
+            print('Ordinary = ', c_o.ra.dms, c_o.dec.dms)
+            print('Extraordinary = ', c_e.ra.dms, c_e.dec.dms)
+            continue
+        
+        try:
+            res_pol = compute_polarimetry(group)
+            if res_pol['P'] is None or res_pol['P'] < 0.0:
+                print('POLARIMETRY,WARNING,"Could not compute Polarization for this set of measurements"')
+                continue
+        except ZeroDivisionError:
+            print('POLARIMETRY,ERROR,"EXCEPTION ZeroDivisionError: Found Zero Division Error in group processing.')
+            raise
+        except ValueError:
+            print('POLARIMETRY,ERROR,"EXCEPTION ValueError: Found Value Error in group processing.')
+            raise
+        
+        res_pol['DATE_RUN'] = date_run
+        res_pol['EXPTIME'] = group['EXPTIME'].values[0]
+        res_pol['APERPIX'] = group['APERPIX'].values[0]
+        # arcsec per pixel as mean values of astrometric calibration computaion in RA and DEC.
+        mean_secpix = round(np.nanmean(group['SECPIX'].values), 2)
+        if np.isnan(mean_secpix):
+            print(f'mean_secpix = {mean_secpix}')
+            return -199
+        
+        #res_pol['APERPIX']=float((res_pol['APERPIX'].replace('[','')).replace(']',''))
+        
+        res_pol['APERAS'] = res_pol['APERPIX'] * mean_secpix
+        rp_sigma = res_pol['Sigma']
+        # if rp_sigma < 0.01:
+        #     rp_sigma = 0.01
+        
+        for k, v in res_pol.items():
+            if k == 'Sigma':
+                pol_data[k].append(rp_sigma)
+                continue
+            pol_data[k].append(v)
+
+        index_obs = 2 # groups of three or four observations
+        if len(group.index) <= 3:
+            index_obs = 1
+        if len(group.index) <= 1:
+            index_obs = 0
+        
+        obs_date = group['RJD-50000'].values[index_obs]
+        pol_data['RJD-50000'].append(obs_date)
+        mjd_date = float(group['MJD-OBS'].values[index_obs])
+        pol_data['MJD-OBS'].append(mjd_date)
+
+        row = [date_run, obs_date, mjd_date, group['name_mc_O'].values[0].strip(), group['Rmag_mc_O'].values[0]]
+        row = row + [res_pol['P'], res_pol['dP'], \
+            res_pol['Theta'], res_pol['dTheta'], \
+            res_pol['Q'], res_pol['dQ'], \
+            res_pol['U'], res_pol['dU'], \
+            res_pol['R'], rp_sigma, \
+            res_pol['APERPIX'], res_pol['APERAS'], \
+            res_pol['NUM_ROTATION'], res_pol['EXPTIME']]
+        pol_rows.append(row)
+
+        # writing output night polarimetry file
+    if 'MAPCAT' in args.calib_base_dir:
+        name_out_file = 'MAPCAT_polR_{}_reference_stars.res'.format(date_run)
+    elif 'T090' in args.calib_base_dir:
+        name_out_file = 'T090_polR_{}_reference_stars.res'.format(date_run)
+    elif 'T150' in args.calib_base_dir:
+        name_out_file = 'T150_polR_{}_reference_stars.res'.format(date_run)
+    out_res = os.path.join(args.output_dir, name_out_file)
+
+    print('out_res = ', out_res)
+    with open(out_res, 'w') as fout:
+        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10} {:>7}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10}'
+
+        header = 'DATE_RUN        RJD-50000   MJD   Object     RMAGLIT       P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME'
+        fout.write(header)
+        for lines in pol_rows:
+            fout.write(str_out.format(*lines))
+
+    # --------------------- CSV file
+    if 'MAPCAT' in args.calib_base_dir:
+        name_out_csv = 'MAPCAT_polR_{}_reference_stars.csv'.format(date_run)
+    elif 'T090' in args.calib_base_dir:
+        name_out_csv = 'T090_polR_{}_reference_stars.csv'.format(date_run)
+    elif 'T150' in args.calib_base_dir:
+        name_out_csv = 'T150_polR_{}_reference_stars.csv'.format(date_run)
+    out_csv = os.path.join(args.output_dir, name_out_csv)
+    try:
+        cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
+            'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD', 'ID-MC', \
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'RMAG-LIT']
+        df = pd.DataFrame(pol_data, columns=cols)
+    except:
+        print("pol_data")
+        for k, v in pol_data.items():
+            print(f"{k} -> {len(v)}")
+        raise
+    # Formatting
+    df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.6f}'.format(x))
+    df['MJD'] = df['MJD'].map(lambda x: '{0:.6f}'.format(x))
+    df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
+    df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
+    df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))
+    df['dTheta'] = df['dTheta'].map(lambda x: '{0:.3f}'.format(x))
+    df['Q'] = df['Q'].map(lambda x: '{0:.4f}'.format(x))
+    df['dQ'] = df['dQ'].map(lambda x: '{0:.4f}'.format(x))
+    df['U'] = df['U'].map(lambda x: '{0:.4f}'.format(x))
+    df['dU'] = df['dU'].map(lambda x: '{0:.4f}'.format(x))
+    df['R'] = df['R'].map(lambda x: '{0:.4f}'.format(x))
+    df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
+    df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
+    
+    df.to_csv(out_csv, index=False)
+
     for group in groups:
         name = group['IAU_name_mc_O'].values[0]
         print(f'GROUP {name}')
