@@ -798,20 +798,18 @@ def main():
     ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
     ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
 
-    #Get reference star
-    #CUIDAO QUE ESTO NO VA A FUNCIONAR PARA LAS HD stars
+    #Get reference star as the one with closest flux to the blazar
     is_blz=False
     if len(source_problem)>1:
         is_blz=True
     
     if is_blz:
-        ra_blz=ra_o
-        dec_blz=dec_o
         info_stars = data_matched[~source_problem]
-        ra_stars, dec_stars = info_stars['ALPHA_J2000_O'].values[0], info_stars['DELTA_J2000_O'].values[0]
-                
-        dist=np.sqrt((ra_blz-ra_stars)**2+(dec_blz-dec_stars)**2)
-        ref_idx=np.argmin(dist)+1
+        flux_stars=(info_stars['FLUX_APER_O']+info_stars['FLUX_APER_E'])/2
+        flux_blz=(info_target['FLUX_APER_O']+info_target['FLUX_APER_E'])/2
+        diff=np.sqrt((flux_stars.values-flux_blz.values)**2)
+        ref_idx=np.argmin(diff)+1
+        print(ref_idx)
         source_problem[ref_idx]=True
         refstar_Rmag=info_stars['Rmag_mc_O'].values[0]
 
