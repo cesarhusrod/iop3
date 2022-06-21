@@ -4,7 +4,7 @@
 Created on Thu April 09 09:49:53 2020
 
 ___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+__author__ = 'Cesar Hiop3_pousillos'
 
 VERSION:
     1.0 Initial version
@@ -26,6 +26,8 @@ import jinja2 # HTML templates packages for documentation and logging
 
 import mcReduction
 from mcFits import *
+import matplotlib
+matplotlib.use('Agg')
 
 def report(csv_file, output_dir, template_file, title=''):
     """Create output HTML report with CSV input data.
@@ -192,11 +194,14 @@ def main():
         
         pol_ang = ''
         if 'INSPOROT' in ff.header:
-            pol_ang = round(float(ff.header['INSPOROT']), 1)
+            try:
+                pol_ang = round(float(ff.header['INSPOROT']), 1)
+            except:
+                pol_ang=ff.header['INSPOROT']
         data_raw_input['POLANGLE'].append(pol_ang)
         
         for s_key in some_raw_keys:
-            data_raw_input[s_key].append(ff.header.get(s_key, ''))
+            data_raw_input[s_key].append(ff.header.get(s_key, 'FILTER'))
         
         # adding FITS data statistics
         for key, value in ff.stats().items():
@@ -220,11 +225,17 @@ def main():
     # Plotting MasterBIAS and histogram
     mcBIAS = mcFits(oReduction.masterBIAS, border=oReduction.border)
     
-    plotBIAS = oReduction.masterBIAS.replace('.fits', '.png')
+    if 'fits' in oReduction.masterBIAS:
+        plotBIAS = oReduction.masterBIAS.replace('.fits', '.png')
+    else:
+        plotBIAS = oReduction.masterBIAS.replace('.fit', '.png')
     title = f'{oReduction.date} masterBIAS'
     mcBIAS.plot(title=title)
 
-    plotBIASHist = oReduction.masterBIAS.replace('.fits', '_histogram.png')
+    if 'fits' in oReduction.masterBIAS:
+        plotBIASHist = oReduction.masterBIAS.replace('.fits', '_histogram.png')
+    else:
+        plotBIASHist = oReduction.masterBIAS.replace('.fit', '_histogram.png')
     histo_par = {'xlabelsize':8,
                  'ylabelsize': 8,
                  'bins': 100,
@@ -274,10 +285,16 @@ def main():
         mcFLAT = mcFits(mf_path, border=oReduction.border)
 
         # Plotting FLAT and histogram
-        plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fits', '.png')
+        if 'fits' in oReduction.masterFLAT[pol_ang]:
+            plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fits', '.png')
+        else:
+            plotFLAT = oReduction.masterFLAT[pol_ang].replace('.fit', '.png')
         title = f"MasterFLAT (date, pol.angle)=({oReduction.date}, {pol_ang})"
         mcFLAT.plot(title=title)
-        plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
+        if 'fits' in oReduction.masterFLAT[pol_ang]:
+            plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fits', '_histogram.png')
+        else:
+            plotFLATHist = oReduction.masterFLAT[pol_ang].replace('.fit', '_histogram.png')
 
         mcFLAT.plot_histogram(plotFLATHist, title=title, \
             histogram_params=histo_par)
@@ -287,7 +304,12 @@ def main():
         data_masterflats_info['RUN_DATE'].append(date_run)
         pol_ang = ''
         if 'INSPOROT' in mcFLAT.header:
-            pol_ang = round(float(mcFLAT.header['INSPOROT']), 1)
+            try:
+                pol_ang = round(float(mcFLAT.header['INSPOROT']), 1)
+            except:
+                pol_ang = mcFLAT.header['INSPOROT']
+        else:
+            pol_ang = mcFLAT.header['FILTER']
         data_masterflats_info['POLANGLE'].append(pol_ang)
         data_masterflats_info['PLOT'].append(plotFLAT)
         data_masterflats_info['HISTOGRAM'].append(plotFLATHist)
@@ -312,7 +334,8 @@ def main():
     # Saving masterbias data
     # Ouput CSV data file info
     csv_masterflats_data = os.path.join(args.reduction_dir, 'masterflats_data.csv')
-    df_masterflats_out = pd.DataFrame(data_masterflats_info)    
+    df_masterflats_out = pd.DataFrame.from_dict(data_masterflats_info, orient='index')
+    df_masterflats_out=df_masterflats_out.transpose()
     df_masterflats_out.to_csv(csv_masterflats_data, index=False)
 
     # --------------- Making FITS set reduction operations --------------#
@@ -332,27 +355,38 @@ def main():
             continue
         mcRED = mcFits(path_red)
 
-        # # Estimating FWHM from extracted sources
+        # Estimating FWHM from extracted sources
         # dictSEx = {}
-        # dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
-        # dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
-        # try:
-        #     mcRED.compute_fwhm(dictSEx)
-        #     mcRED = 0 # Forcing to write FWHM dataSEX
-        #     mcRED = mcFits(path_red, border=border_image)
-        # except Exception as e:
-        #     print(f'REDUCTION,ERROR,"Could not compute FWHM in FITS \'{path_red}\'."')
-        #     print(e)
+        # if 'fits' in mcRED.path:
+        #    dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
+        #else:
+        #    dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fit', '.cat')
+        #dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
+        
+        #try:
+            #mcRED.compute_fwhm(dictSEx)
+        #    mcRED.get_fwhm(sext_conf=dictSEx['CONFIG_FILE'], cat_out=dictSEx['CATALOG_NAME'])
+        #    mcRED = 0 # Forcing to write FWHM dataSEX
+        #    mcRED = mcFits(path_red, border=border_image)
+        #except Exception as e:
+        #    print(f'REDUCTION,ERROR,"Could not compute FWHM in FITS \'{path_red}\'."')
+        #    print(e)
 
         # Plotting Science image...
-        plotSCI = mcRED.path.replace('.fits', '.png')
+        if 'fits' in mcRED.path:
+            plotSCI = mcRED.path.replace('.fits', '.png')
+        else:
+            plotSCI = mcRED.path.replace('.fit', '.png')
         title_pattern = "{} - {} - {:.1f} s"
         title = title_pattern.format(sci['DATE-OBS'], \
             sci['OBJECT'], float(sci['EXPTIME']))
         mcRED.plot(title=title)
 
         # Plotting histogram
-        plotSCIHist = mcRED.path.replace('.fits', '_histogram.png')
+        if 'fits' in mcRED.path:
+            plotSCIHist = mcRED.path.replace('.fits', '_histogram.png')
+        else:
+            plotSCIHist = mcRED.path.replace('.fit', '_histogram.png')
         mcRED.plot_histogram(plotSCIHist, title=title, histogram_params=histo_par)
 
         # Getting REDUCED FITS info
@@ -361,6 +395,11 @@ def main():
         pol_ang = ''
         if 'INSPOROT' in mcRED.header:
             pol_ang = round(float(mcRED.header['INSPOROT']), 1)
+        else:
+            try:
+                pol_ang = round(float(mcRED.header['FILTER'][1:]), 1)
+            except:
+                pol_ang = 99.0
         data_red_out['POLANGLE'].append(pol_ang)
         data_red_out['PLOT'].append(plotSCI)
         data_red_out['HISTOGRAM'].append(plotSCIHist)
@@ -397,6 +436,7 @@ def main():
     
     # MasterFlats
     template = os.path.join(dir_templates, 'masterflat_fits.html')
+    print(csv_masterflats_data)
     rep_MF = report(csv_masterflats_data, \
         output_dir=args.reduction_dir, template_file=template, \
         title=f'{date_run} MASTERFLATS result')

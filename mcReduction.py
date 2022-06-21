@@ -55,6 +55,7 @@ class mcReduction:
         self.science = None
         self.template = None
         self.process = None
+        self.tel_type= None
 
         self.__getInfo()
         self.__classify()
@@ -75,9 +76,15 @@ class mcReduction:
             Exception: description
 
         """
-
-        # Getting input_dir FITS
-        filelist = glob.glob(os.path.join(self.input_dir, '*.fits'))
+        #Getting telescope type
+        self.tel_type=re.findall('(\w+/)', 
+                                 self.input_dir)[len(re.findall('(\w+/)', 
+                                                                self.input_dir))-1][:-1]
+        # Getting input_dir FITS        
+        if self.tel_type=='MAPCAT':
+            filelist = glob.glob(os.path.join(self.input_dir, '*.fits'))
+        else:
+            filelist = glob.glob(os.path.join(self.input_dir, '*.fit'))
         filelist.sort()
         pathFileList = os.path.join(self.input_dir, 'Filelist.txt')
         if len(filelist) > 0:
@@ -90,7 +97,7 @@ class mcReduction:
 
         # Keywords for recovering useful information
         keywords = ['OBJECT', 'EXPTIME', 'INSPOROT', 'NAXIS1', 'NAXIS2',
-                    'RA', 'DEC', 'MJD-OBS', 'DATE-OBS', 'IMAGETYP']
+                    'RA', 'DEC', 'MJD-OBS', 'DATE-OBS', 'IMAGETYP', 'FILTER']
         keyFile = os.path.join(self.input_dir, 'Keywordlist.txt')
         with open(keyFile, 'w') as fout:
             fout.write("\n".join(keywords) + "\n")
@@ -308,11 +315,13 @@ class mcReduction:
         if show_info:
             print(f"\tMaster BIAS info -> {oMB.stats()}")
 
-        print(self.flats.info())
+        print(self.flats.info)
         # getting polarization Angles
-        print(f"FLATS = {self.flats['INSPOROT']}")
-        print()
-        pol_angles = self.flats['INSPOROT'].unique()
+        if self.tel_type=='MAPCAT':
+            pol_angles = self.flats['INSPOROT'].unique()
+        else:
+            pol_angles = self.flats['FILTER'].unique()
+
         print(f'Available polarization angles -> {pol_angles}')
 
         # One masterFLAT for each polarization angle
@@ -320,7 +329,10 @@ class mcReduction:
             if show_info:
                 print('\n{0} Working on polarization angle -> {1} {0}\n'.format("+" * 15, pa))
             # selecting flats with this polarization angle
-            dff = self.flats[self.flats['INSPOROT'] == pa]
+            if self.tel_type=='MAPCAT':
+                dff = self.flats[self.flats['INSPOROT'] == pa]
+            else:
+                dff = self.flats[self.flats['FILTER'] == pa]
             if len(dff.index) == 0:
                 print(f"WARNING: Not found FITS for polarization angle = {pa}")
                 continue
@@ -361,8 +373,9 @@ class mcReduction:
 
             # last flat: header will be used in masterFLAT
             oflat = mcFits(dff['FILENAME'].values[-1], border=self.border)
-
-            if round(float(pa)) == 360: # some FLATS have INSPOROT = 359.98 as value
+            
+            
+            if 'R' not in pa and round(float(pa)) == 360: # some FLATS have INSPOROT = 359.98 as value
                 pa = 0.0
 
             newCards = [('SOFT', 'IOP^3  Pipeline v1.0', 'Software used'),
@@ -392,9 +405,15 @@ class mcReduction:
             hdu_res = fits.PrimaryHDU(data=mmat.astype(np.uint16), header=hdr)
             
             # MasterFLAT path
-            name_FLAT = "flt_{}_{:03.1f}".format(self.date,float(pa))
-            masterFLAT_path = os.path.join(self.out_dir, f"{name_FLAT}.fits")
-            self.masterFLAT[round(float(pa), 1)] = masterFLAT_path
+            if self.tel_type=='MAPCAT':
+                name_FLAT = "flt_{}_{:03.1f}".format(self.date,float(pa))
+                masterFLAT_path = os.path.join(self.out_dir, f"{name_FLAT}.fits")
+                self.masterFLAT[round(float(pa), 1)] = masterFLAT_path
+            else:
+                name_FLAT = "flt_{}_{}".format(self.date,pa)
+                masterFLAT_path = os.path.join(self.out_dir, f"{name_FLAT}.fits")
+                self.masterFLAT[pa] = masterFLAT_path
+            
             hdu_res.writeto(masterFLAT_path, overwrite=True)
 
         return 0
@@ -429,21 +448,30 @@ class mcReduction:
             print("{0} Working on '{1}' {0}".format('-' * 6, sciFITS))
             # image
             oSCIENCE = mcFits(sciFITS, border=0)
-
-            pol_angle = oSCIENCE.header['INSPOROT']
+            
+            if self.tel_type=='MAPCAT':
+                pol_angle = oSCIENCE.header['INSPOROT']
+                if float(pol_angle) > 70:
+                    print(f'ERROR: instrument angle value ({pol_angle}) is not valid')
+                    continue
+                flat = self.masterFLAT[round(float(pol_angle), 1)]
+            else:
+                pol_angle = oSCIENCE.header['FILTER']
+                print(pol_angle)
+                flat = self.masterFLAT[pol_angle]
             if show_info:
                 print(f"Polarization angle set to -> {pol_angle}")
-
-            if float(pol_angle) > 70:
-                print(f'ERROR: instrument angle value ({pol_angle}) is not valid')
-                continue
             
             # flat
-            try:
-                flat = self.masterFLAT[round(float(pol_angle), 1)]
-            except:
-                print(f'self.masterFLAT = {self.masterFLAT}')
-                raise
+            print(pol_angle)
+            if 'R' in str(pol_angle):
+                flat = self.masterFLAT[pol_angle]
+            else:
+                try:
+                    flat = self.masterFLAT[round(float(pol_angle), 1)]
+                except:
+                    print(f'self.masterFLAT = {self.masterFLAT}')
+                    raise
 
             oFLAT = mcFits(flat, border=0)
             data_flat_norm = 1.0 * oFLAT.data / oFLAT.data.max()

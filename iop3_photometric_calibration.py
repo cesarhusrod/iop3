@@ -27,6 +27,8 @@ import math
 from datetime import datetime,timedelta
 from collections import defaultdict
 from collections import OrderedDict
+import matplotlib
+matplotlib.use('Agg')
 
 # Data structures libraries
 import numpy as np
@@ -184,7 +186,7 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
         params['CLEAN'] = 'Y'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
-        params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
+        params['FILTER_NAME'] = '/home/users/dreg/misabelber/GitHub/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
     
     if dt['STD/MEAN'] > 2: # noisy
         params['ANALYSIS_THRESH'] = 1.5
@@ -213,8 +215,10 @@ def plot_cat(path_fits, plot_out_path, cat, astro_coords=False, cat_format='ASCI
     """
     # Read input FITS
     i_fits = mcFits(path_fits)
-    fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
-    
+    if 'MAPCAT' in path_fits:
+        fits_par = i_fits.get_data(keywords=['INSTRSCL', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
+    else:
+        fits_par = i_fits.get_data(keywords=['NAXIS1', 'FWHM', 'EXPTIME', 'OBJECT', 'DATE-OBS'])
     # Plotting detections
     data_cat = read_sext_catalog(cat, format=cat_format)
     
@@ -538,8 +542,11 @@ def compute_zeropoint(input_fits, merged_data, output_png=None):
 
     # non-saturated calibrators total flux (Ordinary + Extraordinary)
     # Using SExtractor APER measures
-    calibrators_total_flux = (merged_data['FLUX_APER_O'] + \
-        merged_data['FLUX_APER_E'])[~sat_calibrator]
+    if 'MAPCAT' in input_fits:
+        calibrators_total_flux = (merged_data['FLUX_APER_O'] + \
+                                      merged_data['FLUX_APER_E'])[~sat_calibrator]
+    else:
+        calibrators_total_flux = merged_data['FLUX_APER_O'][~sat_calibrator]
     
     # Computing ZEROPOINT using non-saturated calibrators (or all of them if 
     # they are all saturated)
@@ -609,7 +616,10 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
     # Extraordinary counterparts location
     # rough coordinates (relative to ordinary source locations)
     df_mc_e = df_mc.copy()
-    df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+    if 'MAPCAT' in input_fits:
+        df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
+    else:
+        df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg']
     data_match_e = assoc_sources(df_sext, df_mc_e, max_deg_dist=max_deg_dist, suffix='E')
 
     print('-----EXTRAORD. DATA ASSOC-----')
@@ -688,6 +698,7 @@ def main():
     print(f"\nWorking directory set to '{args.output_dir}'\n")
 
     # Reading input fits header
+    print(input_fits)
     i_fits = mcFits(input_fits)
     astro_header = i_fits.header
 
@@ -706,11 +717,13 @@ def main():
     blazar_path = os.path.join(args.config_dir, args.blazars_info)
     # blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_last.csv')
     # df_mapcat = read_blazar_file(blazar_path)
+
     center_fits = (astro_header['CRVAL1'], astro_header['CRVAL2'])
     print(f'center FITS coordinates = {center_fits}')
     nearest_blazar, min_dist_deg = closest_blazar(center_fits, blazar_path)
     
     print(f'Closest blazar distance to FITS\' center= {min_dist_deg} (deg)')
+
     if min_dist_deg > 0.5: # distance in degrees
         print('!' * 100)
         print('ERROR: Not enough close blazar or HD star found (distance <= 0.5 deg)')
@@ -789,16 +802,39 @@ def main():
         ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
         ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
 
+    #Get reference star as the one with closest flux to the blazar
+        is_blz=False
+        if len(source_problem)>1:
+            is_blz=True
+    
+        if is_blz:
+            info_stars = data_matched[~source_problem]
+            flux_stars=(info_stars['FLUX_APER_O']+info_stars['FLUX_APER_E'])/2
+            flux_blz=(info_target['FLUX_APER_O']+info_target['FLUX_APER_E'])/2
+            diff=np.sqrt((flux_stars.values-flux_blz.values)**2)
+            ref_idx=np.argmin(diff)+1
+            print(ref_idx)
+            source_problem[ref_idx]=True
+            refstar_Rmag=info_stars['Rmag_mc_O'].values[0]
+
+
+        #indexes_refstar=[idx_o[source_problem][1], idx_e[source_problem][1]]
+        #print(f'[Ordinary, Extraordinary] SExtractor indexes of reference star = {indexes_refstar}')
+
         # Plotting source problem
         # Showing detailed info about SExtractor counterparts
-        source_pair_png = input_fits.replace('.fits', '_source_pair.png')
+        if 'fits' in input_fits:
+            source_pair_png = input_fits.replace('.fits', '_source_pair.png')
+        else:
+            source_pair_png = input_fits.replace('.fit', '_source_pair.png')
+
         print('Out PNG ->', source_pair_png)
         title_temp = "SExtractor Pair Detections {}, {} ({} s)"
         title = title_temp.format(astro_header['OBJECT'], astro_header['DATE-OBS'], \
-            astro_header['EXPTIME'])
+                                      astro_header['EXPTIME'])
         i_fits.plot(source_pair_png, title=title, astroCal=True, \
-            coords=[(ra_o, dec_o), (ra_e, dec_e)], color=['red', 'blue']) 
-    
+                        coords=[(ra_o, dec_o), (ra_e, dec_e)], color=['red', 'blue']) 
+
     # Parameters to store...
     cal_data = defaultdict(list)
     
@@ -807,7 +843,7 @@ def main():
     std_mag_zeropoint = None
     num_sat = 0
     calibrators_png = ''
-    
+
     # MAPCAT calibrators
     calibrators = data_matched[~source_problem]
     # If there are IOP3 calibrators in field covered by FITS
@@ -864,7 +900,11 @@ def main():
         try:
             # SExtractor AUTO measures used in photometric calibration
             # total_flux = (data['FLUX_AUTO'][indexes_target]).sum()
-            fluxes = info_target['FLUX_AUTO_O'] + info_target['FLUX_AUTO_E']
+            if 'MAPCAT' in input_fits:
+                fluxes = info_target['FLUX_AUTO_O'] + info_target['FLUX_AUTO_E']
+            else:
+                fluxes = info_target['FLUX_AUTO_O']
+
             total_flux = fluxes.values.sum()
             mag_zeropoint = info_target['Rmag_mc_O'].values[0] + \
                 2.5 * np.log10(total_flux)
@@ -928,9 +968,8 @@ def main():
     cal_data['SOURCE_PAIRS_PNG'] = [source_pair_png]
     
     df = pd.DataFrame(cal_data)
-    csv_out = f'{root}_photocal_process_info.csv'
+    csv_out = f'{root}_photocal_process_info.csv'    
     df.to_csv(csv_out, index=False)
-
     return 0
     
 # -------------------------------------

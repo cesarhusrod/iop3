@@ -36,6 +36,8 @@ import pandas as pd
 
 # plotting package
 from matplotlib import pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
 
 # Coordinate system transformation package and modules
 from astropy import units as u
@@ -61,7 +63,6 @@ def check_saturation(sext_flags):
 def read_sext_catalog(path, format='ASCII', verbose=False):
     """
     Read SExtractor output catalog given by 'path'.
-    
     Args:
         path (str): SExtractor catalog path
         format (str): 'ASCII' or 'FTIS_LDAC' output SExtractor formats.
@@ -400,7 +401,6 @@ class mcFits:
         dictStats['MEAN'] = new_data.mean()
         dictStats['STD'] = new_data.std()
         dictStats['MEDIAN'] = np.median(new_data)
-
         dictStats['NPIX'] = self.header['NAXIS1'] * self.header['NAXIS2']
         dictStats['NSAT'] = (new_data >= sat_threshold).sum()
         dictStats['EXPTIME'] = self.header['EXPTIME']
@@ -475,13 +475,29 @@ class mcFits:
         Returns:
             int: 0, if everything was fine.
         """       
-        pixscale = self.header['INSTRSCL']
-
+        if 'MAPCAT' in self.path:
+            pixscale = self.header['INSTRSCL'] 
+        elif 'T090' in self.path:
+            pixscale=0.387
+            self.header['INSTRSCL']=pixscale
+        elif 'T150' in self.path:
+            pixscale=0.232
+            if self.header['NAXIS1']==1024:
+                pixscale=2*pixscale
+            self.header['INSTRSCL']=pixscale
+                    
         # Adtitional ouput info
-        root, ext = os.path.splitext(self.path)
-        back_path = f'{root}_back.fits'
-        segm_path = f'{root}_segment.fits'
-        aper_path = f'{root}_apertures.fits'
+        if 'fits' in self.path:
+            root, ext = os.path.splitext(self.path)
+            back_path = f'{root}_back.fits'
+            segm_path = f'{root}_segment.fits'
+            aper_path = f'{root}_apertures.fits'
+        
+        else:
+            root, ext = os.path.splitext(self.path)
+            back_path = f'{root}_back.fit'
+            segm_path = f'{root}_segment.fit'
+            aper_path = f'{root}_apertures.fit'
 
         check_types = ['BACKGROUND', 'SEGMENTATION', 'APERTURES']
         check_names = [back_path, segm_path, aper_path]
@@ -489,7 +505,7 @@ class mcFits:
         
         # SExtractor parameters    
         params = {}
-
+        
         if back_image or segment_image or aper_image:
             params['CHECKIMAGE_TYPE'] = ','.join([p for p, o in zip(check_types, options) if o == True])
             params['CHECKIMAGE_NAME'] = ','.join([p for p, o in zip(check_names, options) if o == True])
@@ -497,8 +513,7 @@ class mcFits:
         cmd = f"source-extractor -c {sext_conf} -CATALOG_NAME {cat_out} -PIXEL_SCALE {pixscale} "
         if photo_aper:
             cmd += f"-PHOT_APERTURES {photo_aper} "
-        
-        
+                
         fwhm = self.header.get('FWHM', None)
         if fwhm:
             fwhm_arcs = float(fwhm) * float(pixscale)
@@ -518,22 +533,22 @@ class mcFits:
         
         # last parameter for command
         cmd = f'{cmd} {self.path}'
-
+        
         if verbose:
             print(cmd)
         
         res = execute_command(cmd)
-
+        
         if res.returncode:
             print(res)
             return res.returncode
-
+        
         return 0
 
-    def fwhm_from_cat(self, cat_out, cat_format='FITS_LDAC'):
+    def fwhm_from_cat(self, cat_out, cat_format='ASCII'):
         # Filtering detections
         data = read_sext_catalog(cat_out, format=cat_format)
-         
+        
         # checking Saturation    
         fboo = check_saturation(data['FLAGS']) # saturated booleans
         if ~fboo.sum() > 15:
@@ -553,7 +568,7 @@ class mcFits:
         if foo.sum() > 3:
             print(f'{foo.sum()} sources passed CLASS_STAR filter')
             data = data[foo]
-
+        
         cards = [('SOFTDET', 'SExtractor', 'Source detection software'), \
             ('FWHM', round(data['FWHM_IMAGE'].mean(), 2), 'Mean pix FWHM'), \
             ('FWHMSTD', round(data['FWHM_IMAGE'].std(), 2), 'Std pix FWHM'), \
@@ -562,10 +577,10 @@ class mcFits:
             ('FWHMELLI', round(data['ELLIPTICITY'].max(), 2), 'SExtractor max ELLIP'), \
             ('PIXSCALE', self._header['INSTRSCL'], 'Scale [arcs/pix]'),
             ('CSTARMIN', round(data['CLASS_STAR'].min(), 2), 'SExtractor min CLASS_STAR')]
-
+        
         return cards
 
-    def get_fwhm(self, sext_conf, cat_out, cat_format='FITS_LDAC', plot=True, other_params={}):
+    def get_fwhm(self, sext_conf, cat_out, cat_format='ASCII', plot=True, other_params={}):
         """FWHM FITS computation.
 
         Args:
@@ -584,19 +599,18 @@ class mcFits:
         """
         cards = []
         data = None
-
         res = self.detect_sources(sext_conf, cat_out, additional_params=other_params)
-
+        
         if not res:
             cards = self.fwhm_from_cat(cat_out, cat_format=cat_format)
-            
+        data = read_sext_catalog(cat_out, format=cat_format)
+
         if plot:
             root, ext = os.path.splitext(cat_out)
             plot_out = f'{root}.png'
             coords = [data['X_IMAGE'], data['Y_IMAGE']]
-            
             self.plot(plot_out, 'FWHM selected sources', coords=coords, ref_coords='pixel')
-
+        
         return cards
   
     def update_header_fwhm(self, sext_conf, cat_out, cat_format='FITS_LDAC', other_params={}):

@@ -21,6 +21,7 @@ from collections import defaultdict
 from typing import DefaultDict
 import math
 from venv import create
+from difflib import SequenceMatcher
 
 import numpy as np
 import pandas as pd
@@ -75,28 +76,43 @@ def create_dataframe(fits_paths, keywords=[]):
     return pd.DataFrame(info)
 
 def closest_blazar(blazar_data, path_fits):
-    """"""
     # Getting header informacion
     i_fits = mcFits(path_fits)
     input_head = i_fits.header
-    
     # Central FITS coordinates
-    icoords = "{} {}".format(input_head['RA'], input_head['DEC'])
-    input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
-    obstime="J2000")
-
+    if 'MAPCAT' in path_fits:
+        icoords = "{} {}".format(input_head['RA'], input_head['DEC'])
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
+                                    obstime="J2000")
+    else:
+        if 'OBJCTRA' in input_head:
+            icoords = "{} {}".format(input_head['OBJCTRA'], input_head['OBJCTDEC'])
+        else:
+            print('Object coordinates are missing from header of {}'.format(path_fits) )
+            icoords = "0 0"
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.hourangle, u.deg), \
+                    obstime="J2000")
     # Blazars subset...
     df_blazars = blazar_data[blazar_data['IAU_name_mc'].notna()]
     c  = []
+    if input_coords.ra.value==0.0 and input_coords.dec.value==0.0:
+        for name,ra,dec in zip(df_blazars['IAU_name_mc'],df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
+            s = SequenceMatcher(None, name, path_fits.split('/')[-1].split('-')[0])
+            if s.ratio() > 0.6:
+                input_coords=SkyCoord("{} {}".format(ra,dec), frame=FK5, unit=(u.hourangle, u.deg), \
+                                          obstime="J2000")
+                print('Found this object in blazar list: %s' % name)
+                print('with name similar to (from fits file): %s' % path_fits)
+                print('Using its coordinares instead, take with caution!')
+                break
+
     for ra, dec in zip(df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
         c.append("{} {}".format(ra, dec))
     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
     obstime="J2000")
-    
     # Closest MAPCAT source to FITS central coordinates
     # Distance between this center FITS and MAPCAT targets (in degrees)
     distances = input_coords.separation(blazar_coords)
-    
     # Closest source in complete set...
     i_min = distances.deg.argmin()
     
@@ -116,14 +132,17 @@ def subsets(data):
     # search for duplicates
     while len(data.index) > 0: # iterate until there is no more observations
         print(f'data elements = {len(data.index)}')
-        index_dup = data.duplicated(['INSPOROT'], keep='last') # false for last duplicated (angle, type) item
+        if 'INSPOROT' in data:
+            index_dup = data.duplicated(['INSPOROT'], keep='last') # false for last duplicated (angle, type) item
+        else:
+            index_dup = data.duplicated(['FILTER'], keep='last') # false for last duplicated (angle, type) item
         sub_s.append(data[~index_dup])  # append last set of duplicated items to list
         data = data[index_dup] # delete previous last repeated set of observations
     
     return sub_s
 
 def object_groups(data_object):
-    """"It returns a list of data subsets.
+    """It returns a list of data subsets.
     
     The number of subsets depends on the number of series of observations taken 
     night for the same object. The usual number of elements for each subset
@@ -167,7 +186,10 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
     for index, row in data.iterrows():
         print(row)
         # print(row['dateobs'])
-        dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+        if 'MAPCAT' in calibration_dir:
+            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+        else:
+            dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
         im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
         cal_dir = os.path.join(calibration_dir, im_time)
         
@@ -191,13 +213,15 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
         print(com_calibration)
         print('+' * 100)
         with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
-            res = subprocess.run(com_calibration, stdout=log_file, \
-            stderr=subprocess.PIPE, shell=True, check=True)
-            if res.returncode:
+            try:
+                res = subprocess.run(com_calibration, stdout=log_file, \
+                                         stderr=subprocess.PIPE, shell=True, check=True)
+                if res.returncode:
+                    print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
+            except:
                 print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
-        
         # Checking for succesful calibration
-        calibrated = glob.glob(os.path.join(cal_dir, '*final.fits'))
+        calibrated = glob.glob(os.path.join(cal_dir, '*final.fit*'))
         if calibrated:
             calibration['CAL_IMWCS'].append(calibrated[0])
             # Photometric calibration
@@ -208,9 +232,10 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
             print('+' * 100)
             print(com_photocal)
             print('+' * 100)
-            res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
-                stderr=subprocess.PIPE, shell=True, check=True)
-            if res.returncode:
+            try:
+                res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
+                                         stderr=subprocess.PIPE, shell=True, check=True)
+            except:
                 print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {calibrated[0]} file."')
         else:
             non_calibrated_group_commands.append(row['PATH'])
@@ -247,10 +272,12 @@ def get_best_rotangle(path, config_dir, cal_dir, tol_pixs=5):
         com_calibration = com_cal.format(crot, tol_pixs, config_dir, \
             cal_dir_angle, path)
         print(com_calibration)
-        res = execute_command(com_calibration)
-        if res.returncode:
-            print(res)
-            return res.returncode
+        try:
+            res = execute_command(com_calibration)
+        except:
+            if res.returncode:
+                print(res)
+                return res.returncode
         # read astrocalibration file
         astro_csv = glob.glob(os.path.join(cal_dir_angle, '*astrocal_process_info.csv'))
         
@@ -321,7 +348,13 @@ def contains_valid_coords(fits_path, keywordRA='RA', keywordDEC='DEC'):
     input_head = i_fits.header
     
     # Central FITS coordinates
-    icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
+    try:
+        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
+    except:
+        keywordRA='OBJCTRA'
+        keywordDEC='OBJCTDEC'
+        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
+
     try:
         input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
         obstime="J2000")
@@ -410,7 +443,6 @@ def is_blazar(fits_path, blazars_data, max_deg_dist=0.5):
     
     if (dist_arcs > max_deg_dist) or (calibrator['Rmag_mc'] > 0) :
         return False
-    
     return True
 
 def is_star(fits_path, blazars_data, max_deg_dist=0.5):
@@ -451,7 +483,7 @@ def main():
     conflict_handler='resolve',
     description='''Main program that reads, classify, reduces and calibrates 
     FITS located at input directory. ''',
-    epilog='''''')
+    epilog="")
 
     parser.add_argument("-b", "--border_image",
        action="store",
@@ -506,7 +538,7 @@ def main():
     parser.add_argument("input_dir", help="Input directory")  # mandatory argument
     
     args = parser.parse_args()
-    
+
     # Absolute input/output paths
     input_dir = os.path.abspath(args.input_dir) # absolute path
     config_dir = os.path.abspath(args.config_dir) # absolute path
@@ -532,6 +564,7 @@ def main():
     
     # Reading blazar file
     blazar_path = os.path.join(args.config_dir, 'blazar_photo_calib_last.csv')
+    
     blazar_data = read_blazar_file(blazar_path)
     
     # Does input verify pattern given above?
@@ -596,8 +629,15 @@ def main():
         message = 'CHECKING,ERROR,"Close calibrator was not found for \'{}\' (OBJECT = \'{}\')."'
         message += '(RA, DEC) = ({}, {})'
         for path in far_calibrators:
-            print(message.format(path, mcFits(path).header['OBJECT'], \
-                mcFits(path).header['RA'], mcFits(path).header['DEC']))
+            if 'RA' in mcFits(path).header:
+                print(message.format(path, mcFits(path).header['OBJECT'], \
+                                         mcFits(path).header['RA'], mcFits(path).header['DEC']))
+            elif 'OBJCTRA' in mcFits(path).header:
+                print(message.format(path, mcFits(path).header['OBJECT'], \
+                                         mcFits(path).header['OBJCTRA'], mcFits(path).header['OBJCTDEC']))
+            else:
+                print("No RA/DEC info for object "+path)
+
             blazar, distance = closest_blazar(blazar_data, path)
             print(f"\tClosest one = {blazar['IAU_name_mc']}")
             
@@ -622,13 +662,19 @@ def main():
             return 1
 
     # return -1
-
     # ****************** 2nd STEP: Input reduced images calibration  ************* #
-
     pol_sources = False # It checks that more than one blazar was calibrated successfully
-    df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-    df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-
+    if 'MAPCAT' in input_dir:
+        df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+    else:
+        df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
+    if len(df_blazars.index) > 0:
+        pol_sources = True
+    if 'MAPCAT' in input_dir:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+    else:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
+  
     # ----------------- BLAZARS PROCESSING -----------------
     
     # Creating Blazars DataFrame
@@ -642,45 +688,51 @@ def main():
         crot = None
         wcsmatch_best = None
         rot_path = os.path.join(rot_dir, 'result.txt')
-
-        if  os.path.exists(rot_path):
-            data_res = pd.read_csv(rot_path)
-            crot = data_res['ROT_ANGLE'].values[0]
-            wcsmatch_best = data_res['WCSMATH_SOURCES'].values[0]
-            path_fits = data_res['PATH_FITS'].values[0]
-        else:
-            # It's suposed that longer exposure times improve source detection and quality
-            # but in some cases, it fails. So, the algorithm will try from longer to shorter
-            # exposure times until a minimum number of sources be detected
-            n_min = 10
+        succeed=0
+        while succeed==0:
+            print(succeed)
+            if os.path.exists(rot_path):
+                try:
+                    data_res = pd.read_csv(rot_path)
+                    crot = data_res['ROT_ANGLE'].values[0]
+                    wcsmatch_best = data_res['WCSMATH_SOURCES'].values[0]
+                    path_fits = data_res['PATH_FITS'].values[0]
+                    succeed=1
+                except:
+                    os.remove(rot_path)
+            else:
+                # It's suposed that longer exposure times improve source detection and quality
+                # but in some cases, it fails. So, the algorithm will try from longer to shorter
+                # exposure times until a minimum number of sources be detected
+                n_min = 10
             #exposure times
-            exp_times = np.sort(df_blazars['EXPTIME'].unique())[::-1] # descending order
-            print(f'ASTROCALIBRATION,INFO,"Blazar exposure times = {exp_times}"')
+                exp_times = np.sort(df_blazars['EXPTIME'].unique())[::-1] # descending order
+                print(f'ASTROCALIBRATION,INFO,"Blazar exposure times = {exp_times}"')
 
-            if len(exp_times) > 3:
-                exp_times = exp_times[1:-1]
-            for i, et in enumerate(exp_times): # not taking into account lower (not enough sources) or higher (very deep field) exposures
-                df_blz_et = df_blazars[df_blazars['EXPTIME'] == et]
+                if len(exp_times) > 3:
+                    exp_times = exp_times[1:-1]
+                for i, et in enumerate(exp_times): # not taking into account lower (not enough sources) or higher (very deep field) exposures
+                    df_blz_et = df_blazars[df_blazars['EXPTIME'] == et]
                 # getting first element
-                path_fits = df_blz_et['PATH'].iloc[0].replace('raw', 'reduction')
-                print(f'ASTROCALIBRATION,INFO,"Computing best rotation angle on \'{path_fits}\' (EXPTIME = {et})"')
-                crot, wcsmatch_best  = get_best_rotangle(path_fits, args.config_dir, rot_dir, tol_pixs=2)
-                print(f'ASTROCALIBRATION,INFO,"Rotated angle computed and number of mathed sources = ({crot}, {wcsmatch_best})"')
-                if (wcsmatch_best is None) or (wcsmatch_best < n_min):
-                    continue
+                    path_fits = df_blz_et['PATH'].iloc[0].replace('raw', 'reduction')
+                    print(f'ASTROCALIBRATION,INFO,"Computing best rotation angle on \'{path_fits}\' (EXPTIME = {et})"')
+                    crot, wcsmatch_best  = get_best_rotangle(path_fits, args.config_dir, rot_dir, tol_pixs=2)
+                    print(f'ASTROCALIBRATION,INFO,"Rotated angle computed and number of mathed sources = ({crot}, {wcsmatch_best})"')
+                    if (wcsmatch_best is None) or (wcsmatch_best < n_min):
+                        continue
 
                 # If rotation angle computation was satifactory, then it saves results in file
-                with open(rot_path, 'w') as fout:
-                    fout.write('ROT_ANGLE,WCSMATH_SOURCES,PATH_FITS\n')
-                    fout.write(f'{crot},{wcsmatch_best},{path_fits}')
-                break
+                    with open(rot_path, 'w') as fout:
+                        fout.write('ROT_ANGLE,WCSMATH_SOURCES,PATH_FITS\n')
+                        fout.write(f'{crot},{wcsmatch_best},{path_fits}')
+                    break
         
-        if wcsmatch_best < 10:
-            print(f"ASTROCALIBRATION,ERROR,'Not enought matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
-            return 2
-        
+                if wcsmatch_best < 10:
+                    print(f"ASTROCALIBRATION,ERROR,'Not enough matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
+                    return 2
+                succeed=1
         print(f' ---------- Best rotation angle for astrometric calibration = {crot} ({wcsmatch_best} matches) -------')
-        
+        print(df_blazars)
         pol_sources = True
         # sorting by DATE-OBS
         df_blazars = df_blazars.sort_values('DATE-OBS', ascending=True)
@@ -690,12 +742,15 @@ def main():
             reduced = row['PATH'].replace('raw', 'reduction')
             print(row)
             print(f"DATE-OBS = {row['DATE-OBS']}")
-            
-            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            if 'MAPCAT' in input_dir:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            else:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
             if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
                 i_fits = mcFits(row['PATH'])
                 if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
                     dt_obj = datetime.fromisoformat(i_fits.header['DATE'])        
+
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             print(f'FITS DateTime = {im_time}')
             cal_dir = os.path.join(proc_dirs['calibration_dir'], im_time)
@@ -722,8 +777,8 @@ def main():
                     if res.returncode:
                         print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
                 
-    # Photometric calibration
-    calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fits')))
+    # Photometric calibration 
+    calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fit*')))
     # print(calibrated)
     df_astrocal_blazars = create_dataframe(calibrated, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT', 'BLZRNAME', 'FWHM'])
     # print(df_astrocal_blazars[df_astrocal_blazars['BLZRNAME'].isnull()]['PATH'].values)
@@ -734,7 +789,6 @@ def main():
     print(df_astrocal_blazars.info())
     print(df_astrocal_blazars.head())
 
-    
     fwhm_mean_csv = os.path.join(proc_dirs['calibration_dir'], 'mean_fwhm.csv')
     blazar_names = df_astrocal_blazars['BLZRNAME'].unique().tolist()
     df_fwhm_mean = None
@@ -768,10 +822,8 @@ def main():
             # get astrocalibrated blazar names ("BLZRNAME") from FITS
             calib_header = mcFits(acalib).header
             blzrname = calib_header.get('BLZRNAME', None)
-
             # By default, aperture is set to given in blazars configuration file
             #aper_pix = calib_header.get('APERPIX', None)
-            
             # if not aper_pix:
             #     try:
             #         aper_pix = blazar_data[blazar_data['IAU_name_mc'] == blzrname]['aper_mc'].values[0] 
@@ -799,12 +851,19 @@ def main():
 
             # Querying blazar data info file.
             # If aperture is given, the script takes it.
-            aper_pix = blazar_data[blazar_data["IAU_name_mc"] == blzrname]["aper_mc"].values[0]
-            print(f'aper_pix from blazars file = "{aper_pix}"')
+            try:
+                aper_pix = blazar_data[blazar_data["IAU_name_mc"] == blzrname]["aper_mc"].values[0]
+                print(f'aper_pix from blazars file = "{aper_pix}"')
+            except:
+                aper_pix=float("nan")
             # If there is no aperture asigned for this object, 2 times mean FWHM for night object is taken
             if math.isnan(aper_pix):
                 print(df_fwhm_mean.info())
-                fwhm = df_fwhm_mean[df_fwhm_mean["BLZRNAME"] == blzrname]["MEAN_FWHM"].values[0]
+                try:
+                    fwhm = df_fwhm_mean[df_fwhm_mean["BLZRNAME"] == blzrname]["MEAN_FWHM"].values[0]
+                except:
+                    print("Couldn't measure FWHM, setting it to 0 and taking 12 pix as aperture")
+                    fwhm = 0
                 print(f'FWHM = {fwhm}')
                 # Never (for ordinary apertures) a value lower than 12 pixels has been taken. So if
                 # FWHM is so low than (2 * FWHM) < 12, then 12 is selected.
@@ -828,15 +887,20 @@ def main():
             print('+' * 100)
             print(com_photocal)
             print('+' * 100)
-            res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
-               stderr=subprocess.PIPE, shell=True, check=True)
-            if res.returncode:
-                print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {acalib} file."')
-
+            try:
+                res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
+                                         stderr=subprocess.PIPE, shell=True, check=True)
+                if res.returncode:
+                    print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {acalib} file."')
+            except:
+                    print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {acalib} file."')
 
     # ------------- STARS PROCESSING ------------------
     # Creating Stars DataFrame
-    df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+        if 'MAPCAT' in input_dir:
+            df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+        else:
+            df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
     if len(df_stars.index) > 0:
 
         # df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
@@ -845,11 +909,15 @@ def main():
     
         # processing stars...
         for index, row in df_stars.iterrows():
-            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            if 'MAPCAT' in input_dir:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            else:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
             i_fits = mcFits(row['PATH'])
             if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
                 if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
                     dt_obj = datetime.fromisoformat(i_fits.header['DATE'])
+
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             print(f'im_time = {im_time}')
             cal_dir = os.path.join(proc_dirs['calibration_dir'], im_time)
@@ -868,16 +936,20 @@ def main():
                 print('+' * 100)
                 try:
                     res = subprocess.run(cmd, stdout=subprocess.PIPE, \
-                        stderr=subprocess.PIPE, shell=True, check=True)
-                except subprocess.CalledProcessError as err:
-                    print(f'returncode = {res.returncode}')
-                    message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                    print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
-            
+
+                                             stderr=subprocess.PIPE, shell=True, check=True)
+                except:
+                    if res.returncode:
+                        message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
+                        print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+
             if not args.skip_photocal:    
                 # Photometric calibration: stars have fixed aperture
-                calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
-                i_fits = mcFits(calibrated)
+                if 'fits' in os.path.split(row['PATH'])[1]:
+                    calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
+                else:
+                    calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fit', '_final.fit'))
+
                 cmd_photocal = ""
                 # Querying blazar name for this calibrated FITS
                 blzr_name = i_fits.header.get('BLZRNAME', None)
@@ -900,16 +972,19 @@ def main():
                 print('+' * 100)
                 print(cmd_photocal)
                 print('+' * 100)
-                res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
-                    stderr=subprocess.PIPE, shell=True, check=True)
-                if res.returncode:
+                try:
+                    res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
+                                             stderr=subprocess.PIPE, shell=True, check=True)
+
+                    if res.returncode:
+                        message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
+                except:
                     message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
                     print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
 
-
     #  3rd STEP: Getting aperture photometry
     if not args.skip_photometry:
-        astro_photo_calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fits')))
+        astro_photo_calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fit*')))
         print(f'PHOTOMETRY,INFO,"{len(astro_photo_calibrated)} files for getting photometry."')
         for ap_calib in astro_photo_calibrated:
             i_fits = mcFits(ap_calib)
@@ -920,12 +995,18 @@ def main():
                 continue
             # Querying blazar data info file.
             # If aperture is given, the script takes it.
-            aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"]
+            try:
+                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+            except:
+                aper=float("nan")
             print(f'aper = {aper}')
-            aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
             # If there is no aperture asigned for this object, 2 times mean FWHM for night object is taken
             if math.isnan(aper):
-                fwhm = df_fwhm_mean[df_fwhm_mean["BLZRNAME"] == blzr_name]["MEAN_FWHM"].values[0]
+                try:
+                    fwhm = df_fwhm_mean[df_fwhm_mean["BLZRNAME"] == blzr_name]["MEAN_FWHM"].values[0]
+                except:
+                    print("Couldn't calculate FWHM, setting it to 0 and taking 12 px as aperture")
+                    fwhm = 0
                 print(f'FWHM = {fwhm}')
                 # Never (for ordinary apertures) a value lower than 12 pixels has been taken. So if
                 # FWHM is so low than (2 * FWHM) < 12, then 12 is selected.
@@ -938,13 +1019,16 @@ def main():
             cmd = 'python iop3_photometry.py --aper_pix={} {} {} {}'
             cmd = cmd.format(round(aper, 1), args.config_dir, base_dir, ap_calib)
             print(cmd)
-
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, \
-                stderr=subprocess.PIPE, shell=True, check=True)
-            if res.returncode:
+            try:
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, \
+                                         stderr=subprocess.PIPE, shell=True, check=True)
+                if res.returncode:
+                    message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
+                    print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+            except:
                 message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
                 print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
-
+                continue
             # print(df_blazar['aper_mc'])
             # blazar_aper = df_blazar['aper_mc']
             # if blazar_aper > 0:
