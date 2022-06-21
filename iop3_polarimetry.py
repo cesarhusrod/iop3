@@ -856,6 +856,7 @@ def main():
     pol_data = DefaultDict(list)
     #data_res = data_res.sort_values(by=['DATE-OBS'])
     groups, groups_stars = make_groups2(data_res)
+    
     for group in groups_stars:
         name = group['name_mc_O'].values[0]
         print(f'GROUP {name}')
@@ -983,7 +984,9 @@ def main():
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     
     df.to_csv(out_csv, index=False)
-
+    
+    pol_rows = []
+    pol_data = DefaultDict(list)
     for group in groups:
         name = group['IAU_name_mc_O'].values[0]
         print(f'GROUP {name}')
