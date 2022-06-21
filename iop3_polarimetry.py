@@ -422,7 +422,8 @@ def compute_polarimetry(data_object):
     obs_date = dates[index_date] 
     result['RJD-5000'] = round(obs_date, 4)
     result['ID-MC'] = data_object['id_mc_O'].values[0]
-    result['ID-BLAZAR-MC'] = data_object['IAU_name_mc_O'].values[0]
+    result['ID-BLAZAR-MC'] = data_object['id_blazar_mc_O'].values[0]
+    result['MC-IAU-NAME'] = data_object['IAU_name_mc_O'].values[0]
     result['MC-NAME'] = data_object['name_mc_O'].values[0]
     result['EXPTIME'] = data_object['EXPTIME'].values[0] # .split()[0]      
     result['NUM_ROTATION'] = len(data_object.index)
@@ -954,10 +955,12 @@ def main():
     elif 'T150' in args.calib_base_dir:
         name_out_csv = 'T150_polR_{}_reference_stars.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
+    
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD', 'ID-MC', \
             'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'RMAG-LIT']
+
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
@@ -1106,7 +1109,7 @@ def main():
     df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df.to_csv(out_csv, index=False)
-    
+
     return 0
 
 if __name__ == '__main__':

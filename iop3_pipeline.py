@@ -74,8 +74,6 @@ def create_dataframe(fits_paths, keywords=[]):
             info[k].append(inf[k])
     
     return pd.DataFrame(info)
-    
-
 
 def closest_blazar(blazar_data, path_fits):
     # Getting header informacion
@@ -343,6 +341,60 @@ def create_directories(raw_dir, path_subdir='raw'):
     
     return out_dirs
 
+
+def contains_valid_coords(fits_path, keywordRA='RA', keywordDEC='DEC'):
+    # Getting header informacion
+    i_fits = mcFits(fits_path)
+    input_head = i_fits.header
+    
+    # Central FITS coordinates
+    try:
+        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
+    except:
+        keywordRA='OBJCTRA'
+        keywordDEC='OBJCTDEC'
+        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
+
+    try:
+        input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
+        obstime="J2000")
+    except ValueError:
+        print(f'PIPELINE,ERROR,Input coordinates (RA DEC) = ({icoords}) for "{fits_path}" are not valid.')
+        return False
+    
+    return True
+
+def recover_fits_coords(fits_path, blazar_data, verbose=True):
+    """_summary_
+
+    Args:
+        fits_path (_type_): _description_
+        blazar_data (_type_): _description_
+        verbose (bool, optional): _description_. Defaults to True.
+
+    Returns:
+        _type_: _description_
+    """
+    recover = False
+    if not contains_valid_coords(fits_path):
+        recover = True
+        # Changing coordinates to IOP3 source
+        i_fits = mcFits(fits_path)
+        objname = i_fits.header['OBJECT'].split()[0]
+        blazar = blazar_data[blazar_data['IAU_name_mc'] == objname]
+        if len(blazar.index) > 0:
+            # ra2000_mc,dec2000_mc
+            newRA = blazar['ra2000_mc_deg'].values[0]
+            newDEC = blazar['dec2000_mc_deg'].values[0]
+            cards = [('RA', newRA, ''), \
+                ('DEC', newDEC, '')]
+            i_fits.update_header(cards)
+            if verbose:
+                print(f'FITS = {fits_path}')
+                print(f"(oldRA, oldDEC) = ({i_fits.header['RA']}, {i_fits.header['DEC']})")
+                print(f'(OBJECT, newRA, newDEC) = ({objname}, {newRA}, {newDEC})')
+    return recover
+
 def contains_valid_dateobs(fits_path, keyword='DATE-OBS'):
     """Check the existence of 'DATE-OBS' FITS keyword.
 
@@ -537,10 +589,22 @@ def main():
     input_bias = oRed.bias['FILENAME'].values
     input_flats = oRed.flats['FILENAME'].values
 
+    # Trying to recover bad coordinates in FITS using OBJECT
+    for p in input_paths:
+        recover_fits_coords(p, blazar_data)
+    
+    # Rejected because of non valid RA,DEC coordinates
+    non_valid_coords = [p for p in input_paths if not contains_valid_coords(p)]
+    input_paths = [p for p in input_paths if contains_valid_coords(p)]
+
     # Rejected because of non-valid observation DATE keyword found in FITS header
     non_valid_dateobs = [p for p in input_paths if not contains_valid_dateobs(p)]
+    input_paths = [p for p in input_paths if contains_valid_dateobs(p)]
+
     # Rejected FITS because image center are far from IOP3 calibrators. FLATS and BIAS are excluded.
     far_calibrators = [p for p in input_paths if (not has_near_calibrators(p, blazar_data))]
+    input_paths = [p for p in input_paths if has_near_calibrators(p, blazar_data)]
+
     # FITS that contain Blazars
     blazar_paths = [p for p in input_paths if (is_blazar(p, blazar_data) and not is_saturated(p))]
     # FITS that contain stars
@@ -677,12 +741,19 @@ def main():
         # Processing each astro-calibrated FITS
         for index, row in df_blazars.iterrows():
             reduced = row['PATH'].replace('raw', 'reduction')
-        
+            print(row)
+            print(f"DATE-OBS = {row['DATE-OBS']}")
             if 'MAPCAT' in input_dir:
                 dt_obj = datetime.fromisoformat(row['DATE-OBS'])
             else:
                 dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
+            if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
+                i_fits = mcFits(row['PATH'])
+                if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
+                    dt_obj = datetime.fromisoformat(i_fits.header['DATE'])        
+
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
+            print(f'FITS DateTime = {im_time}')
             cal_dir = os.path.join(proc_dirs['calibration_dir'], im_time)
 
             if not args.skip_astrocal:
@@ -713,6 +784,8 @@ def main():
     df_astrocal_blazars = create_dataframe(calibrated, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT', 'BLZRNAME', 'FWHM'])
     # print(df_astrocal_blazars[df_astrocal_blazars['BLZRNAME'].isnull()]['PATH'].values)
     # return -99
+
+    ###################################################################################
 
     print(df_astrocal_blazars.info())
     print(df_astrocal_blazars.head())
@@ -831,17 +904,26 @@ def main():
         else:
             df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
     if len(df_stars.index) > 0:
-        df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
+
+        # df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
         # sorting by DATE-OBS
         df_stars = df_stars.sort_values('DATE-OBS', ascending=True)
     
         # processing stars...
         for index, row in df_stars.iterrows():
-            if 'MAPCAT' in input_dir:
-                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-            else:
-                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
+
+            #if 'MAPCAT' in input_dir:
+            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            #else:
+            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
+            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            i_fits = mcFits(row['PATH'])
+            if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
+                if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
+                    dt_obj = datetime.fromisoformat(i_fits.header['DATE'])
+
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
+            print(f'im_time = {im_time}')
             cal_dir = os.path.join(proc_dirs['calibration_dir'], im_time)
             
             if not args.skip_astrocal:
@@ -858,23 +940,39 @@ def main():
                 print('+' * 100)
                 try:
                     res = subprocess.run(cmd, stdout=subprocess.PIPE, \
+
                                              stderr=subprocess.PIPE, shell=True, check=True)
                 except:
                     if res.returncode:
                         message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
                         print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+
             if not args.skip_photocal:    
                 # Photometric calibration: stars have fixed aperture
                 if 'fits' in os.path.split(row['PATH'])[1]:
                     calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
                 else:
                     calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fit', '_final.fit'))
+
                 cmd_photocal = ""
-                if args.overwrite:
-                    cmd_photocal = "python iop3_photometric_calibration.py --overwrite {} {} {}"
+                # Querying blazar name for this calibrated FITS
+                blzr_name = i_fits.header.get('BLZRNAME', None)
+                if blzr_name is None:
+                    fits_path = row['PATH']
+                    print(f'PHOTOMETRY,ERROR,"No blazar asigned to FITS \'{fits_path}\'"')
+                    continue
                 else:
-                    cmd_photocal = "python iop3_photometric_calibration.py {} {} {}"
-                cmd_photocal = cmd_photocal.format(config_dir, cal_dir, calibrated)
+                    blzr_name = blzr_name.strip()
+                # Querying blazar data info file.
+                # If aperture is given, the script takes it.
+                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"]
+                print(f'aper = {aper}')
+                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                if args.overwrite:
+                    cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"
+                else:
+                    cmd_photocal = "python iop3_photometric_calibration.py --aper_pix={} {} {} {}"
+                cmd_photocal = cmd_photocal.format(aper, config_dir, cal_dir, calibrated)
                 print('+' * 100)
                 print(cmd_photocal)
                 print('+' * 100)
@@ -920,6 +1018,7 @@ def main():
             
             base_dir, name = os.path.split(ap_calib)
             if 'MAGZPT' not in i_fits.header: # not photometrically calibrated
+                print(f'PHOTOMETRY,ERROR,"No MAGZPT in \'{ap_calib}\'"')
                 continue
             cmd = 'python iop3_photometry.py --aper_pix={} {} {} {}'
             cmd = cmd.format(round(aper, 1), args.config_dir, base_dir, ap_calib)

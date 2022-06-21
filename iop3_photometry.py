@@ -824,21 +824,18 @@ def main():
 
     # Checking input parameters
     if not os.path.exists(args.config_dir):
-        str_err = 'ERROR: Config dir "{}" not available'
-        print(str_err.format(args.config_dir))
+        print('ERROR: Config dir "{args.config_dir}" not available')
         return 1
 
     if not os.path.isdir(args.output_dir):
         try:
             os.makedirs(args.output_dir)
         except IOError:
-            str_err = 'ERROR: Could not create output directory "{}"'
-            print(str_err.format(args.output_dir))
+            print('ERROR: Could not create output directory "{args.output_dir}"')
             return 2
 
     if not os.path.exists(args.input_fits):
-        str_err = 'ERROR: Input FITS file "{}" not available'
-        print(str_err.format(args.input_fits))
+        print('ERROR: Input FITS file "{args.input_fits}" not available')
         return 3
 
     if args.aper_pix is None or math.isnan(args.aper_pix):
@@ -1003,8 +1000,12 @@ def main():
     pair_params['RUN_DATE'] = [date_run]
     pair_params['EXPTIME'] = [header['EXPTIME']]
     pair_params['APERPIX'] = [mc_aper]
-
-    pair_params['FWHM'] = [header['FWHM']]
+    pair_params['RJD-50000'] = [d_obs.mjd - 50000 + 0.5]
+    pair_params['FWHM'] = [header.get('FWHM', -99)]
+    # if 'FWHM' in header:
+    #     pair_params['FWHM'] = [header['FWHM']]
+    # else:
+    #     pair_params['FWHM'] = [-99]
 
     # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
     print('----------- INFO TARGET ----------')
@@ -1039,9 +1040,12 @@ def main():
     
 
     # Adding aperture (in pixels)
-    print([mc_aper])
     info_target['APERPIX'] = [mc_aper] * info_target.shape[0]
-    info_target['FWHM'] = [i_fits.header['FWHM']] * info_target.shape[0]
+    if 'FWHM' in i_fits.header:
+        info_target['FWHM'] = [i_fits.header['FWHM']] * info_target.shape[0]
+    else:
+        info_target['FWHM'] = [-99] * info_target.shape[0]
+
     if 'SECPIX' in i_fits.header:
         info_target['SECPIX'] = [i_fits.header['SECPIX']] * info_target.shape[0]
     else:

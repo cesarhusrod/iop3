@@ -57,9 +57,9 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
     fig, (ax1, ax2, ax3) = plt.subplots(3, sharex=True)
     fig.suptitle(title)
 
-    ax1.tick_params(direction='out', length=6, width=2, colors='r', \
-        grid_color='r', grid_alpha=0.5)
-    ax1.yaxis.set_tick_params(labelsize=6)
+    ax1.tick_params(direction='out', length=3, width=1, colors='k', \
+        grid_color='k', grid_alpha=0.5)
+    ax1.yaxis.set_tick_params(labelsize=4)
     ax1.plot(df_data_man['RJD-50000'].values, df_data_man['P'].values, 'r.', alpha=0.5, label='MANUAL')
     ax1.plot(df_data_pipe['RJD-50000'].values, df_data_pipe['P'].values, 'b.', alpha=0.5, label='IOP3')
     #ax1.xaxis.set_tick_params(rotation=30, labelsize=8)
@@ -69,11 +69,11 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
     ax1.set_yticks(ticks)
     ax1.grid()
     ax1.legend()
-    ax1.set_title('P')
+    ax1.set_ylabel('P')
 
-    ax2.tick_params(direction='out', length=6, width=2, colors='r', \
-        grid_color='r', grid_alpha=0.5)
-    ax2.yaxis.set_tick_params(labelsize=6)
+    ax2.tick_params(direction='out', length=3, width=1, colors='k', \
+        grid_color='k', grid_alpha=0.5)
+    ax2.yaxis.set_tick_params(labelsize=4)
     ax2.plot(df_data_man['RJD-50000'].values, df_data_man['Theta'].values, 'r.', alpha=0.5, label='MANUAL')
     ax2.plot(df_data_pipe['RJD-50000'].values, df_data_pipe['Theta'].values, 'b.', alpha=0.5, label='IOP3')
     theta = np.concatenate([df_data_man['Theta'].values, df_data_pipe['Theta'].values])
@@ -81,11 +81,11 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
     ax2.set_yticks(ticks)
     ax2.grid()
     ax2.legend()
-    ax2.set_title('Theta')
+    ax2.set_ylabel('Theta')
 
-    ax3.tick_params(direction='out', length=6, width=2, colors='r', \
-        grid_color='r', grid_alpha=0.5)
-    ax3.yaxis.set_tick_params(labelsize=6)
+    ax3.tick_params(direction='out', length=3, width=1, colors='k', \
+        grid_color='k', grid_alpha=0.5)
+    ax3.yaxis.set_tick_params(labelsize=4)
     df_m_r = df_data_man[df_data_man['R'] > 0]
     ax3.plot(df_m_r['RJD-50000'].values, df_m_r['R'].values, 'r.', alpha=0.5, label='MANUAL')
     ax3.plot(df_data_pipe['RJD-50000'].values, df_data_pipe['R'].values, 'b.', alpha=0.5, label='IOP3')
@@ -94,9 +94,9 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
     ticks = np.linspace(start=R.min(), stop=R.max(), num=7)
     ax3.set_yticks(ticks)
     ax3.grid()
-    ax3.xaxis.set_tick_params(rotation=30, labelsize=6)
+    ax3.xaxis.set_tick_params(rotation=30, labelsize=4)
     ax3.legend()
-    ax3.set_title('R')
+    ax3.set_ylabel('R')
 
     # plot object names (for old and new polarimetry measurements)
     # manual procedure
@@ -146,7 +146,12 @@ def main():
     print('*' * 30)
     
     df_data_man = pd.DataFrame.from_dict(data_man)
+    # filtering to valid results
+    df_data_man = df_data_man[df_data_man['Theta'] > -99.0]
+    
     df_data_pipe = pd.DataFrame.from_dict(data_pipe)
+    # filtering to valid results
+    df_data_pipe = df_data_pipe[df_data_pipe['Theta'] > -99.0]
 
     print('*' * 30)
     print(df_data_man)

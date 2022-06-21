@@ -17,14 +17,33 @@ import os
 import argparse
 import glob
 from getpass import getpass
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 import pandas as pd
 
 import mysql.connector
 
 from astropy.io import fits
+from astropy.time import Time
+
 from mcFits import mcFits 
+
+
+def get_run_date(mjd):
+    """Returns night run as Python datetime object for 
+    Modified Julian Date given by 'mjd' input parameter.
+
+    Returns:
+        datetime.datetime: Run night observation date.
+    """
+    t = Time(mjd, format="mjd", scale="utc")
+    t_dt = t.to_datetime()
+    
+    if t_dt.hour < 12: # fits taken in previous day
+        t_dt = t_dt - timedelta(days=1)
+
+    return t_dt
+
 
 def res2df(db_cursor):
     return 0
@@ -94,8 +113,8 @@ def register_raw(data_dir, run_date, db_object):
             date_obs = raw_header['DATE'].replace('T', ' ')
             r_date = run_date
             values = [r_date, raw_name, date_obs] + \
-                [raw_header[k] for k in fits_keywords] + \
-                [raw_stats[k] for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
+                [raw_header.get(k, 'NULL') for k in fits_keywords] + \
+                [raw_stats.get(k, 'NULL') for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
             
             # Inserting new register on database.image_raw
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
@@ -183,8 +202,8 @@ def register_masterbias(data_dir, run_date, db_object):
             date_proc = red_header['PROCDATE'].replace('T', ' ')
             mb_type = red_header['OBJECT']
             values = [mb_type, run_date, mb_name, date_proc] + \
-                [red_header[k] for k in keywords] + \
-                [red_stats[k] for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
+                [red_header.get(k, 'NULL') for k in keywords] + \
+                [red_stats.get(k, 'NULL')for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
             
             # Inserting new register on database.image_raw
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
@@ -262,7 +281,7 @@ def register_rawbias(data_dir, run_date, db_object):
             bias_header = bias.header
 
             keywords = [f'BIAS{n}' for n in range(20)]
-            names = [bias_header[k] for k in keywords if k in bias_header]
+            names = [bias_header.get(k, 'NULL') for k in keywords if k in bias_header]
             
             print(f"names = {names}")
 
@@ -377,8 +396,8 @@ def register_masterflats(data_dir, run_date, db_object):
             date_proc = mf_header['PROCDATE'].replace('T', ' ')
             mf_type = mf_header['OBJECT']
             values = [mb_id, mf_type, run_date, mf_name, date_proc] + \
-                [mf_header[k] for k in keywords] + \
-                [mf_stats[k] for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
+                [mf_header.get(k, 'NULL') for k in keywords] + \
+                [mf_stats.get(k, 'NULL') for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
             
             # Inserting new register on database.image_raw
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
@@ -453,7 +472,7 @@ def register_rawflats(data_dir, run_date, db_object):
             flat_header = flat.header
 
             keywords = [f'FLAT{n}' for n in range(20)]
-            names = [flat_header[k] for k in keywords if k in flat_header]
+            names = [flat_header.get(k, 'NULL') for k in keywords if k in flat_header]
             
             print(f"names = {names}")
 
@@ -580,8 +599,8 @@ def register_reduced(data_dir, run_date, db_object):
                 'pix_border', 'naxis1', 'naxis2', 'type', 'object', \
                 'ra2000', 'dec2000', 'exptime', 'equinox', 'mjd_obs', \
                 'pixscale', 'filtname', 'telescope', 'instrument', \
-                'pol_angle', 'fwhm', 'fwhm_std', 'fwhm_nsources', \
-                'fwhm_flag', 'fwhm_ellip', 'min', 'max', 'mean', 'std', 'median']
+                'pol_angle', 'min', 'max', 'mean', 'std', 'median']
+                # 'fwhm', 'fwhm_std', 'fwhm_nsources', 'fwhm_flag', 'fwhm_ellip'
 
             str_params = ['date_run', 'path', 'date_obs', 'object', \
                 'soft', 'proc_date', 'type', 'object', 'filtname', \
@@ -590,16 +609,17 @@ def register_reduced(data_dir, run_date, db_object):
             fits_keywords = ['SOFT', 'PXBORDER', 'NAXIS1', 'NAXIS2', \
                 'IMAGETYP', 'OBJECT', 'RA', 'DEC', 'EXPTIME', \
                 'EQUINOX', 'MJD-OBS', 'INSTRSCL', 'INSFLNAM', 'TELESCOP', \
-                'INSTRUME', 'INSPOROT', 'FWHM', 'FWHMSTD', 'FWNSOURC', \
-                'FWHMFLAG', 'FWHMELLI'] # , 'MIN', 'MAX', 'MEAN', 'STD', 'MED']
+                'INSTRUME', 'INSPOROT']
+                # , 'FWHM', 'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI'] 
+                # , 'MIN', 'MAX', 'MEAN', 'STD', 'MED']
             
             # Preprocessing some fields...
             date_obs = red_header['DATE'].replace('T', ' ')
             proc_date = red_header['PROCDATE'].replace('T', ' ')
 
             values = [raw_id, mb_id, mf_id, run_date, date_obs, red_name, proc_date] + \
-                [red_header[k] for k in fits_keywords] + \
-                [red_stats[k] for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
+                [red_header.get(k, 'NULL') for k in fits_keywords] + \
+                [red_stats.get(k, 'NULL') for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
             # Inserting new register on database.image_raw
@@ -722,6 +742,7 @@ def register_calibrated(data_dir, run_date, db_object):
                 params = ['reduced_id', 'blazar_id', \
                     'date_run', 'date_obs', 'path', 'proc_date', \
                     'secpix1', 'secpix2', 'soft', \
+                    'crotation', \
                     'naxis1', 'naxis2', 'pix_border', 'type', 'object', \
                     'ra2000', 'dec2000', 'exptime', 'equinox', 'mjd_obs', \
                     'pixscale', 'filtname', 'telescope', 'instrument', \
@@ -739,7 +760,8 @@ def register_calibrated(data_dir, run_date, db_object):
                     'telescope', 'instrument', 'softdet', 'ctype1', 'ctype2', \
                     'wcsrefcat', 'imwcs', 'ra2000', 'dec2000']
                 
-                fits_keywords = ['SOFT', 'NAXIS1', 'NAXIS2', 'PXBORDER', \
+                fits_keywords = ['SOFT', 'CROTATION', \
+                    'NAXIS1', 'NAXIS2', 'PXBORDER', \
                     'IMAGETYP', 'OBJECT', 'RA', 'DEC', 'EXPTIME', \
                     'EQUINOX', 'MJD-OBS', 'INSTRSCL', 'INSFLNAM', 'TELESCOP', \
                     'INSTRUME', 'INSPOROT', 'FWHM', 'FWHMSTD', 'FWNSOURC', \
@@ -765,8 +787,8 @@ def register_calibrated(data_dir, run_date, db_object):
                     secpix2 = cal_header['SECPIX2']
                 values = [red_id, blazar_id, run_date, date_obs, cal_name, \
                     proc_date, secpix1, secpix2] + \
-                    [cal_header[k] for k in fits_keywords] + \
-                    [cal_stats[k] for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
+                    [cal_header.get(k, 'NULL') for k in fits_keywords] + \
+                    [cal_stats.get(k, 'NULL') for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
                 v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
                 # Inserting new register on database.image_raw
@@ -791,7 +813,7 @@ def register_calibrated(data_dir, run_date, db_object):
     
     return new_registrations
 
-def register_blazar_measure(data_dir, run_date, db_object):
+def register_photometry(data_dir, run_date, db_object):
     """
     Register for each run_date and calibrated fits data associated to blazar.
 
@@ -812,6 +834,8 @@ def register_blazar_measure(data_dir, run_date, db_object):
     new_registrations = 0
     calibration_dir = os.path.join(data_dir, f'calibration/MAPCAT/{run_date}/')
 
+    dt = datetime.strptime(run_date, '%y%m%d')
+
     cal_directories = glob.glob(os.path.join(calibration_dir, '*-*'))
     cal_directories.sort()
 
@@ -824,16 +848,20 @@ def register_blazar_measure(data_dir, run_date, db_object):
             continue
         print(f"INFO: working in directory '{cal_dir}'\n")
         try:
-            searching = os.path.join(cal_dir, '*_final_photocal_res.csv')
-            blazar_info_path = glob.glob(searching)[0]
-            blazar_data = pd.read_csv(blazar_info_path)
+            searching = os.path.join(cal_dir, '*_final_photometry.csv')
+            photometry_info_path = glob.glob(searching)[0]
+            print(f'Reading file: {photometry_info_path}')
+            photometry_data = pd.read_csv(photometry_info_path)
+            print(photometry_data.info())
+            # print(photometry_data)
+            print(photometry_data['MJD-OBS'].values[0])
         except:
             print(f"--------------ERROR: catalog '{searching}' not available.")
             continue
 
         # getting calibrated FITS
-        dire, name = os.path.split(blazar_info_path)
-        cal_name = name.replace('_final_photocal_res.csv', '_final.fits')
+        dire, name = os.path.split(photometry_info_path)
+        cal_name = name.replace('_final_photometry.csv', '_final.fits')
 
         sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}'"
         db_cursor.execute(sql_search)
@@ -844,9 +872,9 @@ def register_blazar_measure(data_dir, run_date, db_object):
             print(f'sql_search = {sql_search}')
             print(f'query result = {res_search}')
             print('ERROR: No associated calibrated FITS for this catalog')
-            return -2
-        # Checking previous information on blazar in blazar_measure table...
-        sql_search_cal_id = f"SELECT `cal_id` FROM `blazar_measure` WHERE `cal_id`={cal_id}"
+            return 1
+        # Checking previous information on blazar in photometry table...
+        sql_search_cal_id = f"SELECT `cal_id` FROM `photometry` WHERE `cal_id`={cal_id}"
         db_cursor.execute(sql_search_cal_id)
         res_search_cal_id = db_cursor.fetchall()
 
@@ -854,7 +882,7 @@ def register_blazar_measure(data_dir, run_date, db_object):
             # Insert new register
 
             # getting calibrated FITS
-            cal_path = blazar_info_path.replace('_final_photocal_res.csv', '_final.fits')
+            cal_path = photometry_info_path.replace('_final_photometry.csv', '_final.fits')
             try:
                 cal_fits = mcFits(cal_path)
             except:
@@ -863,8 +891,15 @@ def register_blazar_measure(data_dir, run_date, db_object):
             cal_header = cal_fits.header
             cal_stats = cal_fits.stats()
 
+            # Checking that Blazars are identical for ORDINARY/EXTRAORDINARY counterparts
+            name_blazar_o = photometry_data['IAU_name_mc_O'].values[0]
+            name_blazar_e = photometry_data['IAU_name_mc_E'].values[0]
+            if name_blazar_o != name_blazar_e:
+                print(f'ORD ({name_blazar_o}) & EXTRAORD ({name_blazar_e}) blazars are differents!')
+                return 2
+
             # getting blazar_id
-            blazar_name = blazar_data['MC-IAU-NAME'].values[0]
+            blazar_name = name_blazar_o
             sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name_IAU` = '{blazar_name}'"
             print(f"sql_search = {sql_search_bl_id}")
             db_cursor.execute(sql_search_bl_id)
@@ -873,34 +908,57 @@ def register_blazar_measure(data_dir, run_date, db_object):
                 blazar_id = res_search_bl_id[0][0]
             else:
                 print(f"ERROR: No found blazar_id for calibrated fits '{cal_name}'")
-                return -3 
+                return 3 
     
+            # Parameters from input photometry file
+            # index_O,id_mc_O,id_blazar_mc_O,aper_mc_O,IAU_name_mc_O,ra2000_mc_O,dec2000_mc_O,name_mc_O,Rmag_mc_O,Rmagerr_mc_O,PolDeg_mc_O,ErrPolDeg_mc_O,PolAngle_mc_O,ErrPolAngle_mc_O,ra2000_mc_deg_O,dec2000_mc_deg_O,index_O,NUMBER_O,MAG_AUTO_O,MAGERR_AUTO_O,FLUX_AUTO_O,FLUXERR_AUTO_O,FLUX_APER_O,FLUXERR_APER_O,MAG_APER_O,MAGERR_APER_O,X_IMAGE_O,Y_IMAGE_O,ALPHA_J2000_O,DELTA_J2000_O,FLAGS_O,CLASS_STAR_O,FWHM_IMAGE_O,FWHM_WORLD_O,ELONGATION_O,ELLIPTICITY_O,DISTANCE_DEG_O,
+            # index_E,id_mc_E,id_blazar_mc_E,aper_mc_E,IAU_name_mc_E,ra2000_mc_E,dec2000_mc_E,name_mc_E,Rmag_mc_E,Rmagerr_mc_E,PolDeg_mc_E,ErrPolDeg_mc_E,PolAngle_mc_E,ErrPolAngle_mc_E,ra2000_mc_deg_E,dec2000_mc_deg_E,index_E,NUMBER_E,MAG_AUTO_E,MAGERR_AUTO_E,FLUX_AUTO_E,FLUXERR_AUTO_E,FLUX_APER_E,FLUXERR_APER_E,MAG_APER_E,MAGERR_APER_E,X_IMAGE_E,Y_IMAGE_E,ALPHA_J2000_E,DELTA_J2000_E,FLAGS_E,CLASS_STAR_E,FWHM_IMAGE_E,FWHM_WORLD_E,ELONGATION_E,ELLIPTICITY_E,DISTANCE_DEG_E,RA_J2000_O,DEC_J2000_O,RA_J2000_E,DEC_J2000_E,
+            # APERPIX,FWHM,SECPIX,DATE-OBS,MJD-OBS,RJD-50000,EXPTIME,ANGLE,MAGZPT
+
             # Taking info about ordinary and extraordinary sources...
-            params = ['cal_id', 'blazar_id', 'date_obs', \
-                'date_run', 'mjd_obs', 'pol_angle', \
-                'source_type', 'object', 'fwhm', \
-                'ra2000', 'dec2000', 'flux_max', 'flux_aper', \
-                'fluxerr_aper', 'mag_aper', 'magerr_aper', \
-                'class_star', 'ellipticity', 'flags']
+            params = ['cal_id', 'blazar_id'] # Parameters got from database registers
+            params += ['date_run', 'date_obs', 'mjd_obs', 'rjd-50000', 'pol_angle', \
+                'aperpix', 'fwhm', 'secpix', 'exptime', 'magzpt']
 
-            str_params = ['date_run', 'date_obs', 'object', 'source_type']
+            photo_params = ['mag_auto', 'magerr_auto', 'flux_auto', 'fluxerr_auto', \
+                'flux_aper', 'fluxerr_aper', 'mag_aper', 'magerr_aper', \
+                'x_image', 'y_image', 'alpha_j2000', 'delta_j2000', 'flags', \
+                'class_star', 'fwhm_image', 'fwhm_world', 'elongation', 'ellipticity', \
+                'distance_deg']
             
-            blazar_keywords = ['RUN_DATE', 'MJD-OBS', 'ANGLE', 'TYPE', 'OBJECT', \
-                'FWHM_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', 'FLUX_MAX', \
-                'FLUX_APER', 'FLUXERR_APER', 'MAG_APER', 'MAGERR_APER', \
-                'CLASS_STAR', 'ELLIPTICITY', 'FLAGS']
+            # String parameters
+            str_params = ['date_run', 'date_obs', 'source_type']
+            
+            blazar_keywords = ['MJD-OBS', 'RJD-50000', 'ANGLE', \
+                'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'MAGZPT']
+            blazar_photometry_keywords = ['MAG_AUTO', 'MAGERR_AUTO', 'FLUX_AUTO', \
+                'FLUXERR_AUTO', 'FLUX_APER', 'FLUXERR_APER', 'MAG_APER', \
+                'MAGERR_APER', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', \
+                'FLAGS', 'CLASS_STAR', 'FWHM_IMAGE', 'FWHM_WORLD', 'ELONGATION', \
+                'ELLIPTICITY', 'DISTANCE_DEG']
 
-            for index, row in blazar_data.iterrows():            
-                # Preprocessing some fields...
-                date_obs = row['DATE-OBS'].replace('T', ' ')
-                values = [cal_id, blazar_id, date_obs] + \
-                    [row[k] for k in blazar_keywords]
+            # There is only one line for each photometry file
+            # mjd_obs = photometry_data['MJD-OBS']
+            # try:
+            #     r_date = get_run_date(photometry_data['MJD-OBS'].values[0])
+            # except:
+            #     print(photometry_data['MJD-OBS'])
+            #     raise
 
-                v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
+            values = [cal_id, blazar_id, dt.strftime("%Y-%m-%d"), \
+                photometry_data['DATE-OBS'].values[0].replace('T', ' ')]
+            values += [photometry_data[k].values[0] for k in blazar_keywords]
 
-                # Inserting new register on database.image_raw
-                sql_insert = f"INSERT INTO `blazar_measure` ({','.join(params)}) VALUES ({v})"
-                print(f"SQL command (blazar_measure) = '{sql_insert}'")
+            for t in ['O', 'E']:
+                par = params + photo_params + ['source_type']
+                vals = values + [photometry_data[k + f'_{t}'].values[0] for k in blazar_photometry_keywords] + [t]
+                
+                # formatting values
+                v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, vals)])
+
+                # Inserting new register on database.photometry
+                sql_insert = f"INSERT INTO `photometry` (`{'`,`'.join(par)}`) VALUES ({v})"
+                print(f"SQL command (photometry) = '{sql_insert}'")
 
                 try:
                     db_cursor.execute(sql_insert)
@@ -914,9 +972,6 @@ def register_blazar_measure(data_dir, run_date, db_object):
                 if db_cursor.rowcount > 0:
                     print(f"INFO: {db_cursor.rowcount} register/s inserted successfully.")
                 new_registrations += db_cursor.rowcount
-
-        # if new_registrations > 1:
-        #     break
     
     return new_registrations
 
@@ -949,8 +1004,9 @@ def register_polarimetry_data(data_dir, run_date, db_object):
     db_cursor = db_object.cursor()
     
     dt = datetime.strptime(run_date, '%y%m%d')
+    r_date = dt.strftime("%Y-%m-%d")
 
-    catalog = os.path.join(data_dir, f'final/MAPCAT/{run_date}/MAPCAT_polR_{dt.strftime("%Y-%m-%d")}.csv')
+    catalog = os.path.join(data_dir, f'final/MAPCAT/{run_date}/MAPCAT_polR_{r_date}.csv')
     try:
         pol_data = pd.read_csv(catalog)
         print(f'Number of polarimetry data = {len(pol_data.index)}')
@@ -960,14 +1016,16 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         raise
     
     params = ['blazar_id', 'date_run', \
-        'rjd-50000', 'name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR']
+        'rjd-50000', 'name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
+        'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles']
 
     str_params = ['name', 'date_run']
 
     pol_keywords = ['DATE_RUN', 'RJD-50000', 'MC-IAU-NAME', \
-        'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma']
+        'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
+        'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION']
         
-    # Checking previous information on blazar in blazar_measure table...
+    # Checking previous information on blazar in photometry table...
     for index, row in pol_data.iterrows():
         print(f'index = {index}')
         # print(f'row ------------\n {row}')
@@ -984,9 +1042,8 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         else:
             print(f"ERROR: No found blazar_id for blazar called '{blazar_name}' in polarimetry info row.")
             return -3 
-    
-        r_date = datetime.strptime(run_date, '%y%m%d').strftime("%Y-%m-%d")
-        sql_search_pol_data = f"SELECT * FROM `polarimetry_data` WHERE `blazar_id` = {blazar_id} AND `date_run` = '{r_date}' AND (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
+        
+        sql_search_pol_data = f"SELECT * FROM `polarimetry` WHERE `blazar_id` = {blazar_id} AND `date_run` = '{r_date}' AND (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
         print(f'sql_search = {sql_search_pol_data}')
         db_cursor.execute(sql_search_pol_data)
         res_search_pol_data = db_cursor.fetchall()
@@ -995,13 +1052,12 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         sql = ''
         if len(res_search_pol_data) == 0:
             # Insert new register
-            values = [blazar_id] + \
-                [row[k] for k in pol_keywords]
+            values = [blazar_id] + [row[k] for k in pol_keywords]
 
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
             # Inserting new register on database.image_raw
-            sql = f"INSERT INTO `polarimetry_data` (`{'`,`'.join(params)}`) VALUES ({v})"
+            sql = f"INSERT INTO `polarimetry` (`{'`,`'.join(params)}`) VALUES ({v})"
             new_registrations += 1
         else:
             values = [row[k] for k in pol_keywords]
@@ -1010,7 +1066,7 @@ def register_polarimetry_data(data_dir, run_date, db_object):
             pairs = []
             for k, v in zip(params[1:], val_fmt):
                 pairs.append(f'`{k}` = {v}')
-            sql = f"UPDATE `polarimetry_data` SET {','.join(pairs)} WHERE (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
+            sql = f"UPDATE `polarimetry` SET {','.join(pairs)} WHERE (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
             updates += 1
         
         print(f'sql insert/update = {sql}')
@@ -1103,50 +1159,50 @@ def main():
     # return 1
 
     # Processing RAW images (image_raw table) from run date
-    # res = register_raw(args.input_data_dir, args.run_date, my_db)
-    # print(f"Raw image registration result -> {res}")
+    res = register_raw(args.input_data_dir, args.run_date, my_db)
+    print(f"Raw image registration result -> {res}")
     
     # return 1
 
     # Processing MASTERBIAS (master_bias table) from run date 
-    # res = register_masterbias(args.input_data_dir, args.run_date, my_db)
-    # print(f"MasterBIAS registration result -> {res}")
+    res = register_masterbias(args.input_data_dir, args.run_date, my_db)
+    print(f"MasterBIAS registration result -> {res}")
 
     # return 1
 
     # Processing RAW-BIAS (raw_bias table) from run date
-    # res = register_rawbias(args.input_data_dir, args.run_date, my_db)
-    # print(f"Relation between raw and masterBIAS registration result -> {res}")
+    res = register_rawbias(args.input_data_dir, args.run_date, my_db)
+    print(f"Relation between raw and masterBIAS registration result -> {res}")
 
     # return 1
 
     # Processing MASTERFLATS (master_flat table) from run date
-    # res = register_masterflats(args.input_data_dir, args.run_date, my_db)
-    # print(f"MasterFLATS registration result -> {res}")
+    res = register_masterflats(args.input_data_dir, args.run_date, my_db)
+    print(f"MasterFLATS registration result -> {res}")
     
     # return 1
 
     # Processing RAW-FLATS (raw_flat table) from run date
-    # res = register_rawflats(args.input_data_dir, args.run_date, my_db)
-    # print(f"Relation between raw and masterFLATS registration result -> {res}")
+    res = register_rawflats(args.input_data_dir, args.run_date, my_db)
+    print(f"Relation between raw and masterFLATS registration result -> {res}")
     
     # return 1
 
     # Processing REDUCED images (image_reduced table) from run date
-    # res = register_reduced(args.input_data_dir, args.run_date, my_db)
-    # print(f"Reduced image registration result -> {res}")
+    res = register_reduced(args.input_data_dir, args.run_date, my_db)
+    print(f"Reduced image registration result -> {res}")
     
     # return 1
 
     # Processing CALIBRATED images (image_calibrated table) from run date
-    # res = register_calibrated(args.input_data_dir, args.run_date, my_db)
-    # print(f"Calibrated image registration result -> {res}")
+    res = register_calibrated(args.input_data_dir, args.run_date, my_db)
+    print(f"Calibrated image registration result -> {res}")
     
     # return 1
 
-    # Processing BLAZAR MEASURE (blazar_measure table) from run date
-    # res = register_blazar_measure(args.input_data_dir, args.run_date, my_db)
-    # print(f"blazar data registration result -> {res}")
+    # Processing BLAZAR MEASURE (photometry table) from run date
+    res = register_photometry(args.input_data_dir, args.run_date, my_db)
+    print(f"blazar data registration result -> {res}")
     
     # return 1
 
@@ -1154,23 +1210,23 @@ def main():
     res = register_polarimetry_data(args.input_data_dir, args.run_date, my_db)
     print(f"Polarimetry data registration result -> {res}")
     
-    return 1
+    # return 1
 
-    # Unuseful table. Info can be get by querying...
-    """SELECT 
-        bm.cal_id, bm.date_run, bm.class_star, bm.source_type, 
-        bm.ellipticity, bm.flags, bm.date_obs, bm.pol_angle, 
-        pd.name, pd.P, pd.dP, pd.Theta, pd.dTheta, pd.R, pd.dR 
-    FROM 
-        polarimetry_data as pd 
-        INNER JOIN 
-            blazar_measure as bm 
-        ON 
-            pd.blazar_id=bm.blazar_id 
-    ORDER BY pd.name, bm.date_obs;"""
-    # Processing BLAZAR_POLARIMETRY (blazar_polarimetry table) from run date
-    # res = register_polarimetry_blazar(args.input_data_dir, args.run_date, my_db)
-    # print(f"Relations between polarimetry measures and blazars result -> {res}")
+    # # Unuseful table. Info can be get by querying...
+    # """SELECT 
+    #     bm.cal_id, bm.date_run, bm.class_star, bm.source_type, 
+    #     bm.ellipticity, bm.flags, bm.date_obs, bm.pol_angle, 
+    #     pd.name, pd.P, pd.dP, pd.Theta, pd.dTheta, pd.R, pd.dR 
+    # FROM 
+    #     polarimetry_data as pd 
+    #     INNER JOIN 
+    #         photometry as p 
+    #     ON 
+    #         pd.blazar_id=p.blazar_id 
+    # ORDER BY pd.name, p.date_obs;"""
+    # # Processing BLAZAR_POLARIMETRY (blazar_polarimetry table) from run date
+    # # res = register_polarimetry_blazar(args.input_data_dir, args.run_date, my_db)
+    # # print(f"Relations between polarimetry measures and blazars result -> {res}")
 
 
 

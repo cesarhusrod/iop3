@@ -32,7 +32,7 @@ matplotlib.use('Agg')
 # Data structures libraries
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, units
 from pyrsistent import v
 from scipy.ndimage import median_filter
 #import seaborn
@@ -803,7 +803,7 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
             exclude_border=border, tol_pixs=tol_pixs, crotation=crotation)
             
         if res_astrocal:
-            print(f'SATROCALIBRATION,ERROR,"Executing astrocalibration routine on \'{clean_rotated_fits}\'."')
+            print(f'ASTROCALIBRATION,ERROR,"Executing astrocalibration routine on \'{clean_rotated_fits}\'."')
             return 6
     else:
         # -------------- Astrocalibrating STAR --------------
@@ -848,77 +848,167 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
         # New procedure
         blazar_ra = nearest_blazar['ra2000_mc_deg']
         blazar_dec = nearest_blazar['dec2000_mc_deg']
-        center_coords = center_coordinates((x_star, y_star), \
-            (blazar_ra, blazar_dec), (input_head['NAXIS1'], input_head['NAXIS2']), \
-            arcs_per_pixel=0.53)
-        new_coords = SkyCoord(center_coords['RA'], center_coords['DEC'], unit="deg")
-        new_keys['CRVAL1'] = center_coords['RA']
-        new_keys['CRVAL2'] = center_coords['DEC']
-        new_keys['EPOCH'] = 2000
-        new_keys['CRPIX1'] = input_head['NAXIS1'] / 2
-        new_keys['CRPIX2'] = input_head['NAXIS1'] / 2
-        new_keys['CDELT1'] = best_fits.header['CDELT1']
-        new_keys['CDELT2'] = best_fits.header['CDELT2']
-        new_keys['CTYPE1'] = 'RA---TAN'
-        new_keys['CTYPE2'] = 'DEC--TAN'
-        new_keys['CD1_1'] = best_fits.header['CD1_1']
-        new_keys['CD1_2'] = best_fits.header['CD1_2']
-        new_keys['CD2_1'] = best_fits.header['CD2_1']
-        new_keys['CD2_2'] = best_fits.header['CD2_2']
-        new_keys['WCSRFCAT'] = 'tmc'
-        new_keys['WCSIMCAT'] = ''
-        new_keys['WCSMATCH'] = 1
-        new_keys['WCSNREF'] = 1
-        new_keys['WCSTOL'] = 0
-   
-        t_ra = new_coords.ra.hms
-        t_dec = new_coords.dec.dms
-        new_keys['RA'] = f'{int(t_ra.h)} {int(t_ra.m)} {t_ra.s:.4f}'
+        blazar_coords = SkyCoord(blazar_ra, blazar_dec, unit='deg')
+        b_ra = blazar_coords.ra.hms
+        b_dec = blazar_coords.dec.dms
+        pref_ra = ''
+        if abs(b_ra.h) < 10:
+            pref_ra = '0'
+        b_ra_hms = f'{pref_ra}{int(b_ra.h)}:{int(b_ra.m)}:{b_ra.s:.4f}'
         op = '+'
-        if t_dec.d < 0:
+        if b_dec.d < 0:
             op = ''
-        new_keys['DEC'] = f'{op}{int(t_dec.d)} {int(t_dec.m)} {t_dec.s:.5f}'
-        new_keys['EQUINOX'] = 2000
-        new_keys['CROTA1'] = best_fits.header['CROTA1']
-        new_keys['CROTA2'] = best_fits.header['CROTA2']
-        new_keys['SECPIX1'] = best_fits.header.get('SECPIX1', '')
-        new_keys['SECPIX2'] = best_fits.header.get('SECPIX2', '')
-        # In some cases, only 'SECPIX' header keyword is present in calibrated FITS (square pixel size)
+        pref_dec = ''
+        if abs(b_dec.d) < 10:
+            pref_dec = '0'
+        b_dec_dms = f'{op}{pref_dec}{int(b_dec.d)}:{int(b_dec.m)}:{b_dec.s:.5f}'
+
+        # center_coords = center_coordinates((x_star, y_star), \
+        #     (blazar_ra, blazar_dec), (input_head['NAXIS1'], input_head['NAXIS2']), \
+        #     arcs_per_pixel=0.53)
+        # new_coords = SkyCoord(center_coords['RA'], center_coords['DEC'], unit="deg")
+        # new_keys['CRVAL1'] = center_coords['RA']
+        # new_keys['CRVAL2'] = center_coords['DEC']
+        # new_keys['CRPIX1'] = input_head['NAXIS1'] / 2
+        # new_keys['CRPIX2'] = input_head['NAXIS1'] / 2
+        
+        cards = []
+
+        cards.append(('CRVAL1', blazar_ra, ''))
+        cards.append(('CRVAL2', blazar_dec, ''))
+        cards.append(('CRPIX1', round(x_star), ''))
+        cards.append(('CRPIX2', round(y_star), ''))
+        cards.append(('RADECSYS', 'FK5     ', ''))
+        cards.append(('EPOCH', 2000, ''))
+        cards.append(('CDELT1', best_fits.header['CDELT1'], ''))
+        cards.append(('CDELT2', best_fits.header['CDELT2'], ''))
+        cards.append(('CTYPE1', 'RA---TAN', ''))
+        cards.append(('CTYPE2', 'DEC--TAN', ''))
+        cards.append(('CD1_1', best_fits.header['CD1_1'], ''))
+        cards.append(('CD1_2', best_fits.header['CD1_2'], ''))
+        cards.append(('CD2_1', best_fits.header['CD2_1'], ''))
+        cards.append(('CD2_2', best_fits.header['CD2_2'], ''))
+        cards.append(('WCSRFCAT', 'tmc', ''))
+        cards.append(('WCSIMCAT', '', ''))
+        cards.append(('WCSMATCH', 1, ''))
+        cards.append(('WCSNREF', 1, ''))
+        cards.append(('WCSTOL', 0, ''))
+        cards.append(('RA', b_ra_hms, ''))
+        cards.append(('DEC', b_dec_dms, ''))
+        cards.append(('WRA', b_ra_hms, ''))
+        cards.append(('WDEC', b_dec_dms, ''))
+        cards.append(('EQUINOX', best_fits.header['EQUINOX'], ''))
+        cards.append(('CROTA1', best_fits.header['CROTA1'], ''))
+        cards.append(('CROTA2', best_fits.header['CROTA2'], ''))
         if 'SECPIX' in best_fits.header:
-            new_keys['SECPIX1'] = best_fits.header.get('SECPIX', '')
-            new_keys['SECPIX2'] = best_fits.header.get('SECPIX', '')
-        new_keys['WCSSEP'] = 0
-        new_keys['IMWCS'] = 'None'
-        
-        print(new_keys)
-        # using clean_rotated_fits as FITS base    
-        hdul = fits.open(clean_rotated_fits)
-        header = hdul[0].header
-        # delete some keywords
-        for k in ['PC001001', 'PC001002', 'PC002001', 'PC002002']:
-            header.remove(k, ignore_missing=True)
-        
-        # special keywords
-        if 'RA' in header:
-            header.rename_keyword('RA', 'WRA')
-            header.rename_keyword('DEC', 'WDEC')
+            cards.append(('SECPIX1', best_fits.header['SECPIX'], ''))
+            cards.append(('SECPIX2', best_fits.header['SECPIX'], ''))
         else:
-            header.rename_keyword('OBJCTRA', 'WRA')
-            header.rename_keyword('OBJCTDEC', 'WDEC')
+            cards.append(('SECPIX1', best_fits.header['SECPIX1'], ''))
+            cards.append(('SECPIX2', best_fits.header['SECPIX2'], ''))
+        cards.append(('WCSSEP', 0, ''))
+        cards.append(('IMWCS', 'None', ''))
+
+        astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+        # deleting deprecated/unuseful header keywords
+        hdul = fits.open(clean_rotated_fits, mode='update')
+
+        for k in ['PC001001', 'PC001002', 'PC002001', 'PC002002']:
+            if k in hdul[0].header:
+                hdul[0].header.remove(k, ignore_missing=True)
+        hdul.writeto(astrom_out_fits, output_verify='fix', overwrite=True)
+
+        # Copying calibration keywords to FITS
+        cal_fits = mcFits(astrom_out_fits)
+        cal_fits.update_header(cards)
+
+
+        # new_keys['CRVAL1'] = blazar_ra
+        # new_keys['CRVAL2'] = blazar_dec
+        # new_keys['CRPIX1'] = round(x_star)
+        # new_keys['CRPIX2'] = round(y_star)
+        # new_keys['EPOCH'] = 2000
+        # new_keys['CDELT1'] = best_fits.header['CDELT1']
+        # new_keys['CDELT2'] = best_fits.header['CDELT2']
+        # new_keys['CTYPE1'] = 'RA---TAN'
+        # new_keys['CTYPE2'] = 'DEC--TAN'
+        # new_keys['CD1_1'] = best_fits.header['CD1_1']
+        # new_keys['CD1_2'] = best_fits.header['CD1_2']
+        # new_keys['CD2_1'] = best_fits.header['CD2_1']
+        # new_keys['CD2_2'] = best_fits.header['CD2_2']
+        # # new_keys['PC1_1'] = best_fits.header['CD1_1']
+        # # new_keys['PC1_2'] = best_fits.header['CD1_2']
+        # # new_keys['PC2_1'] = best_fits.header['CD2_1']
+        # # new_keys['PC2_2'] = best_fits.header['CD2_2']
+
+        # # new_keys['PC1_1'] = 1
+        # # new_keys['PC1_2'] = 0
+        # # new_keys['PC2_1'] = 0
+        # # new_keys['PC2_2'] = 1
+
+        # # rad_angle = math.radians(best_fits.header.get('CROTA1', best_fits.header.get('CROTA', 0)))
+        # # proportion = best_fits.header['CDELT2'] / best_fits.header['CDELT1']
+        # # new_keys['PC1_1'] = math.cos(rad_angle)
+        # # new_keys['PC1_2'] = -1 * proportion * math.sin(rad_angle)
+        # # new_keys['PC2_1'] = proportion * math.sin(rad_angle)
+        # # new_keys['PC2_2'] = math.cos(rad_angle)
+        
+        # new_keys['WCSRFCAT'] = 'tmc'
+        # new_keys['WCSIMCAT'] = ''
+        # new_keys['WCSMATCH'] = 1
+        # new_keys['WCSNREF'] = 1
+        # new_keys['WCSTOL'] = 0
+   
+        # t_ra = new_coords.ra.hms
+        # t_dec = new_coords.dec.dms
+        # new_keys['RA'] = f'{int(t_ra.h)}:{int(t_ra.m)}:{t_ra.s:.4f}'
+        # op = '+'
+        # if t_dec.d < 0:
+        #     op = ''
+        # new_keys['DEC'] = f'{op}{int(t_dec.d)}:{int(t_dec.m)}:{t_dec.s:.5f}'
+        # new_keys['WRA'] = new_keys['RA']
+        # new_keys['WDEC'] = new_keys['DEC'] 
+        # new_keys['EQUINOX'] = 2000
+        # new_keys['CROTA1'] = best_fits.header['CROTA1']
+        # new_keys['CROTA2'] = best_fits.header['CROTA2']
+        # new_keys['SECPIX1'] = best_fits.header.get('SECPIX1', '')
+        # new_keys['SECPIX2'] = best_fits.header.get('SECPIX2', '')
+        # # In some cases, only 'SECPIX' header keyword is present in calibrated FITS (square pixel size)
+        # if 'SECPIX' in best_fits.header:
+        #     new_keys['SECPIX1'] = best_fits.header['SECPIX']
+        #     new_keys['SECPIX2'] = best_fits.header['SECPIX']
+        # new_keys['WCSSEP'] = 0
+        # new_keys['IMWCS'] = 'None'
+        
+        # print(new_keys)
+        
+        # using clean_rotated_fits as FITS base    
+        # hdul = fits.open(clean_rotated_fits)
+        # header = hdul[0].header
+        # # delete some keywords
+        # for k in ['PC001001', 'PC001002', 'PC002001', 'PC002002']:
+        #     header.remove(k, ignore_missing=True)
+        # special keywords
+        #if 'RA' in header:
+        #    header.rename_keyword('RA', 'WRA')
+        #    header.rename_keyword('DEC', 'WDEC')
+        #else:
+        #    header.rename_keyword('OBJCTRA', 'WRA')
+        #    header.rename_keyword('OBJCTDEC', 'WDEC')
         # header['BLANK'] = 32768
 
         # calibration keywords
-        for k, v in new_keys.items():
-            header.remove(k, ignore_missing=True)
-            header.append(card=(k, v, ''), end=True) # set
+        #for k, v in new_keys.items():
+        #    header.remove(k, ignore_missing=True)
+        #    header.append(card=(k, v, ''), end=True) # set
             
         # Finally, saving/updating astrocalibreated file with star coordinates and astrometric keywords from best fit
-        if 'fits' in clean_rotated_fits: 
-            astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
-        else:
-            astrom_out_fits = clean_rotated_fits.replace('.fit', 'w.fits')
-        hdul[0].header = header
-        hdul.writeto(astrom_out_fits, output_verify='fix', overwrite=True)
+        #if 'fits' in clean_rotated_fits: 
+        #    astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+        #else:
+        #    astrom_out_fits = clean_rotated_fits.replace('.fit', 'w.fits')
+        #hdul[0].header = header
+        #hdul.writeto(astrom_out_fits, output_verify='fix', overwrite=True)
 
     return 0
 
@@ -936,7 +1026,6 @@ def get_best_astrocal(calibration_dir):
     print(f'Calibrations done = {len(cal_fits)}')
     cal_results = defaultdict(list)
     for cf in cal_fits:
-        print("HOLAAAAA")
         astro_fits = mcFits(cf)
         cal_results['PATH'] = cf
         for k in ['WCSMATCH', 'EXPTIME']:
@@ -1132,8 +1221,12 @@ def query_external_catalog(path_fits, catalog={}):
                 # plotFits(path_fits, cat_out_png, title=title, \
                 #     coords=coords, astroCal=True, color='green', \
                 #     dictParams={'aspect':'auto', 'invert':'True'})
-            except:
+            except Exception as inst:
+                print(type(inst))    # the exception instance
+                print(inst.args)     # arguments stored in .args
+                print(inst)
                 print(f"ASTROCALIBRATION,WARNING,'Plotting {cat_out_png}'")
+                
         except TypeError:
             return 1
     
@@ -1252,7 +1345,7 @@ def merge_mapcat_sextractor(cat, df_mc, input_fits, max_deg_dist=0.006):
     # if len(df_mapcat[f_source].index) == 0:
     if f_source.sum() == 0:
         print(data_match_o[['id_mc_O', 'IAU_name_mc_O', 'DISTANCE_DEG_O']])
-        print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
+        print(f'ASTROCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3 in \'{input_fits}\'."')
         return 6 
     else:
         print(f'Target = {data_match_o[f_source]}') 
@@ -1590,32 +1683,38 @@ def main():
     
     # sext_conf = os.path.join(args.config_dir, 'daofind.sex')
     sext_conf = os.path.join(args.config_dir, 'sex.conf')
-    if args.fits_astrocal is None: # Not FITS model
-        res_cal = calibrate(copy_input_fits, sext_conf, blazar_path, \
-            border=args.border_image, tol_pixs=args.tol_pixs, \
-            overwrite=args.overwrite, crotation=args.crotation)
-        if res_cal:
+    res_cal = calibrate(copy_input_fits, sext_conf, blazar_path, \
+        border=args.border_image, tol_pixs=args.tol_pixs, \
+        overwrite=args.overwrite, crotation=args.crotation)
+    if res_cal:
+        print(f'ASTROCALIBRATION,ERROR,"Could not calibrate astrometrically FITS {clean_rotated_fits}"')
+        return 6
 
-            # print(f'ASTROCALIBRATION,ERROR,"Could not calibrate astrometrically FITS {clean_rotated_fits}"')
-            return 6
-    else:
-        # Get astrometric calibration keywords and values
-        fits_model = mcFits(args.fits_astrocal)
-        model_astrovalues = fits_model.get_astroheader()
+    # if args.fits_astrocal is None: # Not FITS model
+    #     res_cal = calibrate(copy_input_fits, sext_conf, blazar_path, \
+    #         border=args.border_image, tol_pixs=args.tol_pixs, \
+    #         overwrite=args.overwrite, crotation=args.crotation)
+    #     if res_cal:
+    #         # print(f'ASTROCALIBRATION,ERROR,"Could not calibrate astrometrically FITS {clean_rotated_fits}"')
+    #         return 6
+    # else:
+    #     # Get astrometric calibration keywords and values
+    #     fits_model = mcFits(args.fits_astrocal)
+    #     model_astrovalues = fits_model.get_astroheader()
         
-        # creating new astrometric calibrated FITS
-        print(f'clean_rotated_fits = {os.path.abspath(clean_rotated_fits)}')
-        print(f'astrom_out_fits = {os.path.abspath(astrom_out_fits)}')
-        shutil.copy(clean_rotated_fits, astrom_out_fits)
+    #     # creating new astrometric calibrated FITS
+    #     print(f'clean_rotated_fits = {os.path.abspath(clean_rotated_fits)}')
+    #     print(f'astrom_out_fits = {os.path.abspath(astrom_out_fits)}')
+    #     shutil.copy(clean_rotated_fits, astrom_out_fits)
         
-        # Editing for adding astrometric pairs of keyword-value to output astrometric calibrated fits
-        with fits.open(astrom_out_fits, 'update') as fout:
-            hdr = fout[0].header
-            for k, v in model_astrovalues.items():
-                if k in hdr:
-                    hdr[k] = v
-                else:
-                    hdr.append((k, v, ''), end=True)
+    #     # Editing for adding astrometric pairs of keyword-value to output astrometric calibrated fits
+    #     with fits.open(astrom_out_fits, 'update') as fout:
+    #         hdr = fout[0].header
+    #         for k, v in model_astrovalues.items():
+    #             if k in hdr:
+    #                 hdr[k] = v
+    #             else:
+    #                 hdr.append((k, v, ''), end=True)
     
     # Checking astrometric calibrated ouput FITS
     if not os.path.exists(astrom_out_fits):
@@ -1672,7 +1771,7 @@ def main():
    
     # Update header with blazar_name
     f_fits = mcFits(final_fits)
-    blazar_cards = [('BLZRNAME', closest_iop3_source['IAU_name_mc'])]
+    blazar_cards = [('BLZRNAME', closest_iop3_source['IAU_name_mc'].strip())]
     f_fits.update_header(cards=blazar_cards)
     
     #------------------------ Only for images given by Ivan for testing --------------
@@ -1685,11 +1784,16 @@ def main():
         final_png = final_fits.replace('.fits', '_final.png')
     else:
         final_png = final_fits.replace('.fit', '_final.png')
+
     title = '{}, {}, {} rotated astrocalib'
     title = title.format(astro_header['DATE-OBS'], astro_header['OBJECT'], \
         astro_header['EXPTIME'])
-    f_fits.plot(final_png, title=title)
-
+    try:
+        f_fits.plot(final_png, title=title)
+    except Exception as e:
+        print(e)
+        print(f'ASTROCALIBRATION,ERROR,"Plotting \'{final_png}\'"')
+        # return 1
     # --------------- Compute FWHM using non-saturated calibrators --------- #
     root, ext = os.path.splitext(final_fits)
     cat = f'{root}_astrocal.cat'
@@ -1698,7 +1802,7 @@ def main():
     res = f_fits.detect_sources(sext_conf, cat, \
         additional_params=sext_params_detection(final_fits))
     if res:
-        print('PHOTOCALIBRATION,ERROR,"SExtractor did not work properly"')
+        print('ASTROCALIBRATION,ERROR,"SExtractor did not work properly"')
         return 6
     
     # Blazar data
@@ -1717,8 +1821,12 @@ def main():
         print(f'Data matched result = {data_matched}')
         return 9
     source_problem = data_matched['IAU_name_mc_O'].str.len() > 0
+    
+    print('*' * 300 )
+    print(f"num_mapcat_sources = {num_mapcat_sources}")
     if num_mapcat_sources == 1: # Star
         cards = f_fits.fwhm_from_cat(cat, cat_format='FITS_LDAC')
+        print(f"Taken as Star: calibration cards = {cards}")
         f_fits.update_header(cards)
 
     # Re-open final FITS
@@ -1729,8 +1837,10 @@ def main():
     # If there are IOP3 calibrators in field covered by FITS
     if len(calibrators.index) > 0:        
         # getting saturated calibrators
-        ord_sat = check_saturation(calibrators['FLAGS_O'])    
-        ext_sat = check_saturation(calibrators['FLAGS_E'])    
+        print(f"FLAGS_O = {calibrators['FLAGS_O'].values.astype(int)}")
+        print(f"FLAGS_E = {calibrators['FLAGS_E'].values.astype(int)}")
+        ord_sat = check_saturation(calibrators['FLAGS_O'].values.astype(int))    
+        ext_sat = check_saturation(calibrators['FLAGS_E'].values.astype(int))    
         # If ordinary or extraordinary counterpart is saturated, source 
         # is considered as saturated.
         sat_calibrator = np.logical_or(ord_sat, ext_sat)
@@ -1759,12 +1869,12 @@ def main():
             ('FWNSOURC', fwhm_images.size, 'FWHM number of sources used'), \
             ('FWHMFLAG', flags.max(), 'SExtractor max source FLAG'), \
             ('FWHMELLI', round(ellip.max(), 2), 'SExtractor max ELLIP'), \
-            ('PIXSCALE', i_fits.header['INSTRSCL'], 'Scale [arcs/pix]'),
+            ('PIXSCALE', i_fits.header['INSTRSCL'], 'Scale [arcs/pix]'), \
             ('CSTARMIN', round(cstar.min(), 2), 'SExtractor min CLASS_STAR')]
         else:
             # Use filtered SExtractor detections
             cards = f_fits.fwhm_from_cat(cat, cat_format='FITS_LDAC')
-        
+        cards.append(('CROTATION', args.crotation, 'Astrocal N-S FITS rotation angle [degrees]'))
         # Updating FITS header with computed FWHM 
         f_fits.update_header(cards)
 
@@ -1779,6 +1889,7 @@ def main():
     cal_data = {}
     cal_data['PATH'] = [final_fits]
     cal_data['RUN_DATE'] = [date_run]    
+    cal_data['CROTATION'] = [args.crotation]
     
     for key in some_calib_keywords:
         cal_data[key] = astro_header.get(key, '')

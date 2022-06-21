@@ -99,7 +99,7 @@ def report(csv_file, output_dir, template_file, title=''):
 
 # ------------------------ MAIN FUNCTION SECTION -----------------------------
 def main():
-    parser = argparse.ArgumentParser(prog='mcPipe_OK.py', \
+    parser = argparse.ArgumentParser(prog='iop3_reduction.py', \
     conflict_handler='resolve',
     description='''Main program that reads, classify and reduces data from 
     FITS located at input directory. ''',
@@ -356,21 +356,21 @@ def main():
         mcRED = mcFits(path_red)
 
         # Estimating FWHM from extracted sources
-        dictSEx = {}
-        if 'fits' in mcRED.path:
-            dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
-        else:
-            dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fit', '.cat')
-        dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
+        # dictSEx = {}
+        # if 'fits' in mcRED.path:
+        #    dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
+        #else:
+        #    dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fit', '.cat')
+        #dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
         
-        try:
+        #try:
             #mcRED.compute_fwhm(dictSEx)
-            mcRED.get_fwhm(sext_conf=dictSEx['CONFIG_FILE'], cat_out=dictSEx['CATALOG_NAME'])
-            mcRED = 0 # Forcing to write FWHM dataSEX
-            mcRED = mcFits(path_red, border=border_image)
-        except Exception as e:
-            print(f'REDUCTION,ERROR,"Could not compute FWHM in FITS \'{path_red}\'."')
-            print(e)
+        #    mcRED.get_fwhm(sext_conf=dictSEx['CONFIG_FILE'], cat_out=dictSEx['CATALOG_NAME'])
+        #    mcRED = 0 # Forcing to write FWHM dataSEX
+        #    mcRED = mcFits(path_red, border=border_image)
+        #except Exception as e:
+        #    print(f'REDUCTION,ERROR,"Could not compute FWHM in FITS \'{path_red}\'."')
+        #    print(e)
 
         # Plotting Science image...
         if 'fits' in mcRED.path:
@@ -406,8 +406,8 @@ def main():
 
         some_reduction_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', \
             'PXBORDER', 'INSFLNAM', 'RA', 'DEC', 'OBJECT', 'EXPTIME', \
-            'DATE-OBS', 'EQUINOX', 'MJD-OBS', 'BIAS', 'FLAT', 'FWHM', \
-            'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI', \
+            'DATE-OBS', 'EQUINOX', 'MJD-OBS', 'BIAS', 'FLAT', \
+            # 'FWHM', 'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI', \
             'MAX', 'MIN', 'MEAN', 'STD', 'MED']
         
         for sr_key in some_reduction_keys:
