@@ -443,7 +443,6 @@ def is_blazar(fits_path, blazars_data, max_deg_dist=0.5):
     
     if (dist_arcs > max_deg_dist) or (calibrator['Rmag_mc'] > 0) :
         return False
-    
     return True
 
 def is_star(fits_path, blazars_data, max_deg_dist=0.5):
@@ -729,11 +728,11 @@ def main():
                     break
         
                 if wcsmatch_best < 10:
-                    print(f"ASTROCALIBRATION,ERROR,'Not enought matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
+                    print(f"ASTROCALIBRATION,ERROR,'Not enough matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
                     return 2
                 succeed=1
         print(f' ---------- Best rotation angle for astrometric calibration = {crot} ({wcsmatch_best} matches) -------')
-        
+        print(df_blazars)
         pol_sources = True
         # sorting by DATE-OBS
         df_blazars = df_blazars.sort_values('DATE-OBS', ascending=True)
@@ -790,7 +789,6 @@ def main():
     print(df_astrocal_blazars.info())
     print(df_astrocal_blazars.head())
 
-    
     fwhm_mean_csv = os.path.join(proc_dirs['calibration_dir'], 'mean_fwhm.csv')
     blazar_names = df_astrocal_blazars['BLZRNAME'].unique().tolist()
     df_fwhm_mean = None
@@ -911,12 +909,10 @@ def main():
     
         # processing stars...
         for index, row in df_stars.iterrows():
-
-            #if 'MAPCAT' in input_dir:
-            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-            #else:
-            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
-            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            if 'MAPCAT' in input_dir:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            else:
+                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
             i_fits = mcFits(row['PATH'])
             if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
                 if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
