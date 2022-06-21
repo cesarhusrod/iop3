@@ -373,8 +373,9 @@ class mcReduction:
 
             # last flat: header will be used in masterFLAT
             oflat = mcFits(dff['FILENAME'].values[-1], border=self.border)
-
-            if round(float(pa)) == 360: # some FLATS have INSPOROT = 359.98 as value
+            
+            
+            if 'R' not in pa and round(float(pa)) == 360: # some FLATS have INSPOROT = 359.98 as value
                 pa = 0.0
 
             newCards = [('SOFT', 'IOP^3  Pipeline v1.0', 'Software used'),
