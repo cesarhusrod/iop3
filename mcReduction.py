@@ -174,9 +174,9 @@ class mcReduction:
         for index, row in self.info_fits.iterrows():
             obj = row['OBJECT'].lower()
             imtype = row['IMAGETYP'].strip().lower()
-            if obj.find('bias') != -1 or imtype.find('dark') != -1:
+            if imtype.find('bias') != -1 or imtype.find('dark') != -1:
                 procOBJ.append('bias')
-            elif obj.find('flat') != -1 or obj.find('dome') != -1 or imtype.find('dome') != -1:
+            elif imtype.find('flat') != -1 or obj.find('dome') != -1 or imtype.find('dome') != -1:
                 procOBJ.append('flat')
             else:
                 toks = row['OBJECT'].split()
