@@ -346,15 +346,16 @@ def contains_valid_coords(fits_path, keywordRA='RA', keywordDEC='DEC'):
     # Getting header informacion
     i_fits = mcFits(fits_path)
     input_head = i_fits.header
-    
     # Central FITS coordinates
-    try:
+    if 'RA' in input_head:
         icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
-    except:
-        keywordRA='OBJCTRA'
-        keywordDEC='OBJCTDEC'
+    elif 'OBJCTRA' in input_head:
+        keywordRA = 'OBJCTRA'
+        keywordDEC = 'OBJCTDEC'
         icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
-
+    else:
+        print(f'PIPELINE,ERROR,Input coordinates (RA DEC) missing from header or not with usual name.')
+        return False
     try:
         input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
         obstime="J2000")
