@@ -120,7 +120,7 @@ def execute_command(cmd, out=subprocess.PIPE, err=subprocess.PIPE, shell=True):
             (https://docs.python.org/3/library/subprocess.html#subprocess.CompletedProcess)
     """
     
-    result = subprocess.run(cmd, stdout=out, stderr=err, shell=shell, check=True)
+    result = subprocess.run(cmd, stdout=out, stderr=err, shell=shell)
     
     return result
 

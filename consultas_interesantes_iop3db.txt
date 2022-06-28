@@ -21,3 +21,9 @@ SELECT DISTINCT crotation, date_run
 FROM image_calibrated 
 WHERE crotation is not NULL
 ORDER BY date_run ASC 
+
+-- Numero de medidas por object
+SELECT name, MIN(date_run), MAX(date_run), count(*) as NUM_MEASUREMENTS
+FROM `polarimetry` 
+GROUP BY name
+ORDER BY NUM_MEASUREMENTS DESC

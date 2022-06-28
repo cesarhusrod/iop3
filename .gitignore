@@ -7,3 +7,4 @@ conf/*.fits
 conf/*out
 conf/*outexit
 conf/*.yml
+conf/blazar_photo_calib_last_perfect_result.csv
