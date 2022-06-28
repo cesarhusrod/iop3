@@ -1073,8 +1073,8 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         try:
             db_cursor.execute(sql)
         except:
-            print(f"SQL ERROR: {sql}")
-            raise
+            print(f"SQL WARNING: {sql}")
+            # raise
         
         # Commiting insertion
         db_object.commit()
