@@ -130,7 +130,7 @@ def get_skylimits(path_fits):
     com1 = f'xy2sky -d {path_fits} 0 0'
     com2 = f'xy2sky -d {path_fits} {fits.header["NAXIS1"]} {fits.header["NAXIS2"]}'
 
-    print(f'{com1}')
+    printastrom(f'{com1}')
     proc1 = subprocess.Popen(com1, shell=True, stdout=subprocess.PIPE)
     out1 = proc1.stdout.read().decode('utf-8')[:-2]
     data1 = [float(d) for d in out1.split()[:2]]
@@ -908,8 +908,12 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
             cards.append(('SECPIX2', best_fits.header['SECPIX2'], ''))
         cards.append(('WCSSEP', 0, ''))
         cards.append(('IMWCS', 'None', ''))
-
-        astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+        
+        if 'fits' in clean_rotated_fits:
+            astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
+        else:
+            astrom_out_fits = clean_rotated_fits.replace('.fit', 'w.fits')
+        
         # deleting deprecated/unuseful header keywords
         hdul = fits.open(clean_rotated_fits, mode='update')
 

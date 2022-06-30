@@ -176,7 +176,7 @@ class mcReduction:
             imtype = row['IMAGETYP'].strip().lower()
             if imtype.find('bias') != -1 or imtype.find('dark') != -1:
                 procOBJ.append('bias')
-            elif imtype.find('flat') != -1 or obj.find('dome') != -1 or imtype.find('dome') != -1:
+            elif imtype.find('flat') != -1 or obj.find('flat')!= -1 or obj.find('dome') != -1 or imtype.find('dome') != -1:
                 procOBJ.append('flat')
             else:
                 toks = row['OBJECT'].split()
@@ -192,6 +192,7 @@ class mcReduction:
         stat_keys = ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']
         stats = defaultdict(list)
         for fn in self.info_fits['FILENAME'].values:
+            print(fn)
             ofits = mcFits(fn, border=self.border)
             inf = ofits.stats()
             for k in stat_keys:
@@ -374,10 +375,12 @@ class mcReduction:
             # last flat: header will be used in masterFLAT
             oflat = mcFits(dff['FILENAME'].values[-1], border=self.border)
             
-            
-            if 'R' not in pa and round(float(pa)) == 360: # some FLATS have INSPOROT = 359.98 as value
-                pa = 0.0
-
+            try:
+                if round(float(pa)) == 360: # some FLATS have INSPOROT = 359.98 as value
+                    pa = 0.0
+            except:
+                print("WARNING: Polarization angle given as string (this is probably OSN)")
+                                 
             newCards = [('SOFT', 'IOP^3  Pipeline v1.0', 'Software used'),
                         ('PROCDATE', datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                                      'Master FLAT writing date'),

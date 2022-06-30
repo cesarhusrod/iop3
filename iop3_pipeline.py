@@ -671,10 +671,6 @@ def main():
         df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
     if len(df_blazars.index) > 0:
         pol_sources = True
-    if 'MAPCAT' in input_dir:
-        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-    else:
-        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
   
     # ----------------- BLAZARS PROCESSING -----------------
     
@@ -737,11 +733,9 @@ def main():
         pol_sources = True
         # sorting by DATE-OBS
         df_blazars = df_blazars.sort_values('DATE-OBS', ascending=True)
-        
         # Processing each astro-calibrated FITS
         for index, row in df_blazars.iterrows():
             reduced = row['PATH'].replace('raw', 'reduction')
-            print(row)
             print(f"DATE-OBS = {row['DATE-OBS']}")
             if 'MAPCAT' in input_dir:
                 dt_obj = datetime.fromisoformat(row['DATE-OBS'])
@@ -823,37 +817,12 @@ def main():
             # get astrocalibrated blazar names ("BLZRNAME") from FITS
             calib_header = mcFits(acalib).header
             blzrname = calib_header.get('BLZRNAME', None)
-            # By default, aperture is set to given in blazars configuration file
-            #aper_pix = calib_header.get('APERPIX', None)
-            # if not aper_pix:
-            #     try:
-            #         aper_pix = blazar_data[blazar_data['IAU_name_mc'] == blzrname]['aper_mc'].values[0] 
-            #     except:
-            #         print(f'PHOTOMETRY,WARNING,"No aperture asociated to FITS \'{acalib}\'."')
-            #         print(blazar_data[blazar_data['IAU_name_mc'] == blzrname])
-                
-
-            # # Suggested aperture in blazar file has priority
-            # if math.isnan(aper_pix):
-            #     if args.use_mean_fwhm_aper:
-            #         try:
-            #             aper_pix = df_fwhm_mean[df_fwhm_mean['BLZRNAME'] == blzrname]['MEAN_FWHM'].values[0]
-            #         except:
-            #             print(f'PHOTOCALIBRATION,WARNING,"Not mean FWHM value for target {blzrname}"')
-            #             aper_pix = None
-            #     if args.use_fwhm_aper:
-            #         # take FITS header FWHM keyword
-            #         aper_pix = calib_header.get('FWHM', None)
-
-            # Check aperture
-            #if not aper_pix:
-            #    print(f'PHOTOMETRY,ERROR,"Not aperture set for FITS \'{acalib}\'"')
-            #    return 4
-
+            
             # Querying blazar data info file.
             # If aperture is given, the script takes it.
             try:
-                aper_pix = blazar_data[blazar_data["IAU_name_mc"] == blzrname]["aper_mc"].values[0]
+                aperas = blazar_data[blazar_data["IAU_name_mc"] == blzrname]["aper_mc"].values[0]
+                aper_pix = aperas / calib_header['PIXSCALE']
                 print(f'aper_pix from blazars file = "{aper_pix}"')
             except:
                 aper_pix=float("nan")
@@ -898,13 +867,13 @@ def main():
 
     # ------------- STARS PROCESSING ------------------
     # Creating Stars DataFrame
-        if 'MAPCAT' in input_dir:
-            df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-        else:
-            df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
+    if 'MAPCAT' in input_dir:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+    else:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
     if len(df_stars.index) > 0:
 
-        # df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
+        #df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
         # sorting by DATE-OBS
         df_stars = df_stars.sort_values('DATE-OBS', ascending=True)
     
@@ -950,8 +919,8 @@ def main():
                     calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
                 else:
                     calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fit', '_final.fit'))
-
                 cmd_photocal = ""
+                i_fits = mcFits(calibrated)
                 # Querying blazar name for this calibrated FITS
                 blzr_name = i_fits.header.get('BLZRNAME', None)
                 if blzr_name is None:
@@ -962,9 +931,9 @@ def main():
                     blzr_name = blzr_name.strip()
                 # Querying blazar data info file.
                 # If aperture is given, the script takes it.
-                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"]
+                aperas = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                aper = aperas / i_fits.header['PIXSCALE']
                 print(f'aper = {aper}')
-                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
                 if args.overwrite:
                     cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"
                 else:
@@ -997,7 +966,8 @@ def main():
             # Querying blazar data info file.
             # If aperture is given, the script takes it.
             try:
-                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                aperas = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                aper = aperas / i_fits.header['PIXSCALE']
             except:
                 aper=float("nan")
             print(f'aper = {aper}')
@@ -1025,10 +995,10 @@ def main():
                                          stderr=subprocess.PIPE, shell=True, check=True)
                 if res.returncode:
                     message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                    print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+                    print(message.format(i_fits.header['DATE-OBS'], i_fits.header['OBJECT'], i_fits.header['EXPTIME']))
             except:
                 message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+                print(message.format(i_fits.header['DATE-OBS'], i_fits.header['OBJECT'], i_fits.header['EXPTIME']))
                 continue
             # print(df_blazar['aper_mc'])
             # blazar_aper = df_blazar['aper_mc']
