@@ -495,20 +495,12 @@ def main():
        type=int,
        default=3,
        help="Tolerance for distance in pixels for matching between objects in external catalog and FITS detections. [default: %(default)s].")
-    # parser.add_argument("--crotation",
-    #    action="store",
-    #    dest="crotation",
-    #    type=float,
-    #    default=3,
-    #    help="Rotation angle in degrees to align FITS image North (up). [default: %(default)s].")
     parser.add_argument('--ignore_farcalib', dest='ignore_farcalib', action='store_true', \
         help='If False, pipeline stops execution if some science FITS has no close enough IOP3 calibrator.')
     parser.add_argument("--overwrite", dest='overwrite', action='store_true', \
         help='Pipeline overwrite previous calibrations.')
     parser.add_argument("--skip_reduction", dest='skip_reduction', action='store_true', \
-        help='Skip reduction process in pipeline steps.')
-    # parser.add_argument("--skip_calibration", dest='skip_calibration', action='store_true', \
-    #     help='Skip astro-photometric calibration process in pipeline steps.')    
+        help='Skip reduction process in pipeline steps.')    
     parser.add_argument("--skip_astrocal", dest='skip_astrocal', action='store_true', \
         help='Skip astrometric calibration process in pipeline steps.')
     parser.add_argument("--skip_photocal", dest='skip_photocal', action='store_true', \
@@ -519,16 +511,6 @@ def main():
         help='Skip polarimetry computation in pipeline steps.')
     parser.add_argument("--skip_db_registration", dest='skip_db_registration', action='store_true', \
         help='Skip registering/updating run information in database as last pipeline step.')
-    parser.add_argument("--use_fwhm_aper", dest='use_fwhm_aper', action='store_true', \
-        help='Use FWHM measure as aperture.')
-    parser.add_argument("--aper_factor",
-       action="store",
-       dest="aper_factor",
-       type=float,
-       default=1.0,
-       help="Number that multiplies FWHM in order to modify aperture for photometry. [default: %(default)s].")
-    parser.add_argument("--use_mean_fwhm_aper", dest='use_mean_fwhm_aper', action='store_true', \
-        help='Skip photometric calibration process in pipeline steps.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
@@ -729,7 +711,7 @@ def main():
                     fout.write('ROT_ANGLE,WCSMATH_SOURCES,PATH_FITS\n')
                     fout.write(f'{crot},{wcsmatch_best},{cp_reduct}')
                 break
-            
+
         if wcsmatch_best < 10:
             print(f"ASTROCALIBRATION,ERROR,'Not enought matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
             return 2
@@ -849,8 +831,7 @@ def main():
             aper_pix = round(aper_pix, 1)
 
             cal_dir, fits_name = os.path.split(acalib)
-            
-            aper_pix = args.aper_factor * aper_pix
+
             print(f'(BLZRNAME, FWHM) = ({blzrname}, {aper_pix})')
 
             # Photocalibration command
@@ -898,11 +879,9 @@ def main():
             if not args.skip_astrocal:
                 print('Calibrating star: ')
                 print(f'{row}')
-                cmd = ''
+                cmd = 'python iop3_astrometric_calibration.py --is_star --tol_pixs={}  {} {} {}'
                 if args.overwrite:
                     cmd = 'python iop3_astrometric_calibration.py --is_star --tol_pixs={} --overwrite {} {} {}'
-                else:
-                    cmd = 'python iop3_astrometric_calibration.py --is_star --tol_pixs={}  {} {} {}'
                 cmd = cmd.format(args.tol_pixs, config_dir, cal_dir, row['PATH'].replace('raw', 'reduction'))
                 print('+' * 100)
                 print(cmd)
@@ -941,10 +920,9 @@ def main():
                 aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"]
                 print(f'aper = {aper}')
                 aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                cmd_photocal = "python iop3_photometric_calibration.py --aper_pix={} {} {} {}"
                 if args.overwrite:
-                    cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"
-                else:
-                    cmd_photocal = "python iop3_photometric_calibration.py --aper_pix={} {} {} {}"
+                    cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"    
                 cmd_photocal = cmd_photocal.format(aper, config_dir, cal_dir, calibrated)
                 print('+' * 100)
                 print(cmd_photocal)
@@ -1009,7 +987,7 @@ def main():
             print('+' * 100)
             subprocess.Popen(com_polarimetry, shell=True).wait()
 
-    # 4th STEP: Inserting results in database
+    # 5th STEP: Inserting results in database
     if not args.skip_db_registration:
         data_dir = input_dir.split('data')[0] + 'data'
         com_insertdb = f"python iop3_add_db_info.py {data_dir} {dt_run}"
@@ -1021,4 +999,4 @@ def main():
 
 if __name__ == '__main__':
     if not main():
-        print("Done!!")
+        print("IOP3 process successfully completed!!")
