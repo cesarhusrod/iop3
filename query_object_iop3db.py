@@ -48,7 +48,7 @@ def main():
         cursor = cnx.cursor()
 
         # query
-        query1 = f"SELECT P, dP, `rjd-50000`, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
+        query1 = f"SELECT P, dP, `rjd-50000`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
         
         
         # query execution
@@ -58,7 +58,7 @@ def main():
         table_rows = cursor.fetchall()
 
         # casting to Pandas DataFrame object
-        df = pd.DataFrame(table_rows, columns=['P','dP', 'RJD-50000', 'R', 'dR'])
+        df = pd.DataFrame(table_rows, columns=['P','dP', 'RJD-50000', 'Theta', 'dTheta', 'R', 'dR'])
         if len(df.index) == 0:
             print(f'WARNING: No date stored in IOP^3 database for object called "{args.blazar_name}"')
             cursor.close()
@@ -69,17 +69,23 @@ def main():
         print(df)
 
         #to start plotting
-        fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True)
+        fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
 
-        #first dataframe
+        # first plot
         df.plot(ax=axes[0], kind='scatter',x='RJD-50000',y='P', yerr='dP', color='red', s=3)
         axes[0].set_title(args.blazar_name)
         axes[0].grid()
-        #second dataframe
-        df.plot(ax=axes[1], kind='scatter',x='RJD-50000',y='R', yerr='dR', color='blue', s=3)
-
+        
+        # second plot
+        df.plot(ax=axes[1], kind='scatter',x='RJD-50000',y='Theta', yerr='dTheta', color='green', s=3)
+        axes[1].grid()
+        
+        # third plot
+        df.plot(ax=axes[2], kind='scatter',x='RJD-50000',y='R', yerr='dR', color='blue', s=3)
+        axes[2].grid()
+        
         # Plotting as scatter plot
-        plt.grid()
+        # plt.grid()
 
         # saving plot in file
         png_path = os.path.join(args.out_dir, f'{args.blazar_name}.png')
