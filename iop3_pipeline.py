@@ -270,12 +270,10 @@ def get_best_rotangle(path, config_dir, cal_dir, tol_pixs=5):
         com_calibration = com_cal.format(crot, tol_pixs, config_dir, \
             cal_dir_angle, path)
         print(com_calibration)
-        try:
-            res = execute_command(com_calibration)
-        except:
-            if res.returncode:
-                print(res)
-                return res.returncode
+        res = execute_command(com_calibration)
+        if res.returncode:
+            print(res)
+            return res.returncode
         # read astrocalibration file
         astro_csv = glob.glob(os.path.join(cal_dir_angle, '*astrocal_process_info.csv'))
         
@@ -688,14 +686,35 @@ def main():
             
             df_blazars = pd.concat([df_blazars, df_blazars_obj], axis=1)
             df_blazars.sort_values(by='EXPTIME', inplace=True, ascending=False)
-            print(df_blazars.info())
+            # print(df_blazars['EXPTIME'])
+            
+            # return -99
             # grouping by object and getting first fit for each group
-            candidate_paths = df_blazars.groupby('OBJ')['PATH'].first()
+            candidate_paths = df_blazars.groupby('OBJ')['PATH'].last()
             
             # candidate_paths.sort_values(by='EXPTIME', inplace=True, ascending=False)
             print('------- Rotation candidates ----------')
-            print(candidate_paths)
+            # sort by descending EXPTIME
+            exptimes = []
+            paths = []
+            objects = []
             for cp in candidate_paths:
+                i_fits = mcFits(cp)
+                paths.append(cp)
+                exptimes.append(i_fits.header['EXPTIME'])
+                objects.append(i_fits.header['OBJECT'])
+            # change to Numpy arrays
+            a_exptimes = np.array(exptimes)
+            a_objects = np.array(objects)
+            a_paths = np.array(paths)
+            
+            # sorting by descending exptimes
+            index_sort = np.argsort(a_exptimes)
+            sorted_paths = a_paths[index_sort[::-1]]
+            for t, o, p in zip(a_exptimes[index_sort[::-1]], a_objects[index_sort[::-1]], a_paths[index_sort[::-1]]):
+                print(f'{t} seconds (object = {o}) -> {p}')
+        
+            for cp in a_paths[index_sort[::-1]]:
                 cp_reduct = cp.replace('raw', 'reduction')
                 i_fits = mcFits(cp_reduct)
                 etime = i_fits.header["EXPTIME"]

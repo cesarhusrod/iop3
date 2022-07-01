@@ -91,7 +91,7 @@ def read_sext_catalog(path, format='ASCII', verbose=False):
 
 def execute_command(cmd, out=subprocess.PIPE, err=subprocess.PIPE, shell=True):
     """It executes command and checks results."""
-    result = subprocess.run(cmd, stdout=out, stderr=err, shell=shell, check=True)
+    result = subprocess.run(cmd, stdout=out, stderr=err, shell=shell)
     
     return result
 
