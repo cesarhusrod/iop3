@@ -343,15 +343,7 @@ def contains_valid_coords(fits_path, keywordRA='RA', keywordDEC='DEC'):
     i_fits = mcFits(fits_path)
     input_head = i_fits.header
     # Central FITS coordinates
-    if 'RA' in input_head:
-        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
-    elif 'OBJCTRA' in input_head:
-        keywordRA = 'OBJCTRA'
-        keywordDEC = 'OBJCTDEC'
-        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
-    else:
-        print(f'PIPELINE,ERROR,Input coordinates (RA DEC) missing from header or not with usual name.')
-        return False
+    icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
     try:
         input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
         obstime="J2000")
@@ -373,7 +365,13 @@ def recover_fits_coords(fits_path, blazar_data, verbose=True):
         _type_: _description_
     """
     recover = False
-    if not contains_valid_coords(fits_path):
+    if 'MAPCAT' in fits_path:
+        keywordRA = 'RA'
+        keywordDEC = 'DEC'
+    else:
+        keywordRA = 'OBJCTRA'
+        keywordDEC = 'OBJCTDEC'
+    if not contains_valid_coords(fits_path, keywordRA, keywordDEC):
         recover = True
         # Changing coordinates to IOP3 source
         i_fits = mcFits(fits_path)
@@ -572,8 +570,14 @@ def main():
         recover_fits_coords(p, blazar_data)
     
     # Rejected because of non valid RA,DEC coordinates
-    non_valid_coords = [p for p in input_paths if not contains_valid_coords(p)]
-    input_paths = [p for p in input_paths if contains_valid_coords(p)]
+    if 'MAPCAT' in input_dir:
+        keywordRA = 'RA'
+        keywordDEC = 'DEC'
+    else:
+        keywordRA = 'OBJCTRA'
+        keywordDEC = 'OBJCTDEC'    
+    non_valid_coords = [p for p in input_paths if not contains_valid_coords(p, keywordRA, keywordDEC)]
+    input_paths = [p for p in input_paths if contains_valid_coords(p, keywordRA, keywordDEC)]
 
     # Rejected because of non-valid observation DATE keyword found in FITS header
     non_valid_dateobs = [p for p in input_paths if not contains_valid_dateobs(p)]
