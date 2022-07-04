@@ -342,15 +342,8 @@ def contains_valid_coords(fits_path, keywordRA='RA', keywordDEC='DEC'):
     # Getting header informacion
     i_fits = mcFits(fits_path)
     input_head = i_fits.header
-    
     # Central FITS coordinates
-    try:
-        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
-    except:
-        keywordRA='OBJCTRA'
-        keywordDEC='OBJCTDEC'
-        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
-
+    icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
     try:
         input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
         obstime="J2000")
@@ -372,7 +365,13 @@ def recover_fits_coords(fits_path, blazar_data, verbose=True):
         _type_: _description_
     """
     recover = False
-    if not contains_valid_coords(fits_path):
+    if 'MAPCAT' in fits_path:
+        keywordRA = 'RA'
+        keywordDEC = 'DEC'
+    else:
+        keywordRA = 'OBJCTRA'
+        keywordDEC = 'OBJCTDEC'
+    if not contains_valid_coords(fits_path, keywordRA, keywordDEC):
         recover = True
         # Changing coordinates to IOP3 source
         i_fits = mcFits(fits_path)
@@ -571,8 +570,14 @@ def main():
         recover_fits_coords(p, blazar_data)
     
     # Rejected because of non valid RA,DEC coordinates
-    non_valid_coords = [p for p in input_paths if not contains_valid_coords(p)]
-    input_paths = [p for p in input_paths if contains_valid_coords(p)]
+    if 'MAPCAT' in input_dir:
+        keywordRA = 'RA'
+        keywordDEC = 'DEC'
+    else:
+        keywordRA = 'OBJCTRA'
+        keywordDEC = 'OBJCTDEC'    
+    non_valid_coords = [p for p in input_paths if not contains_valid_coords(p, keywordRA, keywordDEC)]
+    input_paths = [p for p in input_paths if contains_valid_coords(p, keywordRA, keywordDEC)]
 
     # Rejected because of non-valid observation DATE keyword found in FITS header
     non_valid_dateobs = [p for p in input_paths if not contains_valid_dateobs(p)]
@@ -647,10 +652,6 @@ def main():
         df_blazars = create_dataframe(blazar_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER'])
     if len(df_blazars.index) > 0:
         pol_sources = True
-    if 'MAPCAT' in input_dir:
-        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-    else:
-        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
   
     # ----------------- BLAZARS PROCESSING -----------------
     
@@ -740,11 +741,9 @@ def main():
         pol_sources = True
         # sorting by DATE-OBS
         df_blazars = df_blazars.sort_values('DATE-OBS', ascending=True)
-        
         # Processing each astro-calibrated FITS
         for index, row in df_blazars.iterrows():
             reduced = row['PATH'].replace('raw', 'reduction')
-            print(row)
             print(f"DATE-OBS = {row['DATE-OBS']}")
             if 'MAPCAT' in input_dir:
                 dt_obj = datetime.fromisoformat(row['DATE-OBS'])
@@ -829,7 +828,8 @@ def main():
             # Querying blazar data info file.
             # If aperture is given, the script takes it.
             try:
-                aper_pix = blazar_data[blazar_data["IAU_name_mc"] == blzrname]["aper_mc"].values[0]
+                aperas = blazar_data[blazar_data["IAU_name_mc"] == blzrname]["aper_mc"].values[0]
+                aper_pix = aperas / calib_header['PIXSCALE']
                 print(f'aper_pix from blazars file = "{aper_pix}"')
             except:
                 aper_pix=float("nan")
@@ -870,13 +870,13 @@ def main():
             
     # ------------- STARS PROCESSING ------------------
     # Creating Stars DataFrame
-        if 'MAPCAT' in input_dir:
-            df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
-        else:
-            df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
+    if 'MAPCAT' in input_dir:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT'])
+    else:
+        df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
     if len(df_stars.index) > 0:
 
-        # df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
+        #df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
         # sorting by DATE-OBS
         df_stars = df_stars.sort_values('DATE-OBS', ascending=True)
     
@@ -926,6 +926,7 @@ def main():
                 i_fits = mcFits(calibrated)
 
                 cmd_photocal = ""
+                i_fits = mcFits(calibrated)
                 # Querying blazar name for this calibrated FITS
                 blzr_name = i_fits.header.get('BLZRNAME', None)
                 if blzr_name is None:
@@ -936,9 +937,9 @@ def main():
                     blzr_name = blzr_name.strip()
                 # Querying blazar data info file.
                 # If aperture is given, the script takes it.
-                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"]
+                aperas = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                aper = aperas / i_fits.header['PIXSCALE']
                 print(f'aper = {aper}')
-                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
                 cmd_photocal = "python iop3_photometric_calibration.py --aper_pix={} {} {} {}"
                 if args.overwrite:
                     cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"    
@@ -966,7 +967,8 @@ def main():
             # Querying blazar data info file.
             # If aperture is given, the script takes it.
             try:
-                aper = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                aperas = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
+                aper = aperas / i_fits.header['PIXSCALE']
             except:
                 aper=float("nan")
             print(f'aper = {aper}')
@@ -989,11 +991,16 @@ def main():
             cmd = 'python iop3_photometry.py --aper_pix={} {} {} {}'
             cmd = cmd.format(round(aper, 1), args.config_dir, base_dir, ap_calib)
             print(cmd)
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, \
-                stderr=subprocess.PIPE, shell=True)
-            if res.returncode:
+
+            try:
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, \
+                                         stderr=subprocess.PIPE, shell=True, check=True)
+                if res.returncode:
+                    message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
+                    print(message.format(i_fits.header['DATE-OBS'], i_fits.header['OBJECT'], i_fits.header['EXPTIME']))
+            except:
                 message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+                print(message.format(i_fits.header['DATE-OBS'], i_fits.header['OBJECT'], i_fits.header['EXPTIME']))
                 continue
 
     #  4th STEP: Computing polarimetric parameters
