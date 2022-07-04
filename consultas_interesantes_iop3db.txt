@@ -1,0 +1,29 @@
+-- número de medidas de polarización por noche
+SELECT count(*), date_run
+FROM polarimetry
+GROUP BY date_run
+
+
+-- listado de medidas de polarización para una noche dada
+SELECT * 
+FROM `polarimetry` 
+WHERE date_run = '2018-12-07' 
+ORDER BY `rjd-50000` ASC
+
+-- listado de medidas de polarización para un objeto a lo largo del tiempo (evolución temporal de la polarización, ángulo, magnitud...)
+SELECT *
+FROM `polarimetry`
+WHERE name like '%2200+420%'
+ORDER BY `rjd-50000` ASC
+
+-- medidas de la rotación previa por noche antes de la calibración astrométrica
+SELECT DISTINCT crotation, date_run 
+FROM image_calibrated 
+WHERE crotation is not NULL
+ORDER BY date_run ASC 
+
+-- Numero de medidas por object
+SELECT name, MIN(date_run), MAX(date_run), count(*) as NUM_MEASUREMENTS
+FROM `polarimetry` 
+GROUP BY name
+ORDER BY NUM_MEASUREMENTS DESC

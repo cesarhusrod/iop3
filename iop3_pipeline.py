@@ -213,12 +213,9 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
         print(com_calibration)
         print('+' * 100)
         with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
-            try:
-                res = subprocess.run(com_calibration, stdout=log_file, \
-                                         stderr=subprocess.PIPE, shell=True, check=True)
-                if res.returncode:
-                    print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
-            except:
+            res = subprocess.run(com_calibration, stdout=log_file, \
+                stderr=subprocess.PIPE, shell=True)
+            if res.returncode:
                 print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
         # Checking for succesful calibration
         calibrated = glob.glob(os.path.join(cal_dir, '*final.fit*'))
@@ -232,11 +229,12 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
             print('+' * 100)
             print(com_photocal)
             print('+' * 100)
-            try:
-                res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
-                                         stderr=subprocess.PIPE, shell=True, check=True)
-            except:
+            
+            res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
+                stderr=subprocess.PIPE, shell=True)
+            if res.returncode:
                 print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {calibrated[0]} file."')
+                print(f'(Error code = {res.returncode})')
         else:
             non_calibrated_group_commands.append(row['PATH'])
             non_calibrated_group_datetimes.append(row['DATE-OBS'])
@@ -272,12 +270,10 @@ def get_best_rotangle(path, config_dir, cal_dir, tol_pixs=5):
         com_calibration = com_cal.format(crot, tol_pixs, config_dir, \
             cal_dir_angle, path)
         print(com_calibration)
-        try:
-            res = execute_command(com_calibration)
-        except:
-            if res.returncode:
-                print(res)
-                return res.returncode
+        res = execute_command(com_calibration)
+        if res.returncode:
+            print(res)
+            return res.returncode
         # read astrocalibration file
         astro_csv = glob.glob(os.path.join(cal_dir_angle, '*astrocal_process_info.csv'))
         
@@ -498,20 +494,12 @@ def main():
        type=int,
        default=3,
        help="Tolerance for distance in pixels for matching between objects in external catalog and FITS detections. [default: %(default)s].")
-    # parser.add_argument("--crotation",
-    #    action="store",
-    #    dest="crotation",
-    #    type=float,
-    #    default=3,
-    #    help="Rotation angle in degrees to align FITS image North (up). [default: %(default)s].")
     parser.add_argument('--ignore_farcalib', dest='ignore_farcalib', action='store_true', \
         help='If False, pipeline stops execution if some science FITS has no close enough IOP3 calibrator.')
     parser.add_argument("--overwrite", dest='overwrite', action='store_true', \
         help='Pipeline overwrite previous calibrations.')
     parser.add_argument("--skip_reduction", dest='skip_reduction', action='store_true', \
-        help='Skip reduction process in pipeline steps.')
-    # parser.add_argument("--skip_calibration", dest='skip_calibration', action='store_true', \
-    #     help='Skip astro-photometric calibration process in pipeline steps.')    
+        help='Skip reduction process in pipeline steps.')    
     parser.add_argument("--skip_astrocal", dest='skip_astrocal', action='store_true', \
         help='Skip astrometric calibration process in pipeline steps.')
     parser.add_argument("--skip_photocal", dest='skip_photocal', action='store_true', \
@@ -522,16 +510,6 @@ def main():
         help='Skip polarimetry computation in pipeline steps.')
     parser.add_argument("--skip_db_registration", dest='skip_db_registration', action='store_true', \
         help='Skip registering/updating run information in database as last pipeline step.')
-    parser.add_argument("--use_fwhm_aper", dest='use_fwhm_aper', action='store_true', \
-        help='Use FWHM measure as aperture.')
-    parser.add_argument("--aper_factor",
-       action="store",
-       dest="aper_factor",
-       type=float,
-       default=1.0,
-       help="Number that multiplies FWHM in order to modify aperture for photometry. [default: %(default)s].")
-    parser.add_argument("--use_mean_fwhm_aper", dest='use_mean_fwhm_aper', action='store_true', \
-        help='Skip photometric calibration process in pipeline steps.')
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
@@ -654,7 +632,7 @@ def main():
         print(com_reduction)
         # Command execution
         res_reduction = subprocess.run(com_reduction,stdout=subprocess.PIPE, \
-        stderr=subprocess.PIPE, shell=True, check=True)
+            stderr=subprocess.PIPE, shell=True)
         if res_reduction.returncode:
             message = f'REDUCTION,ERROR,"Could not reduce {dt_run} night run."'
             print(message)
@@ -662,7 +640,6 @@ def main():
             print(f'STDERR = {res_reduction.stderr.decode("UTF-8")}')
             return 1
 
-    # return -1
     # ****************** 2nd STEP: Input reduced images calibration  ************* #
     pol_sources = False # It checks that more than one blazar was calibrated successfully
     if 'MAPCAT' in input_dir:
@@ -679,55 +656,82 @@ def main():
         df_blazars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_blazars['PATH'].values]
         df_blazars['CLOSE_IOP3_RA'] = [closest_blazar(blazar_data, bp)[0]['ra2000_mc_deg'] for bp in df_blazars['PATH'].values]
         df_blazars['CLOSE_IOP3_DEC'] = [closest_blazar(blazar_data, bp)[0]['dec2000_mc_deg'] for bp in df_blazars['PATH'].values]
-            
+        
         # Getting best FITS rotation for astrocalibration
         rot_dir = os.path.join(proc_dirs['calibration_dir'], 'rotation_angle')
         crot = None
         wcsmatch_best = None
         rot_path = os.path.join(rot_dir, 'result.txt')
-        succeed=0
-        while succeed==0:
-            print(succeed)
-            if os.path.exists(rot_path):
-                try:
-                    data_res = pd.read_csv(rot_path)
-                    crot = data_res['ROT_ANGLE'].values[0]
-                    wcsmatch_best = data_res['WCSMATH_SOURCES'].values[0]
-                    path_fits = data_res['PATH_FITS'].values[0]
-                    succeed=1
-                except:
-                    os.remove(rot_path)
-            else:
-                # It's suposed that longer exposure times improve source detection and quality
-                # but in some cases, it fails. So, the algorithm will try from longer to shorter
-                # exposure times until a minimum number of sources be detected
-                n_min = 10
-            #exposure times
-                exp_times = np.sort(df_blazars['EXPTIME'].unique())[::-1] # descending order
-                print(f'ASTROCALIBRATION,INFO,"Blazar exposure times = {exp_times}"')
 
-                if len(exp_times) > 3:
-                    exp_times = exp_times[1:-1]
-                for i, et in enumerate(exp_times): # not taking into account lower (not enough sources) or higher (very deep field) exposures
-                    df_blz_et = df_blazars[df_blazars['EXPTIME'] == et]
-                # getting first element
-                    path_fits = df_blz_et['PATH'].iloc[0].replace('raw', 'reduction')
-                    print(f'ASTROCALIBRATION,INFO,"Computing best rotation angle on \'{path_fits}\' (EXPTIME = {et})"')
-                    crot, wcsmatch_best  = get_best_rotangle(path_fits, args.config_dir, rot_dir, tol_pixs=2)
-                    print(f'ASTROCALIBRATION,INFO,"Rotated angle computed and number of mathed sources = ({crot}, {wcsmatch_best})"')
-                    if (wcsmatch_best is None) or (wcsmatch_best < n_min):
-                        continue
+        if  os.path.exists(rot_path):
+            data_res = pd.read_csv(rot_path)
+            crot = data_res['ROT_ANGLE'].values[0]
+            wcsmatch_best = data_res['WCSMATH_SOURCES'].values[0]
+            path_fits = data_res['PATH_FITS'].values[0]
+        else:
+            # The algorithm will try to compute RUN rotating angle 
+            # until a minimum number of sources be detected
+            n_min = 10
+            
+            # splitting OBJECT column and adding columns to dataframe
+            try:
+                df_blazars_obj = pd.DataFrame(df_blazars.OBJECT.str.split().str[0].tolist(), \
+                    columns=['OBJ'])
+            except ValueError:
+                print(df_blazars.OBJECT.str.split().tolist())
+                raise
+            
+            df_blazars = pd.concat([df_blazars, df_blazars_obj], axis=1)
+            df_blazars.sort_values(by='EXPTIME', inplace=True, ascending=False)
+            # print(df_blazars['EXPTIME'])
+            
+            # return -99
+            # grouping by object and getting first fit for each group
+            candidate_paths = df_blazars.groupby('OBJ')['PATH'].last()
+            
+            # candidate_paths.sort_values(by='EXPTIME', inplace=True, ascending=False)
+            print('------- Rotation candidates ----------')
+            # sort by descending EXPTIME
+            exptimes = []
+            paths = []
+            objects = []
+            for cp in candidate_paths:
+                i_fits = mcFits(cp)
+                paths.append(cp)
+                exptimes.append(i_fits.header['EXPTIME'])
+                objects.append(i_fits.header['OBJECT'])
+            # change to Numpy arrays
+            a_exptimes = np.array(exptimes)
+            a_objects = np.array(objects)
+            a_paths = np.array(paths)
+            
+            # sorting by descending exptimes
+            index_sort = np.argsort(a_exptimes)
+            sorted_paths = a_paths[index_sort[::-1]]
+            for t, o, p in zip(a_exptimes[index_sort[::-1]], a_objects[index_sort[::-1]], a_paths[index_sort[::-1]]):
+                print(f'{t} seconds (object = {o}) -> {p}')
+        
+            for cp in a_paths[index_sort[::-1]]:
+                cp_reduct = cp.replace('raw', 'reduction')
+                i_fits = mcFits(cp_reduct)
+                etime = i_fits.header["EXPTIME"]
+                obj = i_fits.header["OBJECT"]
+                print(f'ASTROCALIBRATION,INFO,"Computing best rotation angle on \'{cp_reduct}\' (OBJECT={obj}, EXPTIME={etime})"')
+                crot, wcsmatch_best  = get_best_rotangle(cp_reduct, args.config_dir, rot_dir, tol_pixs=2)
+                print(f'ASTROCALIBRATION,INFO,"Rotated angle computed and number of mathed sources = ({crot}, {wcsmatch_best})"')
+                if (wcsmatch_best is None) or (wcsmatch_best < n_min):
+                    continue
 
                 # If rotation angle computation was satifactory, then it saves results in file
-                    with open(rot_path, 'w') as fout:
-                        fout.write('ROT_ANGLE,WCSMATH_SOURCES,PATH_FITS\n')
-                        fout.write(f'{crot},{wcsmatch_best},{path_fits}')
-                    break
+                with open(rot_path, 'w') as fout:
+                    fout.write('ROT_ANGLE,WCSMATH_SOURCES,PATH_FITS\n')
+                    fout.write(f'{crot},{wcsmatch_best},{cp_reduct}')
+                break
+
+        if wcsmatch_best < 10:
+            print(f"ASTROCALIBRATION,ERROR,'Not enought matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
+            return 2
         
-                if wcsmatch_best < 10:
-                    print(f"ASTROCALIBRATION,ERROR,'Not enough matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
-                    return 2
-                succeed=1
         print(f' ---------- Best rotation angle for astrometric calibration = {crot} ({wcsmatch_best} matches) -------')
         print(df_blazars)
         pol_sources = True
@@ -768,7 +772,7 @@ def main():
                         return 3
                 with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
                     res = subprocess.run(com_calibration, stdout=log_file, \
-                    stderr=subprocess.PIPE, shell=True, check=True)
+                        stderr=subprocess.PIPE, shell=True)
                     if res.returncode:
                         print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
                 
@@ -777,7 +781,6 @@ def main():
     # print(calibrated)
     df_astrocal_blazars = create_dataframe(calibrated, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT', 'BLZRNAME', 'FWHM'])
     # print(df_astrocal_blazars[df_astrocal_blazars['BLZRNAME'].isnull()]['PATH'].values)
-    # return -99
 
     ###################################################################################
 
@@ -817,7 +820,7 @@ def main():
             # get astrocalibrated blazar names ("BLZRNAME") from FITS
             calib_header = mcFits(acalib).header
             blzrname = calib_header.get('BLZRNAME', None)
-            
+
             # Querying blazar data info file.
             # If aperture is given, the script takes it.
             try:
@@ -843,8 +846,7 @@ def main():
             aper_pix = round(aper_pix, 1)
 
             cal_dir, fits_name = os.path.split(acalib)
-            
-            aper_pix = args.aper_factor * aper_pix
+
             print(f'(BLZRNAME, FWHM) = ({blzrname}, {aper_pix})')
 
             # Photocalibration command
@@ -857,14 +859,11 @@ def main():
             print('+' * 100)
             print(com_photocal)
             print('+' * 100)
-            try:
-                res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
-                                         stderr=subprocess.PIPE, shell=True, check=True)
-                if res.returncode:
-                    print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {acalib} file."')
-            except:
-                    print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {acalib} file."')
-
+            res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
+                stderr=subprocess.PIPE, shell=True)
+            if res.returncode:
+                print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {acalib} file."')
+            
     # ------------- STARS PROCESSING ------------------
     # Creating Stars DataFrame
     if 'MAPCAT' in input_dir:
@@ -895,30 +894,33 @@ def main():
             if not args.skip_astrocal:
                 print('Calibrating star: ')
                 print(f'{row}')
-                cmd = ''
+                cmd = 'python iop3_astrometric_calibration.py --is_star --tol_pixs={}  {} {} {}'
                 if args.overwrite:
                     cmd = 'python iop3_astrometric_calibration.py --is_star --tol_pixs={} --overwrite {} {} {}'
-                else:
-                    cmd = 'python iop3_astrometric_calibration.py --is_star --tol_pixs={}  {} {} {}'
                 cmd = cmd.format(args.tol_pixs, config_dir, cal_dir, row['PATH'].replace('raw', 'reduction'))
                 print('+' * 100)
                 print(cmd)
                 print('+' * 100)
-                try:
-                    res = subprocess.run(cmd, stdout=subprocess.PIPE, \
-
-                                             stderr=subprocess.PIPE, shell=True, check=True)
-                except:
-                    if res.returncode:
-                        message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                        print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
+        
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, \
+                    stderr=subprocess.PIPE, shell=True)
+                if res.returncode:
+                    message = 'ASTROCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
+                    print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
 
             if not args.skip_photocal:    
                 # Photometric calibration: stars have fixed aperture
+
                 if 'fits' in os.path.split(row['PATH'])[1]:
                     calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fits', '_final.fits'))
                 else:
                     calibrated = os.path.join(cal_dir, os.path.split(row['PATH'])[1].replace('.fit', '_final.fit'))
+
+                if not os.path.exists(calibrated):
+                    print(f'PHOTOCALIBRATION,WARNING,Could not calibrate "{calibrated}"')
+                    continue
+                i_fits = mcFits(calibrated)
+
                 cmd_photocal = ""
                 i_fits = mcFits(calibrated)
                 # Querying blazar name for this calibrated FITS
@@ -934,21 +936,16 @@ def main():
                 aperas = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
                 aper = aperas / i_fits.header['PIXSCALE']
                 print(f'aper = {aper}')
+                cmd_photocal = "python iop3_photometric_calibration.py --aper_pix={} {} {} {}"
                 if args.overwrite:
-                    cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"
-                else:
-                    cmd_photocal = "python iop3_photometric_calibration.py --aper_pix={} {} {} {}"
+                    cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"    
                 cmd_photocal = cmd_photocal.format(aper, config_dir, cal_dir, calibrated)
                 print('+' * 100)
                 print(cmd_photocal)
                 print('+' * 100)
-                try:
-                    res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
-                                             stderr=subprocess.PIPE, shell=True, check=True)
-
-                    if res.returncode:
-                        message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-                except:
+                res = subprocess.run(cmd_photocal, stdout=subprocess.PIPE, \
+                    stderr=subprocess.PIPE, shell=True)
+                if res.returncode:
                     message = 'PHOTOCALIBRATION,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
                     print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
 
@@ -990,6 +987,7 @@ def main():
             cmd = 'python iop3_photometry.py --aper_pix={} {} {} {}'
             cmd = cmd.format(round(aper, 1), args.config_dir, base_dir, ap_calib)
             print(cmd)
+
             try:
                 res = subprocess.run(cmd, stdout=subprocess.PIPE, \
                                          stderr=subprocess.PIPE, shell=True, check=True)
@@ -1000,18 +998,6 @@ def main():
                 message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
                 print(message.format(i_fits.header['DATE-OBS'], i_fits.header['OBJECT'], i_fits.header['EXPTIME']))
                 continue
-            # print(df_blazar['aper_mc'])
-            # blazar_aper = df_blazar['aper_mc']
-            # if blazar_aper > 0:
-            #     cmd = 'python iop3_photometry.py --aper_pix={} {} {} {}'
-            #     cmd = cmd.format(blazar_aper, args.config_dir, base_dir, ap_calib)
-            #     print(cmd)
-            #     # return 99
-            #     res = subprocess.run(cmd, stdout=subprocess.PIPE, \
-            #         stderr=subprocess.PIPE, shell=True, check=True)
-            #     if res.returncode:
-            #         message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
-            #         print(message.format(row['DATE-OBS'], row['OBJECT'], row['EXPTIME']))
 
     #  4th STEP: Computing polarimetric parameters
     if not args.skip_polarimetry:
@@ -1023,7 +1009,7 @@ def main():
             print('+' * 100)
             subprocess.Popen(com_polarimetry, shell=True).wait()
 
-    # 4th STEP: Inserting results in database
+    # 5th STEP: Inserting results in database
     if not args.skip_db_registration:
         data_dir = input_dir.split('data')[0] + 'data'
         com_insertdb = f"python iop3_add_db_info.py {data_dir} {dt_run}"
@@ -1035,4 +1021,4 @@ def main():
 
 if __name__ == '__main__':
     if not main():
-        print("Done!!")
+        print("IOP3 process successfully completed!!")

@@ -60,11 +60,15 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
     ax1.tick_params(direction='out', length=3, width=1, colors='k', \
         grid_color='k', grid_alpha=0.5)
     ax1.yaxis.set_tick_params(labelsize=4)
-    ax1.plot(df_data_man['RJD-50000'].values, df_data_man['P'].values, 'r.', alpha=0.5, label='MANUAL')
+    
+    ps = df_data_pipe['P'].values
+    if df_data_man is not None:
+        ax1.plot(df_data_man['RJD-50000'].values, df_data_man['P'].values, 'r.', alpha=0.5, label='MANUAL')
+        ps = np.concatenate([df_data_man['P'].values, df_data_pipe['P'].values])
     ax1.plot(df_data_pipe['RJD-50000'].values, df_data_pipe['P'].values, 'b.', alpha=0.5, label='IOP3')
     #ax1.xaxis.set_tick_params(rotation=30, labelsize=8)
     #ax1.yaxis.set_tick_params(labelsize=6)
-    ps = np.concatenate([df_data_man['P'].values, df_data_pipe['P'].values])
+    
     ticks = np.linspace(start=ps.min(), stop=ps.max(), num=5)
     ax1.set_yticks(ticks)
     ax1.grid()
@@ -74,9 +78,13 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
     ax2.tick_params(direction='out', length=3, width=1, colors='k', \
         grid_color='k', grid_alpha=0.5)
     ax2.yaxis.set_tick_params(labelsize=4)
-    ax2.plot(df_data_man['RJD-50000'].values, df_data_man['Theta'].values, 'r.', alpha=0.5, label='MANUAL')
+    
+    theta = df_data_pipe['Theta'].values
+    if df_data_man is not None:
+        ax2.plot(df_data_man['RJD-50000'].values, df_data_man['Theta'].values, 'r.', alpha=0.5, label='MANUAL')
+        theta = np.concatenate([df_data_man['Theta'].values, df_data_pipe['Theta'].values])
     ax2.plot(df_data_pipe['RJD-50000'].values, df_data_pipe['Theta'].values, 'b.', alpha=0.5, label='IOP3')
-    theta = np.concatenate([df_data_man['Theta'].values, df_data_pipe['Theta'].values])
+    
     ticks = np.linspace(start=theta.min(), stop=theta.max(), num=7)
     ax2.set_yticks(ticks)
     ax2.grid()
@@ -86,11 +94,14 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
     ax3.tick_params(direction='out', length=3, width=1, colors='k', \
         grid_color='k', grid_alpha=0.5)
     ax3.yaxis.set_tick_params(labelsize=4)
-    df_m_r = df_data_man[df_data_man['R'] > 0]
-    ax3.plot(df_m_r['RJD-50000'].values, df_m_r['R'].values, 'r.', alpha=0.5, label='MANUAL')
+    
+    R = df_data_pipe['R'].values
+    if df_data_man is not None and 'R' in df_data_man:
+        df_m_r = df_data_man[df_data_man['R'] > 0]
+        R = np.concatenate([df_m_r['R'], df_data_pipe['R'].values])
+        ax3.plot(df_m_r['RJD-50000'].values, df_m_r['R'].values, 'r.', alpha=0.5, label='MANUAL')
     ax3.plot(df_data_pipe['RJD-50000'].values, df_data_pipe['R'].values, 'b.', alpha=0.5, label='IOP3')
     
-    R = np.concatenate([df_m_r['R'], df_data_pipe['R'].values])
     ticks = np.linspace(start=R.min(), stop=R.max(), num=7)
     ax3.set_yticks(ticks)
     ax3.grid()
@@ -100,8 +111,9 @@ def make_plots(df_data_man, df_data_pipe, out_png_path, title='160110'):
 
     # plot object names (for old and new polarimetry measurements)
     # manual procedure
-    for x, y, n in zip(df_m_r['RJD-50000'].values, df_m_r['R'].values - 1.2, df_m_r['Object'].values):
-        ax3.text(x, y, n, {'rotation': 'vertical', 'fontsize': 3, 'color': 'r', 'horizontalalignment': 'right'})
+    if df_data_man is not None and 'R' in df_data_man:
+        for x, y, n in zip(df_m_r['RJD-50000'].values, df_m_r['R'].values - 1.2, df_m_r['Object'].values):
+            ax3.text(x, y, n, {'rotation': 'vertical', 'fontsize': 3, 'color': 'r', 'horizontalalignment': 'right'})
     
     # iop3 procedure
     for x, y, n in zip(df_data_pipe['RJD-50000'].values, df_data_pipe['R'].values + 0.5, df_data_pipe['Object'].values):
@@ -132,29 +144,36 @@ def main():
                         help="Show running and progress information [default: %(default)s].")
     args = parser.parse_args()
 
-    data_man = read_res(args.manual_polarymetry_res)
-    data_pipe = read_res(args.iop3_polarymetry_res)
+    data_man = None
+    df_data_man = None
+    if os.path.exists(args.manual_polarymetry_res):
+        data_man = read_res(args.manual_polarymetry_res)
+        
+        print(data_man)
+        for k, v in data_man.items():
+            print(f'{k} -> {len(v)}')
+        print('*' * 30)
+        
+        df_data_man = pd.DataFrame.from_dict(data_man)
+        # filtering to valid results
+        df_data_man = df_data_man[df_data_man['Theta'] > -99.0]
     
-    print(data_man)
-    for k, v in data_man.items():
-        print(f'{k} -> {len(v)}')
-    print('*' * 30)
+    data_pipe = read_res(args.iop3_polarymetry_res)
+        
     print(data_pipe)
     for k, v in data_pipe.items():
         print(f'{k} -> {len(v)}')
     
     print('*' * 30)
     
-    df_data_man = pd.DataFrame.from_dict(data_man)
-    # filtering to valid results
-    df_data_man = df_data_man[df_data_man['Theta'] > -99.0]
-    
     df_data_pipe = pd.DataFrame.from_dict(data_pipe)
     # filtering to valid results
     df_data_pipe = df_data_pipe[df_data_pipe['Theta'] > -99.0]
 
-    print('*' * 30)
-    print(df_data_man)
+    if df_data_man is not None:
+        print('*' * 30)
+        print(df_data_man)
+        
     print('*' * 30)
     print(df_data_pipe)
 

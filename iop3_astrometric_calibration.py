@@ -397,7 +397,8 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
         params['CLEAN'] = 'Y'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
         # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
-        params['FILTER_NAME'] = '/home/users/dreg/misabelber/GitHub/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
+        # params['FILTER_NAME'] = '/home/users/dreg/misabelber/GitHub/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
+        params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
     
     if dt['STD/MEAN'] > 2: # noisy
         params['ANALYSIS_THRESH'] = 1.5
@@ -1740,7 +1741,8 @@ def main():
     # Query to external catalogs
     # Getting sources from web catalogs
     catalogs = {'2MASS': 'II/246/out', 'NOMAD': 'I/297/out', \
-        'USNO-A2': 'I/252/out', 'SDSS-R12': 'V/147/sdss12'}
+        'USNO-A2': 'I/252/out'} 
+    # , 'SDSS-R12': 'V/147/sdss12'} # This catalog has failed (2022-06-21 23:05)
     
     cat_out_pngs = {}
     for name_cat, code_cat in catalogs.items():        
@@ -1865,6 +1867,15 @@ def main():
         cstar = np.concatenate([calibrators['CLASS_STAR_O'][~ord_sat].values, \
             calibrators['CLASS_STAR_E'][~ext_sat].values], axis=None)
 
+        print(f'----------- fwhm_images = {fwhm_images} ------------------')
+        # delete nans
+        fwhm_not_nans = np.logical_not(np.isnan(fwhm_images))
+        fwhm_images = fwhm_images[fwhm_not_nans]
+        flags = flags[fwhm_not_nans]
+        ellip = ellip[fwhm_not_nans]
+        cstar = cstar[fwhm_not_nans]
+        
+        # Generating cards for header
         cards = []
         if fwhm_images.size > 0:
             cards = [('SOFTDET', 'SExtractor', 'Source detection software'), \
@@ -1879,8 +1890,13 @@ def main():
             # Use filtered SExtractor detections
             cards = f_fits.fwhm_from_cat(cat, cat_format='FITS_LDAC')
         cards.append(('CROTATION', args.crotation, 'Astrocal N-S FITS rotation angle [degrees]'))
+        
         # Updating FITS header with computed FWHM 
-        f_fits.update_header(cards)
+        try:
+            f_fits.update_header(cards)
+        except ValueError:
+            print(f'cards = {cards}')
+            raise
 
     # Parameters to store...
     # Getting useful info about calibrated fits
