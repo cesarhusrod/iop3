@@ -129,7 +129,7 @@ def polarimetry_osn(df):
 
     else:
         print("COULD NOT DETERMINE TELESCOPE!")
-        return -99, -99, -99, -99, -99, -99, -99, -99, -99
+        return -99,-99, -99, -99, -99, -99, -99, -99, -99, -99
 
     #values of T150 from polarization.pdf
     #qoff=0.031
@@ -151,7 +151,7 @@ def polarimetry_osn(df):
         I_135 = (df['FLUX_APER_O'][df['ANGLE'] == -45]).values[0]
         dI_135 = (df['FLUXERR_APER_O'][df['ANGLE'] == -45]).values[0]
     except:
-        return -99, -99, -99, -99, -99, -99, -99, -99, -99
+        return -99, -99,-99, -99, -99, -99, -99, -99, -99, -99
 
     #Check if there is a value with big deviation from the rest:
     fluxes = np.array([I_0, I_45, I_90, I_135])
@@ -209,8 +209,8 @@ def polarimetry_osn(df):
     Theta = (1/2) * math.degrees(math.atan2(u,q) + Theta_0)
     dTheta = dP/P * 28.6
     
-    print(P, dP, Theta, dTheta, q, dq, u, du, flux_std)
-    return P, dP, Theta, dTheta, q, dq, u, du, flux_std
+    print(P, dP, Theta, dTheta, q, dq, u, du, flux_std, flux_mean)
+    return P, dP, Theta, dTheta, q, dq, u, du, flux_std, flux_mean
 
 def polarimetry(df):
     """Compute polarimetric parameters.
@@ -237,11 +237,11 @@ def polarimetry(df):
     all_angles = df['ANGLE'].unique().tolist()
     
     if len(all_angles) == 1:
-        return [None] * 8 
+        return [None] * 10 
     elif len(all_angles) == 2:
         # valid combinations are: 0 and 22.5 or 45 and 67.5
         if (0 in all_angles and 45 in all_angles) or (22.5 in all_angles and 67.5 in all_angles):
-            return [None] * 8
+            return [None] * 10
     
     # aliases
     fo = df['FLUX_APER_O']
@@ -391,8 +391,8 @@ def polarimetry(df):
 
     # pol_vals = 'P = {}, dP = {} \nTheta = {}, dTheta = {}'
     # print(pol_vals.format(P * 100, dP * 100, Theta, dTheta))
-    print(P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std)
-    return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std
+    print(P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean)
+    return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean
 
 
 def compute_polarimetry(data_object):
@@ -435,14 +435,15 @@ def compute_polarimetry(data_object):
     try:
         if (data_object['ALPHA_J2000_O'].values[0] != data_object['ALPHA_J2000_E'].values[0]):
             #This is MAPCAT
-            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std = polarimetry(data_object)
+            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean = polarimetry(data_object)
         else:
             #This is OSN 
-            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std = polarimetry_osn(data_object)
+            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean = polarimetry_osn(data_object)
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
         raise
     flag=0
+    '''
     if flux_std < 2000:
         flag=1
     if flux_std >=2000 and flux_std < 4000:
@@ -451,7 +452,7 @@ def compute_polarimetry(data_object):
         flag=3
     if flux_std >= 6000:
         flag=4
-
+    '''
     if P is None:
         result['P'] = P
         result['dP'] = dP
