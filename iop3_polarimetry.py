@@ -209,8 +209,8 @@ def polarimetry_osn(df):
     Theta = (1/2) * math.degrees(math.atan2(u,q) + Theta_0)
     dTheta = dP/P * 28.6
     
-    print(P, dP, Theta, dTheta, q, dq, u, du, flux_std, flux_mean)
-    return P, dP, Theta, dTheta, q, dq, u, du, flux_std, flux_mean
+    print(P, dP, Theta, dTheta, q, dq, u, du, flux_std, flux_std/flux_mean)
+    return P, dP, Theta, dTheta, q, dq, u, du, flux_std, flux_std/flux_mean
 
 def polarimetry(df):
     """Compute polarimetric parameters.
@@ -391,8 +391,8 @@ def polarimetry(df):
 
     # pol_vals = 'P = {}, dP = {} \nTheta = {}, dTheta = {}'
     # print(pol_vals.format(P * 100, dP * 100, Theta, dTheta))
-    print(P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean)
-    return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean
+    print(P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_std/flux_mean)
+    return P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_std/flux_mean
 
 
 def compute_polarimetry(data_object):
@@ -435,10 +435,10 @@ def compute_polarimetry(data_object):
     try:
         if (data_object['ALPHA_J2000_O'].values[0] != data_object['ALPHA_J2000_E'].values[0]):
             #This is MAPCAT
-            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean = polarimetry(data_object)
+            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_std_mean_ratio = polarimetry(data_object)
         else:
             #This is OSN 
-            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_mean = polarimetry_osn(data_object)
+            P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_std_mean_ratio = polarimetry_osn(data_object)
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
         raise
@@ -464,7 +464,7 @@ def compute_polarimetry(data_object):
         result['dQ'] = dRQ
         result['U'] = RU
         result['dU'] = dRU
-        result['flux_std'] = flux_std
+        result['flux_std_mean_ratio'] = flux_std_mean_ratio
         result['flag'] = flag
 
         return result
@@ -500,7 +500,7 @@ def compute_polarimetry(data_object):
     result['dQ'] = round(dRQ, 4)
     result['U'] = round(RU, 4)
     result['dU'] = round(dRU, 4)
-    result['flux_std'] = round(flux_std,4)
+    result['flux_std_mean_ratio'] = round(flux_std_mean_ratio,4)
     result['flag'] = flag
     return result
 
@@ -1088,7 +1088,7 @@ def main():
             res_pol['R'], rp_sigma, \
             res_pol['APERPIX'], res_pol['APERAS'], \
             res_pol['NUM_ROTATION'], res_pol['EXPTIME'], \
-                         res_pol['flux_std'], res_pol['flag']]
+                         res_pol['flux_std_mean_ratio'], res_pol['flag']]
         pol_rows.append(row)
 
         # writing output night polarimetry file
@@ -1121,7 +1121,7 @@ def main():
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD-OBS', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'RMAG-LIT', 'flux_std', 'flag']
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'RMAG-LIT', 'flux_std_mean_ratio', 'flag']
 
         df = pd.DataFrame(pol_data, columns=cols)
     except:
@@ -1143,7 +1143,7 @@ def main():
     df['R'] = df['R'].map(lambda x: '{0:.4f}'.format(x))
     df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
-    df['flux_std'] = df['flux_std'].map(lambda x: '{0:.3f}'.format(x))
+    df['flux_std_mean_ratio'] = df['flux_std_mean_ratio'].map(lambda x: '{0:.3f}'.format(x))
     df['flag'] = df['flag'].map(lambda x: '{0:d}'.format(x))
 
     df.to_csv(out_csv, index=False)
@@ -1222,7 +1222,7 @@ def main():
             res_pol['R'], rp_sigma, \
             res_pol['APERPIX'], res_pol['APERAS'], \
             res_pol['NUM_ROTATION'], res_pol['EXPTIME'], \
-                         res_pol['flux_std'], res_pol['flag']]
+                         res_pol['flux_std_mean_ratio'], res_pol['flag']]
         pol_rows.append(row)
 
     # writing output night polarimetry file
@@ -1254,7 +1254,7 @@ def main():
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD-OBS', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'flux_std', 'flag']
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'flux_std_mean_ratio', 'flag']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
@@ -1275,7 +1275,7 @@ def main():
     df['R'] = df['R'].map(lambda x: '{0:.4f}'.format(x))
     df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
-    df['flux_std'] = df['flux_std'].map(lambda x: '{0:.3f}'.format(x))
+    df['flux_std_mean_ratio'] = df['flux_std_mean_ratio'].map(lambda x: '{0:.3f}'.format(x))
     df['flag'] = df['flag'].map(lambda x: '{0:d}'.format(x))
     df.to_csv(out_csv, index=False)
 
