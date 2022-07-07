@@ -109,15 +109,15 @@ def polarimetry_osn(df):
     Formula taken from "F. Moreno and O. Muñoz polarization.pdf"
     """
     #df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
-    
-    if round(df['SECPIX'].values[0],2) == 0.38 or round(df['SECPIX'].values[0],2) == 0.77:
+    if round(df['SECPIX'].values[0],2) == 0.38 or round(df['SECPIX'].values[0],2) == 0.77 or round(df['SECPIX'].values[0],2) == 0.78 :
         #values for T090
+        print("AQUI")
         qoff = 0.0645
         uoff = 0.0574
-        dquoff = 0.001
+        dqoff = 0.001
         duoff = 0.003
-        Phi=math.radians(0)
-        dPhi=math.radians(0)
+        Phi=math.radians(0.1)
+        dPhi=math.radians(0.001)
     elif round(df['SECPIX'].values[0],2) == 0.23 or round(df['SECPIX'].values[0],2) == 0.46: 
         #values for 150
         qoff = 0.0058
@@ -731,7 +731,6 @@ def make_groups_osn(data_res):
     # sort by MJD-OBS ascending
     df = data_res.sort_values(by=['name_mc_O','obs_number'], ascending=True)
     df = df.reset_index()
-    print(df.keys())
     
     prev_blazar_name = None
     prev_angle = None
@@ -740,7 +739,7 @@ def make_groups_osn(data_res):
     # angles = DefaultDict(int)
     indexes = []
     indexes_stars = []
-    print(df)
+    angles = []
     first_angles=np.array([0.0])
     for j, row in df.iterrows():
         if prev_blazar_name is None:
@@ -752,8 +751,10 @@ def make_groups_osn(data_res):
         # print(f'row = {row}')
         if prev_blazar_name is None:
             pass
+        if row['ANGLE']==-999:
+            continue
         elif (row['name_mc_O'] != prev_blazar_name and isinstance(row['IAU_name_mc_O'], str)) or \
-            row['EXPTIME'] != prev_exptime or (row['ANGLE'] == prev_angle) or (row['ANGLE'] != prev_angle and row['ANGLE'] == 0)  or df.iloc[indexes].shape[0]>=4 or row['obs_number'] != prev_obs_number: 
+            row['EXPTIME'] != prev_exptime or (row['ANGLE'] == prev_angle) or df.iloc[indexes].shape[0]>=4 or row['obs_number'] != prev_obs_number or row['ANGLE'] in angles:
             # (len(indexes) > 3):
             # be sure is not a calibration star
             # saving last group
@@ -768,9 +769,11 @@ def make_groups_osn(data_res):
                 groups.append(df_group)
             # angles.clear()
                 indexes.clear()
+                angles.clear()
         # In any case:
         # 1. Updating previous row data if its not a calibration star 
         if isinstance(row['IAU_name_mc_O'], str):
+            angles.append(row['ANGLE'])
             prev_blazar_name = row['name_mc_O']
             prev_angle = row['ANGLE']
             prev_exptime = row['EXPTIME']
@@ -794,6 +797,7 @@ def make_groups_osn(data_res):
     prev_angle = None
     prev_exptime = None
     prev_obs_number = None
+    angles = []
     for j, row in df.iterrows():
         if not isinstance(row['IAU_name_mc_O'], str):
         #print('')
@@ -805,12 +809,14 @@ def make_groups_osn(data_res):
                 # prev_angle = row['ANGLE']
                 # angles[row['ANGLE']] = j 
                 pass
+            if row['ANGLE']==-999:
+                continue
             elif (row['ANGLE'] == prev_angle) and (row['IAU_name_mc_O'] == prev_blazar_name) and \
                     (row['EXPTIME'] == prev_exptime):   
                 # repeated observation. Overwrite previous one
                 # angles[row['ANGLE']] == 
                 pass
-            elif  row['EXPTIME'] != prev_exptime or (row['ANGLE'] != prev_angle and row['ANGLE'] == 0.0) or df.iloc[indexes_stars].shape[0]>=4 or row['obs_number'] != prev_obs_number:
+            elif  row['EXPTIME'] != prev_exptime or row['ANGLE'] in angles or df.iloc[indexes_stars].shape[0]>=4 or row['obs_number'] != prev_obs_number:
                 # (len(indexes) > 3):
                 # be sure is not a calibration star
                 # saving last group
@@ -823,10 +829,11 @@ def make_groups_osn(data_res):
                 #Don't save empty groups (because of calibration star?)
                     # print(df_group.loc[:,['ANGLE', 'TYPE', 'EXPTIME', 'MC-IAU-NAME', 'DATE-OBS', 'FLUX_APER', 'FLUXERR_APER']])
                     groups_stars.append(df_group)
-                # angles.clear()
+                    angles.clear()
                     indexes_stars.clear()
             # In any case:
             # 1. Updating previous row data
+            angles.append(row['ANGLE'])
             prev_blazar_name = row['IAU_name_mc_O']
             prev_angle = row['ANGLE']
             prev_exptime = row['EXPTIME']
@@ -980,7 +987,10 @@ def main():
         for r in results:
             df_obs=pd.read_csv(r)
             for i in range(0,df_obs.shape[0]):
-                obs_number=np.append(obs_number, r.split('/')[-1].split('-')[-1][:4])
+                if '-45' not in r:
+                    obs_number=np.append(obs_number, r.split('/')[-1].split('-')[-1][:4])
+                else:
+                    obs_number=np.append(obs_number, r.split('/')[-1].split('-')[-2][:4])
         data_res['obs_number'] = obs_number
     # Store photometry in CSV file, for further analysis
     data_res_csv = os.path.join(args.output_dir, f'photometry_{date_run}.csv')
@@ -1013,8 +1023,7 @@ def main():
         print(f'GROUP {name}')
         print('-' * 30)
         print(group[['name_mc_O', 'DATE-OBS', 'ANGLE', 'EXPTIME', 'FLUX_APER_O', 'FLUX_APER_E', 'FLUXERR_APER_O', 'FLUXERR_APER_E']])
-        print('')
-        res = check_group_coordinates(group, tol_arcs=3)
+        res = check_group_coordinates(group, tol_arcs=5)
         if res:
             print(res)
             c_o = SkyCoord(group['ALPHA_J2000_O'], group['DELTA_J2000_O'], \
