@@ -490,7 +490,7 @@ def main():
        action="store",
        dest="tol_pixs",
        type=int,
-       default=3,
+       default=15,
        help="Tolerance for distance in pixels for matching between objects in external catalog and FITS detections. [default: %(default)s].")
     parser.add_argument('--ignore_farcalib', dest='ignore_farcalib', action='store_true', \
         help='If False, pipeline stops execution if some science FITS has no close enough IOP3 calibrator.')
@@ -1014,9 +1014,10 @@ def main():
             subprocess.Popen(com_polarimetry, shell=True).wait()
 
     # 5th STEP: Inserting results in database
+    telescope=input_dir.split('/')[-2]
     if not args.skip_db_registration:
         data_dir = input_dir.split('data')[0] + 'data'
-        com_insertdb = f"python iop3_add_db_info.py {data_dir} {dt_run}"
+        com_insertdb = f"python iop3_add_db_info.py {data_dir} {dt_run} {telescope}"
         print(com_insertdb)
         with open(os.path.join(proc_dirs['polarization_dir'], 'db.log'), 'w') as log_file:
             subprocess.Popen(com_insertdb, shell=True, stdout=log_file).wait()

@@ -27,7 +27,7 @@ from astropy.io import fits
 from astropy.time import Time
 
 from mcFits import mcFits 
-
+import astropy.units as u
 
 def get_run_date(mjd):
     """Returns night run as Python datetime object for 
@@ -67,7 +67,8 @@ def register_raw(data_dir, run_date, db_object):
         IOError: if raw FITS catalog file was not found.
     """
     new_registrations = 0
-    raw_dir = os.path.join(data_dir, f'raw/MAPCAT/{run_date}/')
+    #raw_dir = os.path.join(data_dir, f'{run_date}/')
+    raw_dir = data_dir
     try:
         catalog = os.path.join(raw_dir, f"{run_date}.cat")
         lines = [l for l in open(catalog).read().split('\n') if len(l) > 0]
@@ -104,13 +105,34 @@ def register_raw(data_dir, run_date, db_object):
 
             str_params = ['date_run', 'path', 'date_obs', 'object', \
                 'type', 'filtname', 'telescope', 'instrument']
-            
+            try:
+                if 'RA' not in raw_header:
+                    ra = raw_header['OBJCTRA'].split(' ')
+                    dec = raw_header['OBJCTDEC'].split(' ')
+                    raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                    raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+            except:
+                print("This is probably not a science file, no coordinates found")
+                continue
+            if 'INSPOROT' not in raw_header and 'FILTER' in raw_header:
+                if raw_header['FILTER']=='R':
+                    raw_header['INSPOROT'] = -999
+                else:
+                    try:
+                        raw_header['INSPOROT'] = int(raw_header['FILTER'][1:]) 
+                    except:
+                        raw_header['INSPOROT'] = -999
+            if 'MJD-OBS' not in raw_header and 'JD' in raw_header:
+                raw_header['MJD-OBS'] = raw_header['JD'] - 2400000.5
             fits_keywords = ['NAXIS1', 'NAXIS2', 'OBJECT', 'IMAGETYP', 'RA', 'DEC', 'EXPTIME', \
-                'EQUINOX', 'MJD-OBS', 'INSTRSCL', 'INSFLNAM', 'TELESCOP', \
-                'INSTRUME', 'INSPOROT']
+                                 'EQUINOX', 'MJD-OBS', 'INSTRSCL', 'INSFLNAM', 'TELESCOP', \
+                                 'INSTRUME', 'INSPOROT']
             # date_obs = datetime.strptime(raw_header['DATE'], '%Y-%d-%mT%H:%M:%S')
             # r_date = datetime.strptime(run_date, '%Y-%d-%m')
-            date_obs = raw_header['DATE'].replace('T', ' ')
+            if 'DATE' in raw_header:
+                date_obs = raw_header['DATE'].replace('T', ' ')
+            else:
+                date_obs = raw_header['DATE-OBS'].replace('T', ' ')
             r_date = run_date
             values = [r_date, raw_name, date_obs] + \
                 [raw_header.get(k, 'NULL') for k in fits_keywords] + \
@@ -159,7 +181,10 @@ def register_masterbias(data_dir, run_date, db_object):
         IOError: if masterBIAS catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
+    #reduction_dir = data_dir.replace('raw', 'reduction') 
+    #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
+    reduction_dir=data_dir
+    telescope=data_dir.split('/')[-3]
     try:
         catalog = os.path.join(reduction_dir, "masterbias_data.csv")
         data = pd.read_csv(catalog)
@@ -177,6 +202,7 @@ def register_masterbias(data_dir, run_date, db_object):
         sql_search = f"SELECT id FROM master_bias WHERE path='{mb_name}'"
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
+        
         if db_cursor.rowcount == 0:
             # Insert new register
             try:
@@ -188,7 +214,7 @@ def register_masterbias(data_dir, run_date, db_object):
             red_header = red_fits.header
             red_stats = red_fits.stats()
             
-            params = ['type', 'date_run', 'path', 'proc_date', \
+            params = ['type', 'date_run', 'path', 'proc_date', 'Telescope', \
                 'naxis1', 'naxis2', 'soft', 'pix_border', \
                 'bias_operation', \
                 'min', 'max', 'mean', 'std', 'median']
@@ -201,15 +227,19 @@ def register_masterbias(data_dir, run_date, db_object):
             
             date_proc = red_header['PROCDATE'].replace('T', ' ')
             mb_type = red_header['OBJECT']
-            values = [mb_type, run_date, mb_name, date_proc] + \
+            values = [mb_type, run_date, mb_name, date_proc, f'"{telescope}"'] + \
                 [red_header.get(k, 'NULL') for k in keywords] + \
                 [red_stats.get(k, 'NULL')for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
             
+            #query="ALTER TABLE master_bias ADD Telescope VARCHAR(100)"
+            #sql_command = "ALTER TABLE master_bias"
+            #db_cursor.execute(query)
             # Inserting new register on database.image_raw
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
             sql_insert = f"INSERT INTO master_bias ({','.join(params)}) VALUES ({v})"
             print(f"SQL command (image_raw) = '{sql_insert}'")
 
+            
             try:
                 db_cursor.execute(sql_insert)
             except:
@@ -248,7 +278,9 @@ def register_rawbias(data_dir, run_date, db_object):
             if masterBIAS catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
+    #reduction_dir = data_dir.replace('raw', 'reduction') 
+    #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
+    reduction_dir=data_dir
     try:
         catalog = os.path.join(reduction_dir, "masterbias_data.csv")
         data = pd.read_csv(catalog)
@@ -340,7 +372,10 @@ def register_masterflats(data_dir, run_date, db_object):
         IOError: if masterFLAT catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
+    #reduction_dir = data_dir.replace('raw', 'reduction') 
+    #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
+    reduction_dir=data_dir
+    telescope=data_dir.split('/')[-3]
     try:
         catalog = os.path.join(reduction_dir, "masterflats_data.csv")
         data = pd.read_csv(catalog)
@@ -350,7 +385,8 @@ def register_masterflats(data_dir, run_date, db_object):
 
     # Create cursor for database operation
     db_cursor = db_object.cursor()
-
+    #query="ALTER TABLE master_flat ADD Telescope VARCHAR(100)"
+    #db_cursor.execute(query)
     # Checking each masterFLAT FITS (4 per night, one for each grism angle) 
     for index, row in data.iterrows():
         dire, mf_name = os.path.split(row['PATH'])
@@ -359,7 +395,7 @@ def register_masterflats(data_dir, run_date, db_object):
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
         if db_cursor.rowcount == 0:
-            # Insert new register
+        # Insert new register
             try:
                 mf_fits = mcFits(row['PATH'])
             except:
@@ -382,7 +418,7 @@ def register_masterflats(data_dir, run_date, db_object):
                 print("ERROR: No masterBIAS found for this masterFLAT")
                 return -2
             # return -3
-            params = ['master_bias_id', 'type', 'date_run', 'path', 'proc_date', \
+            params = ['master_bias_id', 'type', 'date_run', 'path', 'proc_date', 'Telescope', \
                 'naxis1', 'naxis2', 'pol_angle', 'soft', 'pix_border', \
                 'flat_operation', \
                 'min', 'max', 'mean', 'std', 'median']
@@ -391,11 +427,22 @@ def register_masterflats(data_dir, run_date, db_object):
                 'flat_operation', 'type']
             
             # Keywords are the same for CSV and fits files.
+            if ('INSPOROT' not in mf_header and 'FILTER' in mf_header):
+                if mf_header['FILTER']=='R':
+                    mf_header['INSPOROT'] = -999
+                else:
+                    mf_header['INSPOROT'] = int(mf_header['FILTER'][1:]) 
+            if 'R' in mf_header['INSPOROT']:
+                if mf_header['INSPOROT']=='R':
+                    mf_header['INSPOROT'] = -999
+                else:
+                    mf_header['INSPOROT'] = int(mf_header['INSPOROT'][1:])
+
             keywords = ['NAXIS1', 'NAXIS2', 'INSPOROT', 'SOFT', 'PXBORDER', 'FLATOP']
             
             date_proc = mf_header['PROCDATE'].replace('T', ' ')
             mf_type = mf_header['OBJECT']
-            values = [mb_id, mf_type, run_date, mf_name, date_proc] + \
+            values = [mb_id, mf_type, run_date, mf_name, date_proc, f'"{telescope}"'] + \
                 [mf_header.get(k, 'NULL') for k in keywords] + \
                 [mf_stats.get(k, 'NULL') for k in ['MIN', 'MAX', 'MEAN', 'STD', 'MEDIAN']]
             
@@ -442,7 +489,9 @@ def register_rawflats(data_dir, run_date, db_object):
             if masterFLATs catalog file was not found.
     """
     new_registrations = 0
-    reduction_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
+    #reduction_dir = data_dir.replace('raw', 'reduction') 
+    #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
+    reduction_dir=data_dir
     try:
         catalog = os.path.join(reduction_dir, "masterflats_data.csv")
         data = pd.read_csv(catalog)
@@ -530,9 +579,11 @@ def register_reduced(data_dir, run_date, db_object):
         IOError: if reduced FITS catalog file was not found.
     """
     new_registrations = 0
-    reduced_dir = os.path.join(data_dir, f'reduction/MAPCAT/{run_date}/')
+    #reduction_dir = data_dir.replace('raw', 'reduction') 
+    #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
+    reduction_dir=data_dir
     try:
-        catalog = os.path.join(reduced_dir, "output_data_red.csv")
+        catalog = os.path.join(reduction_dir, "output_data_red.csv")
         data = pd.read_csv(catalog)
     except IOError:
         print(f"ERROR: catalog '{catalog}' not available.")
@@ -550,7 +601,7 @@ def register_reduced(data_dir, run_date, db_object):
         res_search = db_cursor.fetchall()
         if db_cursor.rowcount == 0:
             # Insert new register
-            red_path = os.path.join(reduced_dir, red_name)
+            red_path = os.path.join(reduction_dir, red_name)
             try:
                 red_fits = mcFits(red_path)
             except:
@@ -606,15 +657,32 @@ def register_reduced(data_dir, run_date, db_object):
                 'soft', 'proc_date', 'type', 'object', 'filtname', \
                 'telescope', 'instrument']
             
+            if 'RA' not in red_header:
+                ra = red_header['OBJCTRA'].split(' ')
+                dec = red_header['OBJCTDEC'].split(' ')
+                red_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                red_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+            if 'INSPOROT' not in red_header and 'FILTER' in red_header:
+                if red_header['FILTER']=='R':
+                    red_header['INSPOROT'] = -999
+                else:
+                    red_header['INSPOROT'] = int(red_header['FILTER'][1:]) 
+            if 'MJD-OBS' not in red_header and 'JD' in red_header:
+                red_header['MJD-OBS'] = red_header['JD'] - 2400000.5
+
+
             fits_keywords = ['SOFT', 'PXBORDER', 'NAXIS1', 'NAXIS2', \
-                'IMAGETYP', 'OBJECT', 'RA', 'DEC', 'EXPTIME', \
-                'EQUINOX', 'MJD-OBS', 'INSTRSCL', 'INSFLNAM', 'TELESCOP', \
-                'INSTRUME', 'INSPOROT']
+                                 'IMAGETYP', 'OBJECT', 'RA', 'DEC', 'EXPTIME', \
+                                 'EQUINOX', 'MJD-OBS', 'INSTRSCL', 'INSFLNAM', 'TELESCOP', \
+                                 'INSTRUME', 'INSPOROT']
                 # , 'FWHM', 'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI'] 
                 # , 'MIN', 'MAX', 'MEAN', 'STD', 'MED']
             
             # Preprocessing some fields...
-            date_obs = red_header['DATE'].replace('T', ' ')
+            if 'DATE' in red_header:
+                date_obs = red_header['DATE'].replace('T', ' ')
+            else:
+                date_obs = red_header['DATE-OBS'].replace('T', ' ')
             proc_date = red_header['PROCDATE'].replace('T', ' ')
 
             values = [raw_id, mb_id, mf_id, run_date, date_obs, red_name, proc_date] + \
@@ -662,8 +730,9 @@ def register_calibrated(data_dir, run_date, db_object):
         IOError: if reduced FITS catalog file was not found.
     """
     new_registrations = 0
-    calibration_dir = os.path.join(data_dir, f'calibration/MAPCAT/{run_date}/')
-
+    #calibration_dir = data_dir.replace('raw', 'calibration') 
+    #calibration_dir = os.path.join(calibration_dir, f'{run_date}/')
+    calibration_dir=data_dir
     cal_directories = glob.glob(os.path.join(calibration_dir, '*-*'))
     cal_directories.sort()
 
@@ -759,6 +828,18 @@ def register_calibrated(data_dir, run_date, db_object):
                     'soft', 'proc_date', 'type', 'object', 'filtname', \
                     'telescope', 'instrument', 'softdet', 'ctype1', 'ctype2', \
                     'wcsrefcat', 'imwcs', 'ra2000', 'dec2000']
+                if 'RA' not in cal_header:
+                    ra = cal_header['OBJCTRA'].split(' ')
+                    dec = cal_header['OBJCTDEC'].split(' ')
+                    cal_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                    cal_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                if 'INSPOROT' not in cal_header and 'FILTER' in cal_header:
+                    if cal_header['FILTER']=='R':
+                        cal_header['INSPOROT'] = -999
+                    else:
+                        cal_header['INSPOROT'] = int(cal_header['FILTER'][1:]) 
+                if 'MJD-OBS' not in cal_header and 'JD' in cal_header:
+                    cal_header['MJD-OBS'] = cal_header['JD'] - 2400000.5
                 
                 fits_keywords = ['SOFT', 'CROTATION', \
                     'NAXIS1', 'NAXIS2', 'PXBORDER', \
@@ -774,7 +855,10 @@ def register_calibrated(data_dir, run_date, db_object):
                     # , 'MIN', 'MAX', 'MEAN', 'STD', 'MED']
                 
                 # Preprocessing some fields...
-                date_obs = cal_header['DATE'].replace('T', ' ')
+                if 'DATE' in cal_header:
+                    date_obs = cal_header['DATE'].replace('T', ' ')
+                else:
+                    date_obs = cal_header['DATE-OBS'].replace('T', ' ')
                 proc_date = cal_header['PROCDATE'].replace('T', ' ')
                 secpix1 = None
                 secpix2 = None
@@ -832,8 +916,10 @@ def register_photometry(data_dir, run_date, db_object):
             if blazar catalog file was not found.
     """
     new_registrations = 0
-    calibration_dir = os.path.join(data_dir, f'calibration/MAPCAT/{run_date}/')
-
+    #calibration_dir = data_dir.replace('raw', 'calibration') 
+    #calibration_dir = os.path.join(calibration_dir, f'{run_date}/')
+    calibration_dir=data_dir
+    telescope=data_dir.split('/')[-3]
     dt = datetime.strptime(run_date, '%y%m%d')
 
     cal_directories = glob.glob(os.path.join(calibration_dir, '*-*'))
@@ -841,6 +927,8 @@ def register_photometry(data_dir, run_date, db_object):
 
     # Create cursor for database operation
     db_cursor = db_object.cursor()
+    #query="ALTER TABLE polarimetry ADD Telescope VARCHAR(100)"
+    #db_cursor.execute(query)
 
     # working on each subdirectory
     for cal_dir in cal_directories:
@@ -861,8 +949,10 @@ def register_photometry(data_dir, run_date, db_object):
 
         # getting calibrated FITS
         dire, name = os.path.split(photometry_info_path)
-        cal_name = name.replace('_final_photometry.csv', '_final.fits')
-
+        if 'MAPCAT' in photometry_info_path:
+            cal_name = name.replace('_final_photometry.csv', '_final.fits')
+        else:
+            cal_name = name.replace('_final_photometry.csv', '_final.fit')
         sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}'"
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
@@ -882,7 +972,10 @@ def register_photometry(data_dir, run_date, db_object):
             # Insert new register
 
             # getting calibrated FITS
-            cal_path = photometry_info_path.replace('_final_photometry.csv', '_final.fits')
+            if 'MAPCAT' in photometry_info_path:
+                cal_path = photometry_info_path.replace('_final_photometry.csv', '_final.fits')
+            else:
+                cal_path = photometry_info_path.replace('_final_photometry.csv', '_final.fit')
             try:
                 cal_fits = mcFits(cal_path)
             except:
@@ -916,7 +1009,7 @@ def register_photometry(data_dir, run_date, db_object):
             # APERPIX,FWHM,SECPIX,DATE-OBS,MJD-OBS,RJD-50000,EXPTIME,ANGLE,MAGZPT
 
             # Taking info about ordinary and extraordinary sources...
-            params = ['cal_id', 'blazar_id'] # Parameters got from database registers
+            params = ['cal_id', 'blazar_id','Telescope'] # Parameters got from database registers
             params += ['date_run', 'date_obs', 'mjd_obs', 'rjd-50000', 'pol_angle', \
                 'aperpix', 'fwhm', 'secpix', 'exptime', 'magzpt']
 
@@ -945,7 +1038,7 @@ def register_photometry(data_dir, run_date, db_object):
             #     print(photometry_data['MJD-OBS'])
             #     raise
 
-            values = [cal_id, blazar_id, dt.strftime("%Y-%m-%d"), \
+            values = [cal_id, blazar_id,f'"{telescope}"', dt.strftime("%Y-%m-%d"), \
                 photometry_data['DATE-OBS'].values[0].replace('T', ' ')]
             values += [photometry_data[k].values[0] for k in blazar_keywords]
 
@@ -1005,8 +1098,12 @@ def register_polarimetry_data(data_dir, run_date, db_object):
     
     dt = datetime.strptime(run_date, '%y%m%d')
     r_date = dt.strftime("%Y-%m-%d")
-
-    catalog = os.path.join(data_dir, f'final/MAPCAT/{run_date}/MAPCAT_polR_{r_date}.csv')
+    #catalog_dir = data_dir.replace('raw', 'final') 
+    #catalog_dir = os.path.join(catalog_dir, f'{run_date}/')
+    catalog_dir = data_dir
+    telescope = catalog_dir.split('/')[-3]
+    catalog = os.path.join(catalog_dir, f'{telescope}_polR_{r_date}.csv')
+    
     try:
         pol_data = pd.read_csv(catalog)
         print(f'Number of polarimetry data = {len(pol_data.index)}')
@@ -1015,7 +1112,7 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         print(f"ERROR: polarimetry catalog '{catalog}' not found.")
         raise
     
-    params = ['blazar_id', 'date_run', \
+    params = ['blazar_id', 'Telescope','date_run', \
         'rjd-50000', 'name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
         'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles']
 
@@ -1052,7 +1149,7 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         sql = ''
         if len(res_search_pol_data) == 0:
             # Insert new register
-            values = [blazar_id] + [row[k] for k in pol_keywords]
+            values = [blazar_id, f'"{telescope}"'] + [row[k] for k in pol_keywords]
 
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
@@ -1096,6 +1193,7 @@ def main():
     # parser.add_argument("dbengine", help="Configuration parameter files directory")
     parser.add_argument("input_data_dir", help="Input data base directory")
     parser.add_argument("run_date", help="Run date in format YYMMDD")
+    parser.add_argument("telescope", help="Input telescope name")
     parser.add_argument("--db_server",
         action="store",
         dest="db_server",
@@ -1127,11 +1225,10 @@ def main():
         return 1
     
     dirs = ['raw', 'reduction', 'calibration', 'final']
-    directories = {k: os.path.join(args.input_data_dir, f'{k}/MAPCAT/{args.run_date}/') for k in dirs}
-    
+    telescope = args.telescope
+    directories = {k: os.path.join(args.input_data_dir, f'{k}/{telescope}/{args.run_date}/') for k in dirs}
     print(f'Directories = {directories}')
     
-   
     for k, v in directories.items():
         if not os.path.isdir(v):
             print(f"ERROR: Directory '{v}' not available.")
@@ -1149,7 +1246,7 @@ def main():
 
     # Database connection
     my_db = mysql.connector.connect(host=args.db_server, \
-        user=db_user, password=db_password, database=args.db_name)
+        user=db_user, password=db_password, database=args.db_name, ssl_disabled=True)
 
     my_cursor = my_db.cursor()
 
@@ -1159,55 +1256,55 @@ def main():
     # return 1
 
     # Processing RAW images (image_raw table) from run date
-    res = register_raw(args.input_data_dir, args.run_date, my_db)
+    res = register_raw(directories['raw'], args.run_date, my_db)
     print(f"Raw image registration result -> {res}")
     
     # return 1
 
     # Processing MASTERBIAS (master_bias table) from run date 
-    res = register_masterbias(args.input_data_dir, args.run_date, my_db)
+    res = register_masterbias(directories['reduction'], args.run_date, my_db)
     print(f"MasterBIAS registration result -> {res}")
 
     # return 1
 
     # Processing RAW-BIAS (raw_bias table) from run date
-    res = register_rawbias(args.input_data_dir, args.run_date, my_db)
+    res = register_rawbias(directories['reduction'], args.run_date, my_db)
     print(f"Relation between raw and masterBIAS registration result -> {res}")
 
     # return 1
 
     # Processing MASTERFLATS (master_flat table) from run date
-    res = register_masterflats(args.input_data_dir, args.run_date, my_db)
+    res = register_masterflats(directories['reduction'], args.run_date, my_db)
     print(f"MasterFLATS registration result -> {res}")
     
     # return 1
 
     # Processing RAW-FLATS (raw_flat table) from run date
-    res = register_rawflats(args.input_data_dir, args.run_date, my_db)
+    res = register_rawflats(directories['reduction'], args.run_date, my_db)
     print(f"Relation between raw and masterFLATS registration result -> {res}")
     
     # return 1
 
     # Processing REDUCED images (image_reduced table) from run date
-    res = register_reduced(args.input_data_dir, args.run_date, my_db)
+    res = register_reduced(directories['reduction'], args.run_date, my_db)
     print(f"Reduced image registration result -> {res}")
     
     # return 1
 
     # Processing CALIBRATED images (image_calibrated table) from run date
-    res = register_calibrated(args.input_data_dir, args.run_date, my_db)
+    res = register_calibrated(directories['calibration'], args.run_date, my_db)
     print(f"Calibrated image registration result -> {res}")
     
     # return 1
 
     # Processing BLAZAR MEASURE (photometry table) from run date
-    res = register_photometry(args.input_data_dir, args.run_date, my_db)
+    res = register_photometry(directories['calibration'], args.run_date, my_db)
     print(f"blazar data registration result -> {res}")
     
     # return 1
 
     # Processing POLARIMETRY DATA (polarimetry_data table) from run date
-    res = register_polarimetry_data(args.input_data_dir, args.run_date, my_db)
+    res = register_polarimetry_data(directories['final'], args.run_date, my_db)
     print(f"Polarimetry data registration result -> {res}")
     
     # return 1
