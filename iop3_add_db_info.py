@@ -49,7 +49,7 @@ def res2df(db_cursor):
     return 0
 
 
-def register_raw(data_dir, run_date, db_object):
+def register_raw(data_dir, run_date, db_object, telescope):
     """
     Register new RAW fits in data_dir from nightly run in database 'image_raw' table using
     connection given by db_object.
@@ -82,10 +82,10 @@ def register_raw(data_dir, run_date, db_object):
     # Checking each raw FITS 
     for l in lines[2:]:
         raw_name = l.split('\t')[0]
-        
-        sql_search = f"SELECT id FROM image_raw WHERE path='{raw_name}'"
+        sql_search = f"SELECT id FROM image_raw WHERE path='{raw_name}' AND date_run='{run_date}'"
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
+        action="INSERT"
         if db_cursor.rowcount == 0:
             # Insert new register
             raw_path = os.path.join(raw_dir, raw_name)
@@ -115,7 +115,7 @@ def register_raw(data_dir, run_date, db_object):
                 print("This is probably not a science file, no coordinates found")
                 continue
             if 'INSPOROT' not in raw_header and 'FILTER' in raw_header:
-                if raw_header['FILTER']=='R':
+                if raw_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear', 'I']:
                     raw_header['INSPOROT'] = -999
                 else:
                     try:
@@ -140,7 +140,9 @@ def register_raw(data_dir, run_date, db_object):
             
             # Inserting new register on database.image_raw
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
+            
             sql_insert = f"INSERT INTO image_raw ({','.join(params)}) VALUES ({v})"
+            
             print(f"SQL command (image_raw) = '{sql_insert}'")
 
             try:
@@ -163,7 +165,7 @@ def register_raw(data_dir, run_date, db_object):
 
 
 
-def register_masterbias(data_dir, run_date, db_object):
+def register_masterbias(data_dir, run_date, db_object, telescope):
     """
     Register new masterBIAS fits in data_dir from nightly run in database 'image_raw' table using
     connection given by db_object.
@@ -184,7 +186,7 @@ def register_masterbias(data_dir, run_date, db_object):
     #reduction_dir = data_dir.replace('raw', 'reduction') 
     #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
     reduction_dir=data_dir
-    telescope=data_dir.split('/')[-3]
+
     try:
         catalog = os.path.join(reduction_dir, "masterbias_data.csv")
         data = pd.read_csv(catalog)
@@ -199,10 +201,9 @@ def register_masterbias(data_dir, run_date, db_object):
     for index, row in data.iterrows():
         dire, mb_name = os.path.split(row['PATH'])
         
-        sql_search = f"SELECT id FROM master_bias WHERE path='{mb_name}'"
+        sql_search = f"SELECT id FROM master_bias WHERE path='{mb_name}' AND date_run='{run_date}'"
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
-        
         if db_cursor.rowcount == 0:
             # Insert new register
             try:
@@ -236,6 +237,7 @@ def register_masterbias(data_dir, run_date, db_object):
             #db_cursor.execute(query)
             # Inserting new register on database.image_raw
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
+            
             sql_insert = f"INSERT INTO master_bias ({','.join(params)}) VALUES ({v})"
             print(f"SQL command (image_raw) = '{sql_insert}'")
 
@@ -258,7 +260,7 @@ def register_masterbias(data_dir, run_date, db_object):
     
     return new_registrations
 
-def register_rawbias(data_dir, run_date, db_object):
+def register_rawbias(data_dir, run_date, db_object, telescope):
     """
     Register for each run_date masterBIAS every raw fits used for its generation.
 
@@ -281,6 +283,7 @@ def register_rawbias(data_dir, run_date, db_object):
     #reduction_dir = data_dir.replace('raw', 'reduction') 
     #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
     reduction_dir=data_dir
+
     try:
         catalog = os.path.join(reduction_dir, "masterbias_data.csv")
         data = pd.read_csv(catalog)
@@ -319,10 +322,12 @@ def register_rawbias(data_dir, run_date, db_object):
 
             raw_ids = []
             for n in names:
-                sql_search = f"SELECT id FROM `image_raw` WHERE `path`='{n}'"
+                sql_search = f"SELECT id FROM `image_raw` WHERE `path`='{n}' and `date_run`='{run_date}'"
                 print(f"sql_search = {sql_search}")
                 db_cursor.execute(sql_search)
                 res_search = db_cursor.fetchall()
+                print(n)
+                print(db_cursor.rowcount)
                 if db_cursor.rowcount == 1:
                     raw_ids.append(res_search[0][0])
                 else:
@@ -330,6 +335,7 @@ def register_rawbias(data_dir, run_date, db_object):
                     return -1
             
             values = ','.join([f"({id_mb}, {rid})" for rid in raw_ids])
+            
             sql_insert = f"INSERT INTO `raw_bias` (`master_bias_id`, `raw_id`) VALUES {values}"
             
             # Inserting new registers on database.raw_bias
@@ -354,7 +360,7 @@ def register_rawbias(data_dir, run_date, db_object):
     return new_registrations
 
 
-def register_masterflats(data_dir, run_date, db_object):
+def register_masterflats(data_dir, run_date, db_object, telescope):
     """
     Register new masterFLATS fits in data_dir from nightly run in database 'image_raw' table using
     connection given by db_object.
@@ -375,7 +381,7 @@ def register_masterflats(data_dir, run_date, db_object):
     #reduction_dir = data_dir.replace('raw', 'reduction') 
     #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
     reduction_dir=data_dir
-    telescope=data_dir.split('/')[-3]
+
     try:
         catalog = os.path.join(reduction_dir, "masterflats_data.csv")
         data = pd.read_csv(catalog)
@@ -391,11 +397,11 @@ def register_masterflats(data_dir, run_date, db_object):
     for index, row in data.iterrows():
         dire, mf_name = os.path.split(row['PATH'])
         
-        sql_search = f"SELECT id FROM master_flat WHERE path='{mf_name}'"
+        sql_search = f"SELECT id FROM master_flat WHERE path='{mf_name}' AND date_run='{run_date}'"
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
         if db_cursor.rowcount == 0:
-        # Insert new register
+        # Insert new register<
             try:
                 mf_fits = mcFits(row['PATH'])
             except:
@@ -428,7 +434,8 @@ def register_masterflats(data_dir, run_date, db_object):
             
             # Keywords are the same for CSV and fits files.
             if ('INSPOROT' not in mf_header and 'FILTER' in mf_header):
-                if mf_header['FILTER']=='R':
+                print("pero y asi")
+                if mf_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear','I']:
                     mf_header['INSPOROT'] = -999
                 else:
                     mf_header['INSPOROT'] = int(mf_header['FILTER'][1:]) 
@@ -437,7 +444,9 @@ def register_masterflats(data_dir, run_date, db_object):
                     mf_header['INSPOROT'] = -999
                 else:
                     mf_header['INSPOROT'] = int(mf_header['INSPOROT'][1:])
-
+            if mf_header['INSPOROT'] in ['I','R', 'U', 'V', 'B', 'Clear']:
+                mf_header['INSPOROT'] = -999
+                
             keywords = ['NAXIS1', 'NAXIS2', 'INSPOROT', 'SOFT', 'PXBORDER', 'FLATOP']
             
             date_proc = mf_header['PROCDATE'].replace('T', ' ')
@@ -448,6 +457,7 @@ def register_masterflats(data_dir, run_date, db_object):
             
             # Inserting new register on database.image_raw
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
+            
             sql_insert = f"INSERT INTO master_flat ({','.join(params)}) VALUES ({v})"
             print(f"SQL command (master_flat) = '{sql_insert}'")
 
@@ -469,7 +479,7 @@ def register_masterflats(data_dir, run_date, db_object):
     
     return new_registrations
 
-def register_rawflats(data_dir, run_date, db_object):
+def register_rawflats(data_dir, run_date, db_object, telescope):
     """
     Register for each run_date masterFLATS every raw fits used for its generation.
 
@@ -492,6 +502,7 @@ def register_rawflats(data_dir, run_date, db_object):
     #reduction_dir = data_dir.replace('raw', 'reduction') 
     #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
     reduction_dir=data_dir
+
     try:
         catalog = os.path.join(reduction_dir, "masterflats_data.csv")
         data = pd.read_csv(catalog)
@@ -561,7 +572,7 @@ def register_rawflats(data_dir, run_date, db_object):
     
     return new_registrations
 
-def register_reduced(data_dir, run_date, db_object):
+def register_reduced(data_dir, run_date, db_object, telescope):
     """
     Register new REDUCED fits located in data_dir from nightly run 
     in database 'image_reduced' table using connection given by db_object.
@@ -582,6 +593,7 @@ def register_reduced(data_dir, run_date, db_object):
     #reduction_dir = data_dir.replace('raw', 'reduction') 
     #reduction_dir = os.path.join(reduction_dir, f'{run_date}/')
     reduction_dir=data_dir
+
     try:
         catalog = os.path.join(reduction_dir, "output_data_red.csv")
         data = pd.read_csv(catalog)
@@ -595,10 +607,10 @@ def register_reduced(data_dir, run_date, db_object):
     # Checking each raw FITS 
     for index, row in data.iterrows():
         dire, red_name = os.path.split(row['PATH'])
-        
-        sql_search = f"SELECT `id` FROM `image_reduced` WHERE path='{red_name}'"
+        sql_search = f"SELECT `id` FROM `image_reduced` WHERE path='{red_name}' AND date_run='{run_date}'"
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
+
         if db_cursor.rowcount == 0:
             # Insert new register
             red_path = os.path.join(reduction_dir, red_name)
@@ -611,7 +623,7 @@ def register_reduced(data_dir, run_date, db_object):
             red_stats = red_fits.stats()
 
             # getting raw id
-            sql_search_raw_id = f"SELECT `id` FROM `image_raw` WHERE `path` = '{red_name}'"
+            sql_search_raw_id = f"SELECT `id` FROM `image_raw` WHERE `path` = '{red_name}' AND date_run='{run_date}'"
             print(f"sql_search = {sql_search_raw_id}")
             db_cursor.execute(sql_search_raw_id)
             res_search_raw_id = db_cursor.fetchall()
@@ -626,6 +638,7 @@ def register_reduced(data_dir, run_date, db_object):
             print(f"sql_search = {sql_search_mb_id}")
             db_cursor.execute(sql_search_mb_id)
             res_search_mb_id = db_cursor.fetchall()
+            
             if db_cursor.rowcount == 1:
                 mb_id = res_search_mb_id[0][0]
             else:
@@ -663,7 +676,7 @@ def register_reduced(data_dir, run_date, db_object):
                 red_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
                 red_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
             if 'INSPOROT' not in red_header and 'FILTER' in red_header:
-                if red_header['FILTER']=='R':
+                if red_header['FILTER'] in ['I','R', 'U', 'V', 'B', 'Clear']:
                     red_header['INSPOROT'] = -999
                 else:
                     red_header['INSPOROT'] = int(red_header['FILTER'][1:]) 
@@ -712,7 +725,7 @@ def register_reduced(data_dir, run_date, db_object):
     
     return new_registrations
 
-def register_calibrated(data_dir, run_date, db_object):
+def register_calibrated(data_dir, run_date, db_object, telescope):
     """
     Register new CALIBRATED fits located in data_dir from nightly run 
     in database 'image_calibrated' table using connection given by db_object.
@@ -755,8 +768,7 @@ def register_calibrated(data_dir, run_date, db_object):
         # Checking each calibrated FITS 
         for index, row in data.iterrows():
             dire, cal_name = os.path.split(row['PATH'])
-            
-            sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}'"
+            sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}' AND date_run='{run_date}'"
             db_cursor.execute(sql_search)
             res_search = db_cursor.fetchall()
             if db_cursor.rowcount == 0:
@@ -772,7 +784,7 @@ def register_calibrated(data_dir, run_date, db_object):
 
                 # getting reduced id
                 red_name = cal_name.replace('_final', '')
-                sql_search_red_id = f"SELECT `id` FROM `image_reduced` WHERE `path` = '{red_name}'"
+                sql_search_red_id = f"SELECT `id` FROM `image_reduced` WHERE `path` = '{red_name}' AND date_run='{run_date}'"
                 print(f"sql_search = {sql_search_red_id}")
                 db_cursor.execute(sql_search_red_id)
                 res_search_red_id = db_cursor.fetchall()
@@ -834,7 +846,7 @@ def register_calibrated(data_dir, run_date, db_object):
                     cal_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
                     cal_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
                 if 'INSPOROT' not in cal_header and 'FILTER' in cal_header:
-                    if cal_header['FILTER']=='R':
+                    if cal_header['FILTER'] in ['R', 'I','U', 'V', 'B', 'Clear']:
                         cal_header['INSPOROT'] = -999
                     else:
                         cal_header['INSPOROT'] = int(cal_header['FILTER'][1:]) 
@@ -876,6 +888,7 @@ def register_calibrated(data_dir, run_date, db_object):
                 v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
                 # Inserting new register on database.image_raw
+
                 sql_insert = f"INSERT INTO image_calibrated ({','.join(params)}) VALUES ({v})"
                 print(f"SQL command (image_calibrated) = '{sql_insert}'")
 
@@ -897,7 +910,7 @@ def register_calibrated(data_dir, run_date, db_object):
     
     return new_registrations
 
-def register_photometry(data_dir, run_date, db_object):
+def register_photometry(data_dir, run_date, db_object, telescope):
     """
     Register for each run_date and calibrated fits data associated to blazar.
 
@@ -919,7 +932,6 @@ def register_photometry(data_dir, run_date, db_object):
     #calibration_dir = data_dir.replace('raw', 'calibration') 
     #calibration_dir = os.path.join(calibration_dir, f'{run_date}/')
     calibration_dir=data_dir
-    telescope=data_dir.split('/')[-3]
     dt = datetime.strptime(run_date, '%y%m%d')
 
     cal_directories = glob.glob(os.path.join(calibration_dir, '*-*'))
@@ -941,19 +953,17 @@ def register_photometry(data_dir, run_date, db_object):
             print(f'Reading file: {photometry_info_path}')
             photometry_data = pd.read_csv(photometry_info_path)
             print(photometry_data.info())
-            # print(photometry_data)
-            print(photometry_data['MJD-OBS'].values[0])
         except:
             print(f"--------------ERROR: catalog '{searching}' not available.")
             continue
-
+        
         # getting calibrated FITS
         dire, name = os.path.split(photometry_info_path)
         if 'MAPCAT' in photometry_info_path:
             cal_name = name.replace('_final_photometry.csv', '_final.fits')
         else:
             cal_name = name.replace('_final_photometry.csv', '_final.fit')
-        sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}'"
+        sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}' AND date_run='{run_date}'"
         db_cursor.execute(sql_search)
         res_search = db_cursor.fetchall()
         if db_cursor.rowcount == 1:
@@ -964,10 +974,10 @@ def register_photometry(data_dir, run_date, db_object):
             print('ERROR: No associated calibrated FITS for this catalog')
             return 1
         # Checking previous information on blazar in photometry table...
-        sql_search_cal_id = f"SELECT `cal_id` FROM `photometry` WHERE `cal_id`={cal_id}"
+        sql_search_cal_id = f"SELECT `cal_id` FROM `photometry` WHERE `cal_id`={cal_id} AND date_run='{run_date}'"
         db_cursor.execute(sql_search_cal_id)
         res_search_cal_id = db_cursor.fetchall()
-
+        
         if db_cursor.rowcount == 0:
             # Insert new register
 
@@ -983,17 +993,18 @@ def register_photometry(data_dir, run_date, db_object):
                 raise
             cal_header = cal_fits.header
             cal_stats = cal_fits.stats()
-
             # Checking that Blazars are identical for ORDINARY/EXTRAORDINARY counterparts
-            name_blazar_o = photometry_data['IAU_name_mc_O'].values[0]
-            name_blazar_e = photometry_data['IAU_name_mc_E'].values[0]
+            name_blazar_o = photometry_data['name_mc_O'].values[0]
+            name_blazar_e = photometry_data['name_mc_E'].values[0]
+            print(name_blazar_e)
             if name_blazar_o != name_blazar_e:
                 print(f'ORD ({name_blazar_o}) & EXTRAORD ({name_blazar_e}) blazars are differents!')
                 return 2
 
             # getting blazar_id
             blazar_name = name_blazar_o
-            sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name_IAU` = '{blazar_name}'"
+            blazar_name_IAU = photometry_data['IAU_name_mc_O'].values[0]
+            sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name` = '{blazar_name}'"
             print(f"sql_search = {sql_search_bl_id}")
             db_cursor.execute(sql_search_bl_id)
             res_search_bl_id = db_cursor.fetchall()
@@ -1004,31 +1015,205 @@ def register_photometry(data_dir, run_date, db_object):
                 return 3 
     
             # Parameters from input photometry file
-            # index_O,id_mc_O,id_blazar_mc_O,aper_mc_O,IAU_name_mc_O,ra2000_mc_O,dec2000_mc_O,name_mc_O,Rmag_mc_O,Rmagerr_mc_O,PolDeg_mc_O,ErrPolDeg_mc_O,PolAngle_mc_O,ErrPolAngle_mc_O,ra2000_mc_deg_O,dec2000_mc_deg_O,index_O,NUMBER_O,MAG_AUTO_O,MAGERR_AUTO_O,FLUX_AUTO_O,FLUXERR_AUTO_O,FLUX_APER_O,FLUXERR_APER_O,MAG_APER_O,MAGERR_APER_O,X_IMAGE_O,Y_IMAGE_O,ALPHA_J2000_O,DELTA_J2000_O,FLAGS_O,CLASS_STAR_O,FWHM_IMAGE_O,FWHM_WORLD_O,ELONGATION_O,ELLIPTICITY_O,DISTANCE_DEG_O,
+            #  index_O,id_mc_O,id_blazar_mc_O,aper_mc_O,IAU_name_mc_O,ra2000_mc_O,dec2000_mc_O,name_mc_O,Rmag_mc_O,Rmagerr_mc_O,PolDeg_mc_O,ErrPolDeg_mc_O,PolAngle_mc_O,ErrPolAngle_mc_O,ra2000_mc_deg_O,dec2000_mc_deg_O,index_O,NUMBER_O,MAG_AUTO_O,MAGERR_AUTO_O,FLUX_AUTO_O,FLUXERR_AUTO_O,FLUX_APER_O,FLUXERR_APER_O,MAG_APER_O,MAGERR_APER_O,X_IMAGE_O,Y_IMAGE_O,ALPHA_J2000_O,DELTA_J2000_O,FLAGS_O,CLASS_STAR_O,FWHM_IMAGE_O,FWHM_WORLD_O,ELONGATION_O,ELLIPTICITY_O,DISTANCE_DEG_O,
             # index_E,id_mc_E,id_blazar_mc_E,aper_mc_E,IAU_name_mc_E,ra2000_mc_E,dec2000_mc_E,name_mc_E,Rmag_mc_E,Rmagerr_mc_E,PolDeg_mc_E,ErrPolDeg_mc_E,PolAngle_mc_E,ErrPolAngle_mc_E,ra2000_mc_deg_E,dec2000_mc_deg_E,index_E,NUMBER_E,MAG_AUTO_E,MAGERR_AUTO_E,FLUX_AUTO_E,FLUXERR_AUTO_E,FLUX_APER_E,FLUXERR_APER_E,MAG_APER_E,MAGERR_APER_E,X_IMAGE_E,Y_IMAGE_E,ALPHA_J2000_E,DELTA_J2000_E,FLAGS_E,CLASS_STAR_E,FWHM_IMAGE_E,FWHM_WORLD_E,ELONGATION_E,ELLIPTICITY_E,DISTANCE_DEG_E,RA_J2000_O,DEC_J2000_O,RA_J2000_E,DEC_J2000_E,
             # APERPIX,FWHM,SECPIX,DATE-OBS,MJD-OBS,RJD-50000,EXPTIME,ANGLE,MAGZPT
 
             # Taking info about ordinary and extraordinary sources...
-            params = ['cal_id', 'blazar_id','Telescope'] # Parameters got from database registers
+            params = ['cal_id', 'blazar_id','name','name_IAU','Telescope'] # Parameters got from database registers
             params += ['date_run', 'date_obs', 'mjd_obs', 'rjd-50000', 'pol_angle', \
-                'aperpix', 'fwhm', 'secpix', 'exptime', 'magzpt']
+                           'aperpix', 'fwhm', 'secpix', 'exptime', 'magzpt']
 
             photo_params = ['mag_auto', 'magerr_auto', 'flux_auto', 'fluxerr_auto', \
-                'flux_aper', 'fluxerr_aper', 'mag_aper', 'magerr_aper', \
-                'x_image', 'y_image', 'alpha_j2000', 'delta_j2000', 'flags', \
-                'class_star', 'fwhm_image', 'fwhm_world', 'elongation', 'ellipticity', \
-                'distance_deg']
+                                'flux_aper', 'fluxerr_aper', 'mag_aper', 'magerr_aper', \
+                                'x_image', 'y_image', 'alpha_j2000', 'delta_j2000', 'flags', \
+                                'class_star', 'fwhm_image', 'fwhm_world', 'elongation', 'ellipticity', \
+                                'distance_deg']
             
             # String parameters
             str_params = ['date_run', 'date_obs', 'source_type']
             
             blazar_keywords = ['MJD-OBS', 'RJD-50000', 'ANGLE', \
-                'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'MAGZPT']
+                                       'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'MAGZPT']
             blazar_photometry_keywords = ['MAG_AUTO', 'MAGERR_AUTO', 'FLUX_AUTO', \
-                'FLUXERR_AUTO', 'FLUX_APER', 'FLUXERR_APER', 'MAG_APER', \
-                'MAGERR_APER', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', \
-                'FLAGS', 'CLASS_STAR', 'FWHM_IMAGE', 'FWHM_WORLD', 'ELONGATION', \
-                'ELLIPTICITY', 'DISTANCE_DEG']
+                                              'FLUXERR_AUTO', 'FLUX_APER', 'FLUXERR_APER', 'MAG_APER', \
+                                              'MAGERR_APER', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', \
+                                              'FLAGS', 'CLASS_STAR', 'FWHM_IMAGE', 'FWHM_WORLD', 'ELONGATION', \
+                                              'ELLIPTICITY', 'DISTANCE_DEG']
+            
+            # There is only one line for each photometry file
+            # mjd_obs = photometry_data['MJD-OBS']
+            # try:
+            #     r_date = get_run_date(photometry_data['MJD-OBS'].values[0])
+            # except:
+            #     print(photometry_data['MJD-OBS'])
+            #     raise
+
+            cal_id=cal_id
+            values = [cal_id, blazar_id,f'"{blazar_name}"', f'"{blazar_name_IAU}"',f'"{telescope}"', dt.strftime("%Y-%m-%d"), \
+                          photometry_data['DATE-OBS'].values[0].replace('T', ' ')]
+            values += [photometry_data[k].values[0] for k in blazar_keywords]
+
+            for t in ['O', 'E']:
+                par = params + photo_params + ['source_type']
+                vals = values + [photometry_data[k + f'_{t}'].values[0] for k in blazar_photometry_keywords] + [t]
+                # formatting values
+                v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, vals)])
+                print(v)
+                # Inserting new register on database.photometry
+                #sql_insert = f"INSERT INTO `photometry` (`{'`,`'.join(par)}`) VALUES ({v})"
+                sql_insert = f"INSERT INTO `photometry` (`{'`,`'.join(par)}`) VALUES ({v})"
+                print(f"SQL command (photometry) = '{sql_insert}'")
+                    
+                try:
+                    db_cursor.execute(sql_insert)
+                except:
+                    print(f"SQL ERROR: {sql_insert}")
+                    raise
+                
+                # Commiting insertion
+                db_object.commit()
+
+                if db_cursor.rowcount > 0:
+                    print(f"INFO: {db_cursor.rowcount} register/s inserted successfully.")
+                new_registrations += db_cursor.rowcount
+    
+    return new_registrations
+
+def register_photometry_refstars(data_dir, run_date, db_object, telescope):
+    """
+    Register for each run_date and calibrated fits data associated to blazar.
+
+    Args:
+        data_dir (string): base directory. FITS are stored in data_dir/raw directory.
+        run_date (string): format given by pattern YYMMDD where YY is year, 
+            MM is month and DD y day.
+        db_object (mysql.connector.db object): it manages database connection.
+
+    Returns:
+        int:
+            if int >= 0, it represents number of blazars processed and registered in database.
+    
+    Exception:
+        IOError, IndexError: 
+            if blazar catalog file was not found.
+    """
+    new_registrations = 0
+    #calibration_dir = data_dir.replace('raw', 'calibration') 
+    #calibration_dir = os.path.join(calibration_dir, f'{run_date}/')
+    calibration_dir=data_dir
+    dt = datetime.strptime(run_date, '%y%m%d')
+
+    cal_directories = glob.glob(os.path.join(calibration_dir, '*-*'))
+    cal_directories.sort()
+
+    # Create cursor for database operation
+    db_cursor = db_object.cursor()
+    #query="ALTER TABLE polarimetry ADD Telescope VARCHAR(100)"
+    #db_cursor.execute(query)
+
+    # working on each subdirectory
+    for cal_dir in cal_directories:
+        if not os.path.isdir(cal_dir):
+            continue
+        print(f"INFO: working in directory '{cal_dir}'\n")
+        try:
+            searching = os.path.join(cal_dir, '*_final_photometry.csv')
+            photometry_info_path = glob.glob(searching)[0]
+            print(f'Reading file: {photometry_info_path}')
+            photometry_data = pd.read_csv(photometry_info_path)
+            print(photometry_data.info())
+            if photometry_data['name_mc_O'].values.shape[0]<2:
+                print("This source does not have a reference star")
+                return -3
+        except:
+            print(f"--------------ERROR: catalog '{searching}' not available.")
+            continue
+        
+        # getting calibrated FITS
+        dire, name = os.path.split(photometry_info_path)
+        if 'MAPCAT' in photometry_info_path:
+            cal_name = name.replace('_final_photometry.csv', '_final.fits')
+        else:
+            cal_name = name.replace('_final_photometry.csv', '_final.fit')
+        sql_search = f"SELECT `id` FROM `image_calibrated` WHERE path='{cal_name}' AND date_run='{run_date}'"
+        db_cursor.execute(sql_search)
+        res_search = db_cursor.fetchall()
+        if db_cursor.rowcount == 1:
+            cal_id = res_search[0][0]
+        else:
+            print(f'sql_search = {sql_search}')
+            print(f'query result = {res_search}')
+            print('ERROR: No associated calibrated FITS for this catalog')
+            return 1
+        # Checking previous information on blazar in photometry table...
+        sql_search_cal_id = f"SELECT `cal_id` FROM `photometry_reference_stars` WHERE `cal_id`={cal_id} AND date_run='{run_date}'"
+        db_cursor.execute(sql_search_cal_id)
+        res_search_cal_id = db_cursor.fetchall()
+        
+        if db_cursor.rowcount == 0:
+            # Insert new register
+
+            # getting calibrated FITS
+            if 'MAPCAT' in photometry_info_path:
+                cal_path = photometry_info_path.replace('_final_photometry.csv', '_final.fits')
+            else:
+                cal_path = photometry_info_path.replace('_final_photometry.csv', '_final.fit')
+            try:
+                cal_fits = mcFits(cal_path)
+            except:
+                print(f"ERROR: processing {cal_path}")
+                raise
+            cal_header = cal_fits.header
+            cal_stats = cal_fits.stats()
+            
+            # Checking that Blazars are identical for ORDINARY/EXTRAORDINARY counterparts
+            name_blazar_o = photometry_data['name_mc_O'].values[1]
+            name_blazar_e = photometry_data['name_mc_E'].values[1]
+            print(name_blazar_e)
+            if name_blazar_o != name_blazar_e:
+                print(f'ORD ({name_blazar_o}) & EXTRAORD ({name_blazar_e}) blazars are differents!')
+                return 2
+
+            # getting blazar_id
+            blazar_name = name_blazar_o
+            blazar_name_IAU = photometry_data['IAU_name_mc_O'].values[1]
+            sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name` = '{blazar_name}'"
+            print(f"sql_search = {sql_search_bl_id}")
+            db_cursor.execute(sql_search_bl_id)
+            res_search_bl_id = db_cursor.fetchall()
+            if db_cursor.rowcount == 1:
+                blazar_id = res_search_bl_id[0][0]
+            else:
+                print(f"ERROR: No found blazar_id for calibrated fits '{cal_name}'")
+                return 3 
+    
+            # Parameters from input photometry file
+            #  index_O,id_mc_O,id_blazar_mc_O,aper_mc_O,IAU_name_mc_O,ra2000_mc_O,dec2000_mc_O,name_mc_O,Rmag_mc_O,Rmagerr_mc_O,PolDeg_mc_O,ErrPolDeg_mc_O,PolAngle_mc_O,ErrPolAngle_mc_O,ra2000_mc_deg_O,dec2000_mc_deg_O,index_O,NUMBER_O,MAG_AUTO_O,MAGERR_AUTO_O,FLUX_AUTO_O,FLUXERR_AUTO_O,FLUX_APER_O,FLUXERR_APER_O,MAG_APER_O,MAGERR_APER_O,X_IMAGE_O,Y_IMAGE_O,ALPHA_J2000_O,DELTA_J2000_O,FLAGS_O,CLASS_STAR_O,FWHM_IMAGE_O,FWHM_WORLD_O,ELONGATION_O,ELLIPTICITY_O,DISTANCE_DEG_O,
+            # index_E,id_mc_E,id_blazar_mc_E,aper_mc_E,IAU_name_mc_E,ra2000_mc_E,dec2000_mc_E,name_mc_E,Rmag_mc_E,Rmagerr_mc_E,PolDeg_mc_E,ErrPolDeg_mc_E,PolAngle_mc_E,ErrPolAngle_mc_E,ra2000_mc_deg_E,dec2000_mc_deg_E,index_E,NUMBER_E,MAG_AUTO_E,MAGERR_AUTO_E,FLUX_AUTO_E,FLUXERR_AUTO_E,FLUX_APER_E,FLUXERR_APER_E,MAG_APER_E,MAGERR_APER_E,X_IMAGE_E,Y_IMAGE_E,ALPHA_J2000_E,DELTA_J2000_E,FLAGS_E,CLASS_STAR_E,FWHM_IMAGE_E,FWHM_WORLD_E,ELONGATION_E,ELLIPTICITY_E,DISTANCE_DEG_E,RA_J2000_O,DEC_J2000_O,RA_J2000_E,DEC_J2000_E,
+            # APERPIX,FWHM,SECPIX,DATE-OBS,MJD-OBS,RJD-50000,EXPTIME,ANGLE,MAGZPT
+
+            # Taking info about ordinary and extraordinary sources...
+            params = ['cal_id', 'blazar_id','name','name_IAU','Telescope'] # Parameters got from database registers
+            params += ['date_run', 'date_obs', 'mjd_obs', 'rjd-50000', 'pol_angle', \
+                           'aperpix', 'fwhm', 'secpix', 'exptime', 'magzpt']
+            
+            photo_params = ['mag_auto', 'magerr_auto', 'flux_auto', 'fluxerr_auto', \
+                                'flux_aper', 'fluxerr_aper', 'mag_aper', 'magerr_aper', \
+                                'x_image', 'y_image', 'alpha_j2000', 'delta_j2000', 'flags', \
+                                'class_star', 'fwhm_image', 'fwhm_world', 'elongation', 'ellipticity', \
+                                'distance_deg']
+            
+                # String parameters
+            str_params = ['date_run', 'date_obs', 'source_type']
+                
+            blazar_keywords = ['MJD-OBS', 'RJD-50000', 'ANGLE', \
+                                       'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'MAGZPT']
+            blazar_photometry_keywords = ['MAG_AUTO', 'MAGERR_AUTO', 'FLUX_AUTO', \
+                                              'FLUXERR_AUTO', 'FLUX_APER', 'FLUXERR_APER', 'MAG_APER', \
+                                              'MAGERR_APER', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', \
+                                              'FLAGS', 'CLASS_STAR', 'FWHM_IMAGE', 'FWHM_WORLD', 'ELONGATION', \
+                                              'ELLIPTICITY', 'DISTANCE_DEG']
 
             # There is only one line for each photometry file
             # mjd_obs = photometry_data['MJD-OBS']
@@ -1038,19 +1223,21 @@ def register_photometry(data_dir, run_date, db_object):
             #     print(photometry_data['MJD-OBS'])
             #     raise
 
-            values = [cal_id, blazar_id,f'"{telescope}"', dt.strftime("%Y-%m-%d"), \
-                photometry_data['DATE-OBS'].values[0].replace('T', ' ')]
-            values += [photometry_data[k].values[0] for k in blazar_keywords]
+                
+            cal_id=cal_id
+            values = [cal_id, blazar_id,f'"{blazar_name}"', f'"{blazar_name_IAU}"',f'"{telescope}"', dt.strftime("%Y-%m-%d"), \
+                          photometry_data['DATE-OBS'].values[1].replace('T', ' ')]
+            values += [photometry_data[k].values[1] for k in blazar_keywords]
 
             for t in ['O', 'E']:
                 par = params + photo_params + ['source_type']
-                vals = values + [photometry_data[k + f'_{t}'].values[0] for k in blazar_photometry_keywords] + [t]
-                
-                # formatting values
+                vals = values + [photometry_data[k + f'_{t}'].values[1] for k in blazar_photometry_keywords] + [t]
+                    # formatting values
                 v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, vals)])
-
+                print(v)
                 # Inserting new register on database.photometry
-                sql_insert = f"INSERT INTO `photometry` (`{'`,`'.join(par)}`) VALUES ({v})"
+                #sql_insert = f"INSERT INTO `photometry` (`{'`,`'.join(par)}`) VALUES ({v})"
+                sql_insert = f"INSERT INTO `photometry_reference_stars` (`{'`,`'.join(par)}`) VALUES ({v})"
                 print(f"SQL command (photometry) = '{sql_insert}'")
 
                 try:
@@ -1068,7 +1255,8 @@ def register_photometry(data_dir, run_date, db_object):
     
     return new_registrations
 
-def register_polarimetry_data(data_dir, run_date, db_object):
+
+def register_polarimetry_data(data_dir, run_date, db_object, telescope):
     """
     Register for each value of polarization and angle of polarization for
     each blazar observed at run_date.
@@ -1101,7 +1289,6 @@ def register_polarimetry_data(data_dir, run_date, db_object):
     #catalog_dir = data_dir.replace('raw', 'final') 
     #catalog_dir = os.path.join(catalog_dir, f'{run_date}/')
     catalog_dir = data_dir
-    telescope = catalog_dir.split('/')[-3]
     catalog = os.path.join(catalog_dir, f'{telescope}_polR_{r_date}.csv')
     
     try:
@@ -1113,12 +1300,12 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         raise
     
     params = ['blazar_id', 'Telescope','date_run', \
-        'rjd-50000', 'name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
+        'rjd-50000', 'name','alternative_name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
         'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles']
 
-    str_params = ['name', 'date_run']
+    str_params = ['name', 'alternative_name','date_run']
 
-    pol_keywords = ['DATE_RUN', 'RJD-50000', 'MC-IAU-NAME', \
+    pol_keywords = ['DATE_RUN', 'RJD-50000', 'MC-IAU-NAME','MC-NAME', \
         'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
         'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION']
         
@@ -1128,6 +1315,7 @@ def register_polarimetry_data(data_dir, run_date, db_object):
         # print(f'row ------------\n {row}')
         # getting blazar_id
         blazar_name = row['MC-IAU-NAME'].strip()
+        blazar_mc_name = row['MC-NAME']
         sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name_IAU` like '{blazar_name}'"
         print(f"sql_search = {sql_search_bl_id}")
         db_cursor.execute(sql_search_bl_id)
@@ -1182,13 +1370,127 @@ def register_polarimetry_data(data_dir, run_date, db_object):
     
     return new_registrations, updates
 
+def register_polarimetry_refstars_data(data_dir, run_date, db_object, telescope):
+    """
+    Register for each value of polarization and angle of polarization for
+    each blazar observed at run_date.
+
+    Args:
+        data_dir (string): base directory. FITS are stored in data_dir/raw directory.
+        run_date (string): format given by pattern YYMMDD where YY is year, 
+            MM is month and DD y day.
+        db_object (mysql.connector.db object): it manages database connection.
+
+    Returns:
+        tuple: (num_insertions, num_updates)
+            where 
+                - 'num_insertions' represents number of polarimetrical computations 
+            registered in database.
+                - 'num_updates', is the number of updates registed in database.
+    
+    Exception:
+        IOError, IndexError: 
+            if polarimetry catalog file was not found.
+    """
+    new_registrations = 0
+    updates = 0
+
+    # Create cursor for database operation
+    db_cursor = db_object.cursor()
+    
+    dt = datetime.strptime(run_date, '%y%m%d')
+    r_date = dt.strftime("%Y-%m-%d")
+    #catalog_dir = data_dir.replace('raw', 'final') 
+    #catalog_dir = os.path.join(catalog_dir, f'{run_date}/')
+    catalog_dir = data_dir
+    catalog = os.path.join(catalog_dir, f'{telescope}_polR_{r_date}_reference_stars.csv')
+    
+    try:
+        pol_data = pd.read_csv(catalog)
+        print(f'Number of polarimetry data = {len(pol_data.index)}')
+        print('*' * 60)
+    except IOError:
+        print(f"ERROR: polarimetry catalog '{catalog}' not found.")
+        raise
+    
+    params = ['blazar_id', 'Telescope','date_run', \
+        'rjd-50000', 'name', 'alternative_name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
+        'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles']
+
+    str_params = ['name', 'alternative_name', 'date_run']
+
+    pol_keywords = ['DATE_RUN', 'RJD-50000','MC-IAU-NAME','MC-NAME', \
+        'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
+        'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION']
+        
+    # Checking previous information on blazar in photometry table...
+    for index, row in pol_data.iterrows():
+        print(f'index = {index}')
+        # print(f'row ------------\n {row}')
+        # getting blazar_id
+        blazar_name = row['MC-NAME']
+        blazar_mc_name = row['MC-NAME']
+        sql_search_bl_id = f"SELECT `id` FROM `blazar_source` WHERE `name` like '{blazar_name}'"
+        print(f"sql_search = {sql_search_bl_id}")
+        db_cursor.execute(sql_search_bl_id)
+        res_search_bl_id = db_cursor.fetchall()
+        
+        blazar_id = None
+        if len(res_search_bl_id) == 1:
+            blazar_id = res_search_bl_id[0][0]
+        else:
+            print(f"ERROR: No found blazar_id for blazar called '{blazar_name}' in polarimetry info row.")
+            return -3 
+        
+        sql_search_pol_data = f"SELECT * FROM `polarimetry_reference_stars` WHERE `blazar_id` = {blazar_id} AND `date_run` = '{r_date}' AND (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
+        print(f'sql_search = {sql_search_pol_data}')
+        db_cursor.execute(sql_search_pol_data)
+        res_search_pol_data = db_cursor.fetchall()
+        print(f'res_search_pol_data = {res_search_pol_data}')
+
+        sql = ''
+        if len(res_search_pol_data) == 0:
+            # Insert new register
+            values = [blazar_id, f'"{telescope}"'] + [row[k] for k in pol_keywords]
+
+            v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
+
+            # Inserting new register on database.image_raw
+            sql = f"INSERT INTO `polarimetry_reference_stars` (`{'`,`'.join(params)}`) VALUES ({v})"
+            new_registrations += 1
+        else:
+            values = [row[k] for k in pol_keywords]
+            val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params[1:], values)]
+            
+            pairs = []
+            for k, v in zip(params[1:], val_fmt):
+                pairs.append(f'`{k}` = {v}')
+            sql = f"UPDATE `polarimetry_reference_stars` SET {','.join(pairs)} WHERE (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
+            updates += 1
+        
+        print(f'sql insert/update = {sql}')
+        try:
+            db_cursor.execute(sql)
+        except:
+            print(f"SQL WARNING: {sql}")
+            # raise
+        
+        # Commiting insertion
+        db_object.commit()
+        
+
+        # if new_registrations > 1:
+        #     break
+    
+    return new_registrations, updates
+
 
 
 def main():
     parser = argparse.ArgumentParser(prog='iop3_add_db_info.py', \
     conflict_handler='resolve',
     description='''Read CSV files from run_date and insert new info in database.''',
-    epilog='''''')
+    epilog='')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
     # parser.add_argument("dbengine", help="Configuration parameter files directory")
     parser.add_argument("input_data_dir", help="Input data base directory")
@@ -1226,6 +1528,7 @@ def main():
     
     dirs = ['raw', 'reduction', 'calibration', 'final']
     telescope = args.telescope
+        
     directories = {k: os.path.join(args.input_data_dir, f'{k}/{telescope}/{args.run_date}/') for k in dirs}
     print(f'Directories = {directories}')
     
@@ -1256,56 +1559,62 @@ def main():
     # return 1
 
     # Processing RAW images (image_raw table) from run date
-    res = register_raw(directories['raw'], args.run_date, my_db)
+    res = register_raw(directories['raw'], args.run_date, my_db, telescope)
     print(f"Raw image registration result -> {res}")
     
     # return 1
 
     # Processing MASTERBIAS (master_bias table) from run date 
-    res = register_masterbias(directories['reduction'], args.run_date, my_db)
+    res = register_masterbias(directories['reduction'], args.run_date, my_db, telescope)
     print(f"MasterBIAS registration result -> {res}")
 
     # return 1
 
     # Processing RAW-BIAS (raw_bias table) from run date
-    res = register_rawbias(directories['reduction'], args.run_date, my_db)
+    res = register_rawbias(directories['reduction'], args.run_date, my_db, telescope)
     print(f"Relation between raw and masterBIAS registration result -> {res}")
 
     # return 1
 
     # Processing MASTERFLATS (master_flat table) from run date
-    res = register_masterflats(directories['reduction'], args.run_date, my_db)
+    res = register_masterflats(directories['reduction'], args.run_date, my_db, telescope)
     print(f"MasterFLATS registration result -> {res}")
     
     # return 1
 
     # Processing RAW-FLATS (raw_flat table) from run date
-    res = register_rawflats(directories['reduction'], args.run_date, my_db)
+    res = register_rawflats(directories['reduction'], args.run_date, my_db, telescope)
     print(f"Relation between raw and masterFLATS registration result -> {res}")
     
     # return 1
 
     # Processing REDUCED images (image_reduced table) from run date
-    res = register_reduced(directories['reduction'], args.run_date, my_db)
+    res = register_reduced(directories['reduction'], args.run_date, my_db, telescope)
     print(f"Reduced image registration result -> {res}")
     
     # return 1
 
     # Processing CALIBRATED images (image_calibrated table) from run date
-    res = register_calibrated(directories['calibration'], args.run_date, my_db)
+    res = register_calibrated(directories['calibration'], args.run_date, my_db, telescope)
     print(f"Calibrated image registration result -> {res}")
     
     # return 1
 
     # Processing BLAZAR MEASURE (photometry table) from run date
-    res = register_photometry(directories['calibration'], args.run_date, my_db)
+    res = register_photometry(directories['calibration'], args.run_date, my_db, telescope)
     print(f"blazar data registration result -> {res}")
-    
+
+    res = register_photometry_refstars(directories['calibration'], args.run_date, my_db, telescope)
+    print(f"blazar data registration result -> {res}")
     # return 1
 
     # Processing POLARIMETRY DATA (polarimetry_data table) from run date
-    res = register_polarimetry_data(directories['final'], args.run_date, my_db)
+    res = register_polarimetry_data(directories['final'], args.run_date, my_db, telescope)
     print(f"Polarimetry data registration result -> {res}")
+
+    res = register_polarimetry_refstars_data(directories['final'], args.run_date, my_db, telescope)
+    print(f"Polarimetry data registration result -> {res}")
+
     
     # return 1
 
