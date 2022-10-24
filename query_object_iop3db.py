@@ -31,8 +31,14 @@ def main():
        type=str,
        default='./',
        help="Ouput plot directory. [default: %(default)s].")
+    parser.add_argument("--date",
+       action="store",
+       dest="date",
+       type=str,
+       default='all',
+       help="Date to plot. [default: %(default)s].")
     parser.add_argument("blazar_name", help="Blazar name used for query IOP3 database.") # mandatory argument
-
+    
     args = parser.parse_args()
 
     if not os.path.exists(args.out_dir):
@@ -50,8 +56,10 @@ def main():
         cursor = cnx.cursor()
 
         # query
-        query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
-        
+        if args.date!='all':
+            query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}' AND DATE_RUN='{args.date}'"
+        else:
+            query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
         # query execution
         cursor.execute(query1)
 
@@ -78,9 +86,11 @@ def main():
                 break
         print(alt_name)
 
-        query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%'"
-        
-                # query execution
+        if args.date!='all':
+            query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%' AND DATE_RUN='{args.date}'"
+        else:
+            query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%'"
+        # query execution
         cursor.execute(query2)
 
         # getting all results
@@ -145,7 +155,7 @@ def main():
         set_ax_dates(axes[0], axes[0].twiny(), labels=True).grid(axis='x')
 
         # saving plot in file
-        png_path = os.path.join(args.out_dir, f'{args.blazar_name}.png')
+        png_path = os.path.join(args.out_dir, f'{args.blazar_name}_{args.date}.png')
         plt.savefig(png_path, dpi=300)
         
         # Closing cursor. No more queryies could be executed from now

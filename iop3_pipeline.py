@@ -342,8 +342,12 @@ def contains_valid_coords(fits_path, keywordRA='RA', keywordDEC='DEC'):
     # Getting header informacion
     i_fits = mcFits(fits_path)
     input_head = i_fits.header
-    # Central FITS coordinates
-    icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
+    if keywordRA not in input_head:
+        print(f'PIPELINE,ERROR,Input coordinates (RA DEC) not in HEADER')
+        return False
+    else:
+        # Central FITS coordinates
+        icoords = "{} {}".format(input_head[keywordRA], input_head[keywordDEC])
     try:
         input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
         obstime="J2000")
@@ -733,7 +737,7 @@ def main():
                 break
 
         if wcsmatch_best < 10:
-            print(f"ASTROCALIBRATION,ERROR,'Not enought matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
+            print(f"ASTROCALIBRATION,ERROR,'Not enough matches for confident rotation angle computation. Please, look at \'{rot_dir}\' for more info.'")
             return 2
         
         print(f' ---------- Best rotation angle for astrometric calibration = {crot} ({wcsmatch_best} matches) -------')
@@ -1022,8 +1026,20 @@ def main():
         with open(os.path.join(proc_dirs['polarization_dir'], 'db.log'), 'w') as log_file:
             subprocess.Popen(com_insertdb, shell=True, stdout=log_file).wait()
 
-    return 0
+    
 
+    # 6th: Generate plot for each observed blazar
+
+    date=df_blazars['DATE-OBS'].values[0].split('T')[0]
+    for name in blazar_names:
+        com_plot_query = f'python query_object_iop3db.py --out_dir={proc_dirs["polarization_dir"]} {name}'
+        com_plot_query_tonight = f'python query_object_iop3db.py --out_dir={proc_dirs["polarization_dir"]} {name} --date={date}'
+    print(com_plot_query)    
+    subprocess.Popen(com_plot_query, shell=True).wait()
+    print(com_plot_query_tonight)
+    subprocess.Popen(com_plot_query_tonight, shell=True).wait()
+
+    return 0
 if __name__ == '__main__':
     if not main():
         print("IOP3 process successfully completed!!")
