@@ -1300,12 +1300,12 @@ def register_polarimetry_data(data_dir, run_date, db_object, telescope):
         raise
     
     params = ['blazar_id', 'Telescope','date_run', \
-        'rjd-50000', 'name','alternative_name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
+        'rjd-50000','mjd_obs', 'name','alternative_name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
         'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles']
 
     str_params = ['name', 'alternative_name','date_run']
 
-    pol_keywords = ['DATE_RUN', 'RJD-50000', 'MC-IAU-NAME','MC-NAME', \
+    pol_keywords = ['DATE_RUN', 'RJD-50000','MJD-OBS', 'MC-IAU-NAME','MC-NAME', \
         'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
         'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION']
         
@@ -1337,7 +1337,7 @@ def register_polarimetry_data(data_dir, run_date, db_object, telescope):
         sql = ''
         if len(res_search_pol_data) == 0:
             # Insert new register
-            values = [blazar_id, f'"{telescope}"'] + [row[k] for k in pol_keywords]
+            values = [blazar_id, f'"{telescope}"']  + [row[k] for k in pol_keywords]
 
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
@@ -1345,11 +1345,11 @@ def register_polarimetry_data(data_dir, run_date, db_object, telescope):
             sql = f"INSERT INTO `polarimetry` (`{'`,`'.join(params)}`) VALUES ({v})"
             new_registrations += 1
         else:
-            values = [row[k] for k in pol_keywords]
-            val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params[1:], values)]
+            values = [blazar_id, f'"{telescope}"'] + [row[k] for k in pol_keywords]
+            val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)]
             
             pairs = []
-            for k, v in zip(params[1:], val_fmt):
+            for k, v in zip(params, val_fmt):
                 pairs.append(f'`{k}` = {v}')
             sql = f"UPDATE `polarimetry` SET {','.join(pairs)} WHERE (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
             updates += 1
@@ -1414,12 +1414,12 @@ def register_polarimetry_refstars_data(data_dir, run_date, db_object, telescope)
         raise
     
     params = ['blazar_id', 'Telescope','date_run', \
-        'rjd-50000', 'name', 'alternative_name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
+        'rjd-50000', 'mjd_obs', 'name', 'alternative_name', 'Rmag_lit','P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
         'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles']
 
-    str_params = ['name', 'alternative_name', 'date_run']
+    str_params = ['name', 'alternative_name', 'date_run', 'Telescope']
 
-    pol_keywords = ['DATE_RUN', 'RJD-50000','MC-IAU-NAME','MC-NAME', \
+    pol_keywords = ['DATE_RUN', 'RJD-50000','MJD-OBS', 'MC-IAU-NAME','MC-NAME','RMAG-LIT', \
         'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
         'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION']
         
@@ -1459,20 +1459,23 @@ def register_polarimetry_refstars_data(data_dir, run_date, db_object, telescope)
             sql = f"INSERT INTO `polarimetry_reference_stars` (`{'`,`'.join(params)}`) VALUES ({v})"
             new_registrations += 1
         else:
-            values = [row[k] for k in pol_keywords]
-            val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params[1:], values)]
+            values = [blazar_id, f'"{telescope}"'] + [row[k] for k in pol_keywords]
+            val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)]
             
             pairs = []
-            for k, v in zip(params[1:], val_fmt):
+            for k, v in zip(params, val_fmt):
                 pairs.append(f'`{k}` = {v}')
+            
             sql = f"UPDATE `polarimetry_reference_stars` SET {','.join(pairs)} WHERE (ABS(`rjd-50000` - {row['RJD-50000']}) < 0.0001)"
             updates += 1
         
         print(f'sql insert/update = {sql}')
+        
         try:
             db_cursor.execute(sql)
         except:
-            print(f"SQL WARNING: {sql}")
+            print(f"SQL WARNING, REGISTRATION FAILED: {sql}")
+            new_registrations = 0
             # raise
         
         # Commiting insertion

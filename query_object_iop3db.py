@@ -11,12 +11,14 @@ VERSION: 0.1
 
 import os
 import argparse
-
+import numpy as np
 from matplotlib import pyplot as plt
 import pandas as pd
+from astropy.time import Time
 
 import mysql.connector
 from mysql.connector import errorcode
+from helpers_for_nice_axes import *
 
 def main():
     parser = argparse.ArgumentParser(prog='query_object_iop3db.py', \
@@ -43,13 +45,12 @@ def main():
     try:
         # create database connection
         cnx = mysql.connector.connect(user='iop3admin', password='IOP3_db_admin', \
-            host='127.0.0.1', database='iop3db')
+            host='127.0.0.1', database='iop3db', ssl_disabled=True)
         # cursor for executing queries
         cursor = cnx.cursor()
 
         # query
-        query1 = f"SELECT P, dP, `rjd-50000`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
-        
+        query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
         
         # query execution
         cursor.execute(query1)
@@ -58,34 +59,90 @@ def main():
         table_rows = cursor.fetchall()
 
         # casting to Pandas DataFrame object
-        df = pd.DataFrame(table_rows, columns=['P','dP', 'RJD-50000', 'Theta', 'dTheta', 'R', 'dR'])
+        df = pd.DataFrame(table_rows, columns=['name', 'alternative_name', 'telescope', 'P','dP', 'RJD-50000', 'MJD-OBS', 'Theta', 'dTheta', 'R', 'dR'])
+        #df['jyear'] = Time(df['MJD-OBS'], format='mjd').jyear
+        
         if len(df.index) == 0:
             print(f'WARNING: No date stored in IOP^3 database for object called "{args.blazar_name}"')
             cursor.close()
             cnx.close()
             return 2
-
+        df['jyear'] = Time(df['RJD-50000']+2400000+50000, format='jd').jyear
         print(df.info())
         print(df)
+        
+        #Get reference stars
+        for i in range(0,df.shape[0]):
+            alt_name=df.alternative_name.values[i]
+            if alt_name!=None:
+                break
+        print(alt_name)
 
+        query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%'"
+        
+                # query execution
+        cursor.execute(query2)
+
+        # getting all results
+        table_rows_refstars = cursor.fetchall()
+
+        # casting to Pandas DataFrame object
+        df_stars = pd.DataFrame(table_rows_refstars, columns=['name', 'alternative_name', 'telescope', 'P','dP', 'RJD-50000', 'MJD-OBS', 'Theta', 'dTheta', 'R', 'dR', 'Rmag_lit'])
+        #df_stars['jyear'] = Time(df_stars['RJD-50000'], format='mjd').jyear
+        df_stars['jyear'] = Time(df_stars['RJD-50000']+2400000+50000, format='jd').jyear
+        if len(df_stars.index) == 0:
+            print(f'WARNING: No data stored in IOP^3 database for object called "{alt_name}"')
+            cursor.close()
+            cnx.close()
+            return 2
+        df_stars['jyear'] = Time(df_stars['RJD-50000']+2400000+50000, format='jd').jyear
+        print(df_stars)
+
+        #Get Rmag_lit
+        for i in range(0,df_stars.shape[0]):
+            Rmag_lit=df_stars['Rmag_lit'].values[i]
+            if Rmag_lit!=None:
+                break
+        print(Rmag_lit)
         #to start plotting
-        fig, axes = plt.subplots(nrows=3, ncols=1, sharex=True)
+        fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(12,9), sharex=True, gridspec_kw={'hspace':0.09})
+        telescopes=["T090", "T150", "MAPCAT"]
+        colors=["green", "blue", "red"]
+        shapes=["*","p","d"]
+        count=0
+        for i, telescope in enumerate(telescopes): 
+            blazar_df = df[df['telescope'] == telescope]
+            if blazar_df.shape[0]>0:
+                axes[0].errorbar(blazar_df['jyear'], blazar_df['P'], markersize=10, yerr=blazar_df['dP'], color=colors[i], fmt='.', alpha=0.5, label=f'{alt_name} {telescope}')
+                axes[1].errorbar(blazar_df['jyear'], blazar_df['Theta'], markersize=10, yerr=blazar_df['dTheta'], color=colors[i],fmt='.', alpha=0.5)
+                axes[2].errorbar(blazar_df['jyear'], blazar_df['R'], markersize=10, yerr=blazar_df['dR'], color=colors[i],fmt='.', alpha=0.5)
+            
+                star_df = df_stars[df_stars['telescope'] == telescope]
+                axes[0].errorbar(star_df['jyear'], star_df['P'], markersize=10, yerr=star_df['dP'], color='orange',fmt='.', marker=shapes[i], alpha=0.5)
+                axes[1].errorbar(star_df['jyear'], star_df['Theta'], markersize=10, yerr=star_df['dTheta'], color='orange',fmt='.', marker=shapes[i], alpha=0.5)
+                axes[2].errorbar(star_df['jyear'], star_df['R'], markersize=10, yerr=star_df['dR'], color='orange', marker=shapes[i],fmt='.', alpha=0.5, label=f'{alt_name} ref. star {telescope}')
+                if count==0:
+                    h7 = axes[2].axhline(y=np.mean(star_df['Rmag_lit']), color='r', linestyle='-', linewidth=1, alpha=0.5, label=f"{alt_name} ref.star R LIT")
+                    count=count+1
 
-        # first plot
-        df.plot(ax=axes[0], kind='scatter',x='RJD-50000',y='P', yerr='dP', color='red', s=3)
-        axes[0].set_title(args.blazar_name)
-        axes[0].grid()
-        
-        # second plot
-        df.plot(ax=axes[1], kind='scatter',x='RJD-50000',y='Theta', yerr='dTheta', color='green', s=3)
-        axes[1].grid()
-        
-        # third plot
-        df.plot(ax=axes[2], kind='scatter',x='RJD-50000',y='R', yerr='dR', color='blue', s=3)
-        axes[2].grid()
-        
-        # Plotting as scatter plot
-        # plt.grid()
+        axes[0].legend()
+        axes[2].legend()
+        axes[2].invert_yaxis()
+        axes[0].set_ylabel('P (%)')
+        axes[1].set_ylabel('Theta (deg)')
+        axes[2].set_ylabel('R (mag)')
+        axes[2].set_xlabel('MJD')
+        fig.suptitle(f'{alt_name} ({args.blazar_name})', y=1)
+            
+        axes[0].grid(axis='y')
+        axes[1].grid(axis='y')
+        axes[2].grid(axis='y')
+    
+        #format axes labels for jyear and date
+        set_ax_jyear(axes[-1])
+        for i in range(1, len(axes)):
+            set_ax_dates(axes[i], axes[i].twiny(), labels=False).grid(axis='x')
+        set_ax_dates(axes[0], axes[0].twiny(), labels=True).grid(axis='x')
 
         # saving plot in file
         png_path = os.path.join(args.out_dir, f'{args.blazar_name}.png')
