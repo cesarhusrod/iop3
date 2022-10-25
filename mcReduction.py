@@ -467,15 +467,22 @@ class mcReduction:
             
             # flat
             print(pol_angle)
-            if 'R' in str(pol_angle):
-                flat = self.masterFLAT[pol_angle]
-            else:
+            def isfloat(num):
+                try:
+                    float(num)
+                    return True
+                except ValueError:
+                    return False
+
+            if isfloat(pol_angle):
                 try:
                     flat = self.masterFLAT[round(float(pol_angle), 1)]
                 except:
+                    flat = self.masterFLAT[pol_angle]
                     print(f'self.masterFLAT = {self.masterFLAT}')
                     raise
-
+            else:
+                flat = self.masterFLAT[pol_angle]    
             oFLAT = mcFits(flat, border=0)
             data_flat_norm = 1.0 * oFLAT.data / oFLAT.data.max()
 

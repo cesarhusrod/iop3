@@ -25,22 +25,41 @@ def main():
     conflict_handler='resolve',
     description='''Plot object photometry and magnitude throughout time. ''',
     epilog="")
-    parser.add_argument("--out_dir",
-       action="store",
-       dest="out_dir",
-       type=str,
-       default='./',
-       help="Ouput plot directory. [default: %(default)s].")
+    #parser.add_argument("--out_dir",
+    #   action="store",
+    #   dest="out_dir",
+    #   type=str,
+    #   default='./',
+    #   help="Ouput plot directory. [default: %(default)s].")
+    
+    parser.add_argument("--date_start",
+                        action="store",
+                        dest="date_start",
+                        type=str,
+                        default="2022-01-01",       
+                        help="Start date to plot in iso format. [default: %(default)s].")
+    parser.add_argument("--date_end",
+                        action="store",
+                        dest="date_end",
+                        default="2022-10-25",
+                        type=str,
+                        help="End date to plot in iso format. [default: %(default)s].")
+    parser.add_argument("--full_range",
+                        action="store",
+                        dest="full_range",
+                        type=bool,
+                        default=False,
+                        help="If True, plot all data. [default: %(default)s].")
     parser.add_argument("blazar_name", help="Blazar name used for query IOP3 database.") # mandatory argument
-
+    
     args = parser.parse_args()
 
-    if not os.path.exists(args.out_dir):
-        try:
-            os.makedirs(args.out_dir)
-        except IOError:
-            print(f'ERROR: could not create output directory "{args.out_dir}"')
-            return 1
+    #if not os.path.exists(args.out_dir):
+    #    try:
+    #        os.makedirs(args.out_dir)
+    #    except IOError:
+    #        print(f'ERROR: could not create output directory "{args.out_dir}"')
+    #        return 1
     
     try:
         # create database connection
@@ -48,10 +67,14 @@ def main():
             host='127.0.0.1', database='iop3db', ssl_disabled=True)
         # cursor for executing queries
         cursor = cnx.cursor()
-
+        #Get dates in MJD
+        if args.full_range==False:
+            rjd_start=Time(args.date_start, format='iso').jd-2400000-50000
+            rjd_end=Time(args.date_end, format='iso').jd-2400000-50000+1.5 #Get the full night
         # query
-        query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
-        
+            query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
+        else:
+            query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
         # query execution
         cursor.execute(query1)
 
@@ -78,9 +101,11 @@ def main():
                 break
         print(alt_name)
 
-        query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%'"
-        
-                # query execution
+        if args.full_range==False:
+            query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
+        else:
+            query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%'"
+        # query execution
         cursor.execute(query2)
 
         # getting all results
@@ -122,7 +147,7 @@ def main():
                 axes[1].errorbar(star_df['jyear'], star_df['Theta'], markersize=10, yerr=star_df['dTheta'], color='orange',fmt='.', marker=shapes[i], alpha=0.5)
                 axes[2].errorbar(star_df['jyear'], star_df['R'], markersize=10, yerr=star_df['dR'], color='orange', marker=shapes[i],fmt='.', alpha=0.5, label=f'{alt_name} ref. star {telescope}')
                 if count==0:
-                    h7 = axes[2].axhline(y=np.mean(star_df['Rmag_lit']), color='r', linestyle='-', linewidth=1, alpha=0.5, label=f"{alt_name} ref.star R LIT")
+                    h7 = axes[2].axhline(y=Rmag_lit, color='r', linestyle='-', linewidth=1, alpha=0.5, label=f"{alt_name} ref.star R LIT")
                     count=count+1
 
         axes[0].legend()
@@ -145,9 +170,9 @@ def main():
         set_ax_dates(axes[0], axes[0].twiny(), labels=True).grid(axis='x')
 
         # saving plot in file
-        png_path = os.path.join(args.out_dir, f'{args.blazar_name}.png')
-        plt.savefig(png_path, dpi=300)
-        
+        #png_path = os.path.join(args.out_dir, f'{args.blazar_name}_{args.date}.png')
+        #plt.savefig(png_path, dpi=300)
+        plt.show()
         # Closing cursor. No more queryies could be executed from now
         cursor.close()
     except mysql.connector.Error as err:

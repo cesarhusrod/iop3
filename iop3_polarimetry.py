@@ -97,6 +97,27 @@ def object_measures(data, name):
     
     return data_sets        
 
+def instrumental_polarimetry(df):
+    """
+    Compute instrumental polarization for OSN telescopes
+    Args:
+        df (pandas.DataFrame): Data from object taken from 4 polarization angles.
+
+    Returns:
+        tuple: qoff, uoff, duoff, dqoff
+
+    Formula taken from "F. Moreno and O. Muñoz polarization.pdf"
+    """
+
+    #List of zero polarization standars
+    zero_pol=["PG1633+099", "HD154892","HD21447","BD+332642", "GD 319", "BD+38 4955", "HD 14069", "HD 212311", "BD+32 3739", "BD+59 38", ]
+    
+    #List for highly polarized standards
+    high_pol=["BD +64 106", "HD155197", "HD155528", "Hiltner960", "HD 204827", "BD+28 4211", "HD161056", "HD154445", "HD25443", "HD19820"]
+    high_pol_angles=[96.74, 104.45,92.4, 54.54, 59.10, 138.1, 67.33, 88.91, 134.21, 114.46]
+
+    
+    
 def polarimetry_osn(df):
     """
     Compute polarimetric parameters for OSN data.
@@ -109,23 +130,25 @@ def polarimetry_osn(df):
     Formula taken from "F. Moreno and O. Muñoz polarization.pdf"
     """
     #df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
-    if round(df['SECPIX'].values[0],2) == 0.38 or round(df['SECPIX'].values[0],2) == 0.77 or round(df['SECPIX'].values[0],2) == 0.78 :
+    print(df['SECPIX'].values[0])
+    if round(df['SECPIX'].values[0],2) == 0.38 or round(df['SECPIX'].values[0],2) == 0.39 or round(df['SECPIX'].values[0],2) == 0.77 or round(df['SECPIX'].values[0],2) == 0.78 :
         #values for T090
-        print("AQUI")
-        qoff = 0.0645
-        uoff = 0.0574
+        #qoff = 0.0645
+        qoff = 0.0570
+        uoff = 0.06
+        #uoff = 0.0574
         dqoff = 0.001
         duoff = 0.003
-        Phi=math.radians(0.1)
+        Phi=math.radians(-18)
         dPhi=math.radians(0.001)
     elif round(df['SECPIX'].values[0],2) == 0.23 or round(df['SECPIX'].values[0],2) == 0.46: 
         #values for 150
-        qoff = 0.0058
-        dqoff = 0.001
-        uoff = 0.0334
-        duoff = 0.003
-        Phi=math.radians(9.)
-        dPhi=math.radians(2.3)
+        qoff = 0.0158
+        dqoff = 0.0041
+        uoff = 0.0382
+        duoff = 0.0078
+        Phi=math.radians(0.1)
+        dPhi=math.radians(0.001)
 
     else:
         print("COULD NOT DETERMINE TELESCOPE!")
@@ -134,7 +157,8 @@ def polarimetry_osn(df):
     #values of T150 from polarization.pdf
     #qoff=0.031
     #uoff=0.024
-            
+    #dqoff=0.05
+    #duoff=0.05
     # For getting instrumental polarization
     #qoff=0
     #uoff=0
@@ -179,7 +203,7 @@ def polarimetry_osn(df):
     dua = qc*math.sin(2*Phi) * math.sqrt((dqc/qc)**2+((2*dPhi*math.cos(2*Phi))/(math.sin(2*Phi)))**2) 
     dub = uc*math.cos(2*Phi) * math.sqrt((duc/uc)**2+((2*dPhi*math.sin(2*Phi))/(math.cos(2*Phi)))**2)
     
-    #Just for tests
+    #For instrumental polarization
     #dqa=0
     #dua=0
     #dqb=0
