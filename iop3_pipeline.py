@@ -1032,12 +1032,12 @@ def main():
 
     date=df_blazars['DATE-OBS'].values[0].split('T')[0]
     for name in blazar_names:
-        com_plot_query = f'python query_object_iop3db.py --out_dir={proc_dirs["polarization_dir"]} {name}'
-        com_plot_query_tonight = f'python query_object_iop3db.py --out_dir={proc_dirs["polarization_dir"]} {name} --date={date}'
-    print(com_plot_query)    
-    subprocess.Popen(com_plot_query, shell=True).wait()
-    print(com_plot_query_tonight)
-    subprocess.Popen(com_plot_query_tonight, shell=True).wait()
+        com_plot_query = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} {name} --full_range=True'
+        com_plot_query_tonight = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} {name} --date_start={date} --date_end={date}'
+        print(com_plot_query)    
+        subprocess.Popen(com_plot_query, shell=True).wait()
+        print(com_plot_query_tonight)
+        subprocess.Popen(com_plot_query_tonight, shell=True).wait()
 
     return 0
 if __name__ == '__main__':

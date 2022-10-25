@@ -72,7 +72,7 @@ def main():
 
     # Database connection
     mydb = mysql.connector.connect(host=args.db_server, \
-        user=db_user, password=db_password, database=args.db_name)
+        user=db_user, password=db_password, database=args.db_name, ssl_disabled=True)
 
     db_cursor = mydb.cursor()
 
