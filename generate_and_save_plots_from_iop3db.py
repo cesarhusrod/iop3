@@ -21,7 +21,7 @@ from mysql.connector import errorcode
 from helpers_for_nice_axes import *
 
 def main():
-    parser = argparse.ArgumentParser(prog='query_object_iop3db.py', \
+    parser = argparse.ArgumentParser(prog='generate_and_save_plots_from_iop3db.py', \
     conflict_handler='resolve',
     description='''Plot object photometry and magnitude throughout time. ''',
     epilog="")
@@ -72,8 +72,6 @@ def main():
             rjd_start=Time(args.date_start, format='iso').jd-2400000-50000 
             rjd_end=Time(args.date_end, format='iso').jd-2400000-50000+1.5 #Get the full night 
         # query
-            print(rjd_start)
-            print(rjd_end)
             query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
         else:
             query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
@@ -93,15 +91,11 @@ def main():
             cnx.close()
             return 2
         df['jyear'] = Time(df['RJD-50000']+2400000+50000, format='jd').jyear
-        print(df.info())
-        print(df)
-        
         #Get reference stars
         for i in range(0,df.shape[0]):
             alt_name=df.alternative_name.values[i]
             if alt_name!=None:
                 break
-        print(alt_name)
 
         if args.full_range==False:
             query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
@@ -123,14 +117,12 @@ def main():
             cnx.close()
             return 2
         df_stars['jyear'] = Time(df_stars['RJD-50000']+2400000+50000, format='jd').jyear
-        print(df_stars)
 
         #Get Rmag_lit
         for i in range(0,df_stars.shape[0]):
             Rmag_lit=df_stars['Rmag_lit'].values[i]
             if Rmag_lit!=None:
                 break
-        print(Rmag_lit)
         #to start plotting
         fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(12,9), sharex=True, gridspec_kw={'hspace':0.09})
         telescopes=["T090", "T150", "MAPCAT"]

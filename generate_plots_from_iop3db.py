@@ -21,7 +21,7 @@ from mysql.connector import errorcode
 from helpers_for_nice_axes import *
 
 def main():
-    parser = argparse.ArgumentParser(prog='query_object_iop3db.py', \
+    parser = argparse.ArgumentParser(prog='generate_plots_from_iop3db.py', \
     conflict_handler='resolve',
     description='''Plot object photometry and magnitude throughout time. ''',
     epilog="")
