@@ -466,17 +466,7 @@ def compute_polarimetry(data_object):
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
         raise
-    flag=0
-    '''
-    if flux_std < 2000:
-        flag=1
-    if flux_std >=2000 and flux_std < 4000:
-        flag=2
-    if flux_std >= 4000 and flux_std < 6000:
-        flag=3
-    if flux_std >= 6000:
-        flag=4
-    '''
+        
     if P is None:
         result['P'] = P
         result['dP'] = dP
@@ -489,11 +479,18 @@ def compute_polarimetry(data_object):
         result['U'] = RU
         result['dU'] = dRU
         result['flux_std_mean_ratio'] = flux_std_mean_ratio
-        result['flag'] = flag
-
+        result['flag'] = -99
         return result
     
-    
+    if flux_std_mean_ratio <= 0.01:
+        flag=0
+    elif flux_std_mean_ratio > 0.01 and flux_std_mean_ratio <= 0.05:
+        flag=1
+    elif flux_std_mean_ratio > 0.05 and flux_std_mean_ratio <= 0.1:
+        flag=2
+    elif flux_std_mean_ratio > 0.1 or flux_std_mean_ratio < 0:
+        flag=3
+    flag=0
     # HOW DO I COMPUTE MAGNITUDE AND ITS ERROR?
     # m = mean(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
     # e_m = std(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
@@ -503,9 +500,11 @@ def compute_polarimetry(data_object):
         fluxes = data_object['FLUX_APER_O'] + data_object['FLUX_APER_E']
     else:
         fluxes = data_object['FLUX_APER_O']
-
-    try:
-        mags = data_object['MAGZPT'].values - 2.5 * np.log10(fluxes.values)
+    try: 
+        flux=fluxes.mean()
+        mag_zpt=data_object['MAGZPT'].values.mean()
+        mag = mag_zpt - 2.5 * np.log10(flux)
+        #mags = data_object['MAGZPT'].values - 2.5 * np.log10(fluxes.values)
     except:
         obs_datetimes = sorted(data_object['DATE-OBS'].unique().tolist())
         print(f'POLARIMETRY,ERROR,"Processing data from {name}, date-obs ={obs_datetimes}')
@@ -517,7 +516,8 @@ def compute_polarimetry(data_object):
     result['dP'] = round(dP * 100, 3)
     result['Theta'] = round(Theta, 2)
     result['dTheta'] = round(dTheta, 2)
-    result['R'] =  round(mags.mean(), 5)
+    #result['R'] =  round(mags.mean(), 5)
+    result['R'] =  round(mag, 5)
     result['Sigma'] = round(max([data_object['MAGERR_APER_O'].values.max(), \
         data_object['MAGERR_APER_E'].values.max()]), 4)
     result['Q'] = round(RQ, 4)
@@ -1021,21 +1021,12 @@ def main():
     data_res.to_csv(data_res_csv, index=False)
     
 
-    # print(data_res.info())
-    # print(data_proc.info())
-
-    # return -99
-
-    # # append arcseconds per pixel info
-    # data_res['SECPIX1'] = data_proc['SECPIX1'].values
-    # data_res['SECPIX2'] = data_proc['SECPIX2'].values
-    # print(data_res.info())
-    # return -9
-
     # dictionary for storing results...
     pol_rows = []
     pol_data = DefaultDict(list)
-    #data_res = data_res.sort_values(by=['DATE-OBS'])
+
+    ####### POLARIMETRY OF REFERENCE STARS
+
     #groups, groups_stars = make_groups2(data_res)
     if 'MAPCAT' in args.calib_base_dir:
         groups, groups_stars = make_groups2(data_res)
@@ -1123,7 +1114,6 @@ def main():
     elif 'T150' in args.calib_base_dir:
         name_out_file = 'T150_polR_{}_reference_stars.res'.format(date_run)
     out_res = os.path.join(args.output_dir, name_out_file)
-
     print('out_res = ', out_res)
     with open(out_res, 'w') as fout:
         str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10} {:>7}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10} {:>10} {:>10}'
@@ -1147,31 +1137,35 @@ def main():
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD-OBS', 'ID-MC', \
             'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'RMAG-LIT', 'flux_std_mean_ratio', 'flag']
 
-        df = pd.DataFrame(pol_data, columns=cols)
+        df_stars = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
         for k, v in pol_data.items():
             print(f"{k} -> {len(v)}")
         raise
     # Formatting
-    df['RJD-50000'] = df['RJD-50000'].map(lambda x: '{0:.6f}'.format(x))
-    df['MJD-OBS'] = df['MJD-OBS'].map(lambda x: '{0:.6f}'.format(x))
-    df['P'] = df['P'].map(lambda x: '{0:.3f}'.format(x))
-    df['dP'] = df['dP'].map(lambda x: '{0:.3f}'.format(x))
-    df['Theta'] = df['Theta'].map(lambda x: '{0:.3f}'.format(x))
-    df['dTheta'] = df['dTheta'].map(lambda x: '{0:.3f}'.format(x))
-    df['Q'] = df['Q'].map(lambda x: '{0:.4f}'.format(x))
-    df['dQ'] = df['dQ'].map(lambda x: '{0:.4f}'.format(x))
-    df['U'] = df['U'].map(lambda x: '{0:.4f}'.format(x))
-    df['dU'] = df['dU'].map(lambda x: '{0:.4f}'.format(x))
-    df['R'] = df['R'].map(lambda x: '{0:.4f}'.format(x))
-    df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
-    df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
-    df['flux_std_mean_ratio'] = df['flux_std_mean_ratio'].map(lambda x: '{0:.3f}'.format(x))
-    df['flag'] = df['flag'].map(lambda x: '{0:d}'.format(x))
+    df_stars['RJD-50000'] = df_stars['RJD-50000'].map(lambda x: '{0:.6f}'.format(x))
+    df_stars['MJD-OBS'] = df_stars['MJD-OBS'].map(lambda x: '{0:.6f}'.format(x))
+    df_stars['P'] = df_stars['P'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['dP'] = df_stars['dP'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['Theta'] = df_stars['Theta'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['dTheta'] = df_stars['dTheta'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['Q'] = df_stars['Q'].map(lambda x: '{0:.4f}'.format(x))
+    df_stars['dQ'] = df_stars['dQ'].map(lambda x: '{0:.4f}'.format(x))
+    df_stars['U'] = df_stars['U'].map(lambda x: '{0:.4f}'.format(x))
+    df_stars['dU'] = df_stars['dU'].map(lambda x: '{0:.4f}'.format(x))
+    df_stars['R'] = df_stars['R'].map(lambda x: '{0:.4f}'.format(x))
+    df_stars['Sigma'] = df_stars['Sigma'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['APERAS'] = df_stars['APERAS'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['flux_std_mean_ratio'] = df_stars['flux_std_mean_ratio'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['flag'] = df_stars['flag'].map(lambda x: '{0:d}'.format(x))
 
-    df.to_csv(out_csv, index=False)
+    df_stars.to_csv(out_csv, index=False)
     
+    #####END OF POLARIMETRY OF REFERENCE STARS########
+
+
+    ##### POLARIMETRY OF BLAZARS ######
     pol_rows = []
     pol_data = DefaultDict(list)
     for group in groups:
@@ -1204,6 +1198,8 @@ def main():
         except ValueError:
             print('POLARIMETRY,ERROR,"EXCEPTION ValueError: Found Value Error in group processing.')
             raise
+        
+        
 
         res_pol['DATE_RUN'] = date_run
         res_pol['EXPTIME'] = group['EXPTIME'].values[0]
@@ -1248,6 +1244,10 @@ def main():
             res_pol['NUM_ROTATION'], res_pol['EXPTIME'], \
                          res_pol['flux_std_mean_ratio'], res_pol['flag']]
         pol_rows.append(row)
+
+    #print("Could not assign the flags of the reference_stars")
+
+ 
 
     # writing output night polarimetry file
     if 'MAPCAT' in args.calib_base_dir:
@@ -1301,6 +1301,12 @@ def main():
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df['flux_std_mean_ratio'] = df['flux_std_mean_ratio'].map(lambda x: '{0:.3f}'.format(x))
     df['flag'] = df['flag'].map(lambda x: '{0:d}'.format(x))
+
+    for i in range(0, df.shape[0]):
+        for j in range(0, df_stars.shape[0]):
+            if df['MJD-OBS'].values[i]==df_stars['MJD-OBS'].values[j]:
+                df.at[i, 'flux_std_mean_ratio']= df_stars['flux_std_mean_ratio'].values[j]
+                df.at[i, 'flag']= df_stars['flag'].values[j]
     df.to_csv(out_csv, index=False)
 
     return 0
