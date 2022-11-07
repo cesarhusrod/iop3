@@ -119,7 +119,10 @@ def register_raw(data_dir, run_date, db_object, telescope):
                     raw_header['INSPOROT'] = -999
                 else:
                     try:
-                        raw_header['INSPOROT'] = int(raw_header['FILTER'][1:]) 
+                        if "_45" in raw_header['FILTER']:
+                            raw_header['INSPOROT'] = -45
+                        else:
+                            raw_header['INSPOROT'] = int(raw_header['FILTER'][1:]) 
                     except:
                         raw_header['INSPOROT'] = -999
             if 'MJD-OBS' not in raw_header and 'JD' in raw_header:
@@ -434,7 +437,6 @@ def register_masterflats(data_dir, run_date, db_object, telescope):
             
             # Keywords are the same for CSV and fits files.
             if ('INSPOROT' not in mf_header and 'FILTER' in mf_header):
-                print("pero y asi")
                 if mf_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear','I']:
                     mf_header['INSPOROT'] = -999
                 else:
@@ -442,6 +444,8 @@ def register_masterflats(data_dir, run_date, db_object, telescope):
             if 'R' in mf_header['INSPOROT']:
                 if mf_header['INSPOROT']=='R':
                     mf_header['INSPOROT'] = -999
+                elif "_45" in mf_header['INSPOROT']:
+                    mf_header['INSPOROT'] = -45
                 else:
                     mf_header['INSPOROT'] = int(mf_header['INSPOROT'][1:])
             if mf_header['INSPOROT'] in ['I','R', 'U', 'V', 'B', 'Clear']:
@@ -678,6 +682,8 @@ def register_reduced(data_dir, run_date, db_object, telescope):
             if 'INSPOROT' not in red_header and 'FILTER' in red_header:
                 if red_header['FILTER'] in ['I','R', 'U', 'V', 'B', 'Clear']:
                     red_header['INSPOROT'] = -999
+                elif '_45' in red_header['FILTER']:
+                    red_header['INSPOROT'] = -45 
                 else:
                     red_header['INSPOROT'] = int(red_header['FILTER'][1:]) 
             if 'MJD-OBS' not in red_header and 'JD' in red_header:
@@ -848,6 +854,8 @@ def register_calibrated(data_dir, run_date, db_object, telescope):
                 if 'INSPOROT' not in cal_header and 'FILTER' in cal_header:
                     if cal_header['FILTER'] in ['R', 'I','U', 'V', 'B', 'Clear']:
                         cal_header['INSPOROT'] = -999
+                    elif "_45" in cal_header['FILTER']:
+                        cal_header['INSPOROT'] = -45 
                     else:
                         cal_header['INSPOROT'] = int(cal_header['FILTER'][1:]) 
                 if 'MJD-OBS' not in cal_header and 'JD' in cal_header:
