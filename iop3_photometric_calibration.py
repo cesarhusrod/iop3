@@ -803,13 +803,16 @@ def main():
         ra_o, dec_o = info_target['ALPHA_J2000_O'].values[0], info_target['DELTA_J2000_O'].values[0]
         ra_e, dec_e = info_target['ALPHA_J2000_E'].values[0], info_target['DELTA_J2000_E'].values[0]
 
-    #Get reference star as the one with closest flux to the blazar
+    #Get reference star as the one closest to the blazar
         is_blz=False
         if len(source_problem)>1:
             is_blz=True
     
         if is_blz:
+
             info_stars = data_matched[~source_problem]
+            '''
+            #Uncomment for select star with closest flux to the blazar
             flux_stars=(info_stars['FLUX_APER_O']+info_stars['FLUX_APER_E'])/2
             flux_blz=(info_target['FLUX_APER_O']+info_target['FLUX_APER_E'])/2
             diff=np.sqrt((flux_stars.values-flux_blz.values)**2)
@@ -817,7 +820,14 @@ def main():
             print(ref_idx)
             source_problem[ref_idx]=True
             refstar_Rmag=info_stars['Rmag_mc_O'].values[0]
+            '''
 
+            ra_o_star, dec_o_star = info_stars['ALPHA_J2000_O'].values, info_stars['DELTA_J2000_O'].values
+            ra_e_star, dec_e_star = info_stars['ALPHA_J2000_E'].values, info_stars['DELTA_J2000_E'].values
+            
+            dist = np.sqrt((ra_o_star-ra_o)**2+(dec_o_star-dec_o)**2)
+            ref_idx=np.argmin(dist)+1
+            source_problem[ref_idx]=True
 
         #indexes_refstar=[idx_o[source_problem][1], idx_e[source_problem][1]]
         #print(f'[Ordinary, Extraordinary] SExtractor indexes of reference star = {indexes_refstar}')
