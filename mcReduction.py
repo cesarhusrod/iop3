@@ -461,7 +461,11 @@ class mcReduction:
             else:
                 pol_angle = oSCIENCE.header['FILTER']
                 print(pol_angle)
-                flat = self.masterFLAT[pol_angle]
+                try:
+                    flat = self.masterFLAT[pol_angle]
+                except:
+                    print("No flats for this filter")
+                    continue
             if show_info:
                 print(f"Polarization angle set to -> {pol_angle}")
             

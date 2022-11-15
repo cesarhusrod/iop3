@@ -186,10 +186,14 @@ def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=
     for index, row in data.iterrows():
         print(row)
         # print(row['dateobs'])
-        if 'MAPCAT' in calibration_dir:
+        try:
             dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-        else:
-            dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
+        except:
+            dt_obj = datetime.fromisoformat(row['DATE-OBS']+'0')
+        #if 'MAPCAT' in calibration_dir:
+        #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+        #else:
+        #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
         im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
         cal_dir = os.path.join(calibration_dir, im_time)
         
@@ -512,6 +516,8 @@ def main():
         help='Skip polarimetry computation in pipeline steps.')
     parser.add_argument("--skip_db_registration", dest='skip_db_registration', action='store_true', \
         help='Skip registering/updating run information in database as last pipeline step.')
+    parser.add_argument("--skip_plotting", dest='skip_plotting', action='store_true', \
+        help='Skip generating plots for the sources observed in the night')
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
@@ -749,14 +755,19 @@ def main():
         for index, row in df_blazars.iterrows():
             reduced = row['PATH'].replace('raw', 'reduction')
             print(f"DATE-OBS = {row['DATE-OBS']}")
-            if 'MAPCAT' in input_dir:
-                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-            else:
-                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
             if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
                 i_fits = mcFits(row['PATH'])
                 if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
-                    dt_obj = datetime.fromisoformat(i_fits.header['DATE'])        
+                    dt_obj = datetime.fromisoformat(i_fits.header['DATE'])
+            else:
+                try:
+                    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+                except:
+                    dt_obj = datetime.fromisoformat(row['DATE-OBS']+'0')
+            #if 'MAPCAT' in input_dir:
+            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            #else:
+            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
 
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             print(f'FITS DateTime = {im_time}')
@@ -794,11 +805,13 @@ def main():
 
     print(df_astrocal_blazars.info())
     print(df_astrocal_blazars.head())
-
     fwhm_mean_csv = os.path.join(proc_dirs['calibration_dir'], 'mean_fwhm.csv')
-    blazar_names = df_astrocal_blazars['BLZRNAME'].unique().tolist()
     df_fwhm_mean = None
-
+    if df_astrocal_blazars.shape[0]>0:
+        blazar_names = df_astrocal_blazars['BLZRNAME'].unique().tolist()
+    else:
+        blazar_names=[]
+        
     if not os.path.exists(fwhm_mean_csv):
         fwhm_mean = DefaultDict(list)
         # computing mean FWHM
@@ -886,14 +899,23 @@ def main():
     
         # processing stars...
         for index, row in df_stars.iterrows():
-            if 'MAPCAT' in input_dir:
-                dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-            else:
-                dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
-            i_fits = mcFits(row['PATH'])
             if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
+                i_fits = mcFits(row['PATH'])
                 if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
                     dt_obj = datetime.fromisoformat(i_fits.header['DATE'])
+            else:
+                try:
+                    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+                except:
+                    dt_obj = datetime.fromisoformat(row['DATE-OBS']+'0')
+            #if 'MAPCAT' in input_dir:
+            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
+            #else:
+            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
+            #i_fits = mcFits(row['PATH'])
+            #if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
+            #    if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
+            #        dt_obj = datetime.fromisoformat(i_fits.header['DATE'])
 
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             print(f'im_time = {im_time}')
@@ -1029,15 +1051,16 @@ def main():
     
 
     # 6th: Generate plot for each observed blazar
-
-    date=df_blazars['DATE-OBS'].values[0].split('T')[0]
-    for name in blazar_names:
-        com_plot_query = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} "{name}" --full_range=True'
-        com_plot_query_tonight = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} "{name}" --date_start={date} --date_end={date}'
-        print(com_plot_query)    
-        subprocess.Popen(com_plot_query, shell=True).wait()
-        print(com_plot_query_tonight)
-        subprocess.Popen(com_plot_query_tonight, shell=True).wait()
+    if not args.skip_plotting:
+        if pol_sources: #Plot only if there are polarimetry measurements
+            date=df_blazars['DATE-OBS'].values[0].split('T')[0]
+            for name in blazar_names:
+                com_plot_query = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} "{name}" --full_range=True'
+                com_plot_query_tonight = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} "{name}" --date_start={date} --date_end={date}'
+                print(com_plot_query)    
+                subprocess.Popen(com_plot_query, shell=True).wait()
+                print(com_plot_query_tonight)
+                subprocess.Popen(com_plot_query_tonight, shell=True).wait()
 
     return 0
 if __name__ == '__main__':

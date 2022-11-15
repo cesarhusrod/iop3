@@ -482,23 +482,44 @@ def compute_polarimetry(data_object):
         result['flag'] = -99
         return result
     
-    if flux_std_mean_ratio <= 0.01:
-        flag=0
-    elif flux_std_mean_ratio > 0.01 and flux_std_mean_ratio <= 0.05:
-        flag=1
-    elif flux_std_mean_ratio > 0.05 and flux_std_mean_ratio <= 0.1:
-        flag=2
-    elif flux_std_mean_ratio > 0.1 or flux_std_mean_ratio < 0:
-        flag=3
-    flag=0
+
     # HOW DO I COMPUTE MAGNITUDE AND ITS ERROR?
     # m = mean(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
     # e_m = std(C_i - 2.5 * log10(FLUX_ISO_O + FLUX_ISO_E))
     # print(data_object.info())
+    flag=0
     if (data_object['ALPHA_J2000_O'].values[0] != data_object['ALPHA_J2000_E'].values[0]):
         #This is MAPCAT
-        fluxes = data_object['FLUX_APER_O'] + data_object['FLUX_APER_E']
+        print("This is MAPCAT")
+        fluxes = data_object['FLUX_APER_O'] + data_object['FLUX_APER_E']       
+        #Set the flag
+        if flux_std_mean_ratio <= 0.03:
+            flag=0
+        elif flux_std_mean_ratio > 0.03 and flux_std_mean_ratio <= 0.05:
+            flag=1
+        elif flux_std_mean_ratio > 0.05 and flux_std_mean_ratio <= 0.1:
+            flag=2
+        elif flux_std_mean_ratio > 0.1 or flux_std_mean_ratio < 0:
+            flag=3
+    elif round(data_object['SECPIX'].values[0],2) == 0.23 or round(data_object['SECPIX'].values[0],2) == 0.46: 
+        #This is T150
+        print("This is T150")
+        flag=0
+        #Set fluxes
+        fluxes = data_object['FLUX_APER_O']
     else:
+        #This is T090
+        print("This is T090")
+        #set flag for osn tels
+        if flux_std_mean_ratio > 0.054 and flux_std_mean_ratio <=0.06:
+            flag=0
+        if flux_std_mean_ratio <=0.054 or flux_std_mean_ratio >= 0.06:
+            flag=1 
+        if flux_std_mean_ratio <=0.05 or flux_std_mean_ratio >= 0.063:
+            flag=2 
+        if flux_std_mean_ratio <= 0.04 or flux_std_mean_ratio >= 0.075:
+            flag=3 
+        #Set fluxes
         fluxes = data_object['FLUX_APER_O']
     try: 
         flux=fluxes.mean()
@@ -526,6 +547,7 @@ def compute_polarimetry(data_object):
     result['dU'] = round(dRU, 4)
     result['flux_std_mean_ratio'] = round(flux_std_mean_ratio,4)
     result['flag'] = flag
+
     return result
 
 
@@ -1114,7 +1136,7 @@ def main():
     elif 'T150' in args.calib_base_dir:
         name_out_file = 'T150_polR_{}_reference_stars.res'.format(date_run)
     out_res = os.path.join(args.output_dir, name_out_file)
-    print('out_res = ', out_res)
+    
     with open(out_res, 'w') as fout:
         str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10} {:>7}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10} {:>10} {:>10}'
 
@@ -1131,7 +1153,7 @@ def main():
     elif 'T150' in args.calib_base_dir:
         name_out_csv = 'T150_polR_{}_reference_stars.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
-    
+    print('out_csv reference stars= ', out_csv)    
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD-OBS', 'ID-MC', \
@@ -1258,7 +1280,7 @@ def main():
         name_out_file = 'T150_polR_{}.res'.format(date_run)
     out_res = os.path.join(args.output_dir, name_out_file)
     
-    print('out_res = ', out_res)
+    
     with open(out_res, 'w') as fout:
         str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10} {:>10} {:>10}'
 
@@ -1275,6 +1297,7 @@ def main():
     elif 'T150' in args.calib_base_dir:
         name_out_csv = 'T150_polR_{}.csv'.format(date_run)
     out_csv = os.path.join(args.output_dir, name_out_csv)
+    print('out_csv = ', out_csv)
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD-OBS', 'ID-MC', \

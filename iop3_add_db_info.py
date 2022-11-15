@@ -109,8 +109,8 @@ def register_raw(data_dir, run_date, db_object, telescope):
                 if 'RA' not in raw_header:
                     ra = raw_header['OBJCTRA'].split(' ')
                     dec = raw_header['OBJCTDEC'].split(' ')
-                    raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
-                    raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
             except:
                 print("This is probably not a science file, no coordinates found")
                 continue
@@ -1351,12 +1351,14 @@ def register_polarimetry_data(data_dir, run_date, db_object, telescope):
         'rjd-50000','mjd_obs', 'name','alternative_name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
         'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles', 'flux_std_mean_ratio', 'flag']
 
-    str_params = ['name', 'alternative_name','date_run']
+    str_params = ['name', 'alternative_name','date_run', 'Telescope']
 
     pol_keywords = ['DATE_RUN', 'RJD-50000','MJD-OBS', 'MC-IAU-NAME','MC-NAME', \
         'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
         'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'flux_std_mean_ratio', 'flag']
         
+    flag_manual=False #Set the manual flagginf to false by default
+
     # Checking previous information on blazar in photometry table...
     for index, row in pol_data.iterrows():
         print(f'index = {index}')
@@ -1385,7 +1387,7 @@ def register_polarimetry_data(data_dir, run_date, db_object, telescope):
         sql = ''
         if len(res_search_pol_data) == 0:
             # Insert new register
-            values = [blazar_id, f'"{telescope}"']  + [row[k] for k in pol_keywords]
+            values = [blazar_id, telescope]  + [row[k] for k in pol_keywords]
 
             v = ','.join([f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)])
 
@@ -1393,7 +1395,7 @@ def register_polarimetry_data(data_dir, run_date, db_object, telescope):
             sql = f"INSERT INTO `polarimetry` (`{'`,`'.join(params)}`) VALUES ({v})"
             new_registrations += 1
         else:
-            values = [blazar_id, f'"{telescope}"'] + [row[k] for k in pol_keywords]
+            values = [blazar_id, telescope] + [row[k] for k in pol_keywords]
             val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(params, values)]
             
             pairs = []

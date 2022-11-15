@@ -19,6 +19,8 @@ from astropy.time import Time
 import mysql.connector
 from mysql.connector import errorcode
 from helpers_for_nice_axes import *
+import matplotlib
+matplotlib.use('Agg')
 
 def main():
     parser = argparse.ArgumentParser(prog='generate_and_save_plots_from_iop3db.py', \
@@ -69,7 +71,7 @@ def main():
         cursor = cnx.cursor()
         #Get dates in MJD
         if args.full_range==False:
-            rjd_start=Time(args.date_start, format='iso').jd-2400000-50000 
+            rjd_start=Time(f'{args.date_start} 12:00:00.000', format='iso').jd-2400000-50000
             rjd_end=Time(args.date_end, format='iso').jd-2400000-50000+1.5 #Get the full night 
         # query
             query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
@@ -86,7 +88,7 @@ def main():
         #df['jyear'] = Time(df['MJD-OBS'], format='mjd').jyear
         
         if len(df.index) == 0:
-            print(f'WARNING: No date stored in IOP^3 database for object called "{args.blazar_name}"')
+            print(f'WARNING: No data stored in IOP^3 database for object called "{args.blazar_name}"')
             cursor.close()
             cnx.close()
             return 2
@@ -109,6 +111,11 @@ def main():
 
         # casting to Pandas DataFrame object
         df_stars = pd.DataFrame(table_rows_refstars, columns=['name', 'alternative_name', 'telescope', 'P','dP', 'RJD-50000', 'MJD-OBS', 'Theta', 'dTheta', 'R', 'dR', 'Rmag_lit'])
+        if len(df_stars.index) == 0:
+            print(f'WARNING: This is not a blazar "{alt_name}", quitting')
+            cursor.close()
+            cnx.close()
+            return 2
         #df_stars['jyear'] = Time(df_stars['RJD-50000'], format='mjd').jyear
         df_stars['jyear'] = Time(df_stars['RJD-50000']+2400000+50000, format='jd').jyear
         if len(df_stars.index) == 0:
@@ -117,12 +124,16 @@ def main():
             cnx.close()
             return 2
         df_stars['jyear'] = Time(df_stars['RJD-50000']+2400000+50000, format='jd').jyear
-
+        
         #Get Rmag_lit
         for i in range(0,df_stars.shape[0]):
             Rmag_lit=df_stars['Rmag_lit'].values[i]
             if Rmag_lit!=None:
                 break
+        for i in range(0,df_stars.shape[0]):
+            alt_name_star=df_stars.alternative_name.values[i]
+            if alt_name_star!=None:
+                break        
         #to start plotting
         fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(12,9), sharex=True, gridspec_kw={'hspace':0.09})
         telescopes=["T090", "T150", "MAPCAT"]
@@ -139,9 +150,9 @@ def main():
                 star_df = df_stars[df_stars['telescope'] == telescope]
                 axes[0].errorbar(star_df['jyear'], star_df['P'], markersize=10, yerr=star_df['dP'], color='orange',fmt='.', marker=shapes[i], alpha=0.5)
                 axes[1].errorbar(star_df['jyear'], star_df['Theta'], markersize=10, yerr=star_df['dTheta'], color='orange',fmt='.', marker=shapes[i], alpha=0.5)
-                axes[2].errorbar(star_df['jyear'], star_df['R'], markersize=10, yerr=star_df['dR'], color='orange', marker=shapes[i],fmt='.', alpha=0.5, label=f'{alt_name} ref. star {telescope}')
+                axes[2].errorbar(star_df['jyear'], star_df['R'], markersize=10, yerr=star_df['dR'], color='orange', marker=shapes[i],fmt='.', alpha=0.5, label=f'{alt_name_star} (ref. star) {telescope}')
                 if count==0:
-                    h7 = axes[2].axhline(y=Rmag_lit, color='r', linestyle='-', linewidth=1, alpha=0.5, label=f"{alt_name} ref.star R LIT")
+                    h7 = axes[2].axhline(y=Rmag_lit, color='r', linestyle='-', linewidth=1, alpha=0.5, label=f"{alt_name_star} (ref.star) R LIT")
                     count=count+1
 
         axes[0].legend()
