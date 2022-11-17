@@ -635,7 +635,7 @@ def register_reduced(data_dir, run_date, db_object, telescope):
                 raw_id = res_search_raw_id[0][0]
             else:
                 print(f"ERROR: No found raw_id for reduced fits '{red_name}'")
-                return -1
+                
             
             # getting master_bias_id
             sql_search_mb_id = f"SELECT `id` FROM `master_bias` WHERE `path` = '{red_header['BIAS']}'"
@@ -647,7 +647,7 @@ def register_reduced(data_dir, run_date, db_object, telescope):
                 mb_id = res_search_mb_id[0][0]
             else:
                 print(f"ERROR: No found master_bias_id for reduced fits '{red_name}'")
-                return -1
+                
             
 
             # getting master_flat_id
@@ -659,7 +659,7 @@ def register_reduced(data_dir, run_date, db_object, telescope):
                 mf_id = res_search_mf_id[0][0]
             else:
                 print(f"ERROR: No found master_flat_id for reduced fits '{red_name}'")
-                return -1
+                
             
             
             params = ['raw_id', 'master_bias_id', 'master_flat_id', \
@@ -798,7 +798,7 @@ def register_calibrated(data_dir, run_date, db_object, telescope):
                     red_id = res_search_red_id[0][0]
                 else:
                     print(f"ERROR: No found red_id for calibrated fits '{cal_name}'")
-                    return -1
+                    continue
                 
                 # getting blazar_id
                 blazar_name = None
@@ -980,7 +980,7 @@ def register_photometry(data_dir, run_date, db_object, telescope):
             print(f'sql_search = {sql_search}')
             print(f'query result = {res_search}')
             print('ERROR: No associated calibrated FITS for this catalog')
-            return 1
+            continue
 
 
         # getting calibrated FITS

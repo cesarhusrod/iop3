@@ -505,6 +505,15 @@ def compute_polarimetry(data_object):
         #This is T150
         print("This is T150")
         flag=0
+        if flux_std_mean_ratio > 0.032 and flux_std_mean_ratio <=0.04:
+            flag=0
+        if flux_std_mean_ratio <=0.032 or flux_std_mean_ratio >= 0.04:
+            flag=1 
+        if flux_std_mean_ratio <=0.028 or flux_std_mean_ratio >= 0.044:
+            flag=2 
+        if flux_std_mean_ratio <= 0.02 or flux_std_mean_ratio >= 0.0475:
+            flag=3 
+
         #Set fluxes
         fluxes = data_object['FLUX_APER_O']
     else:
