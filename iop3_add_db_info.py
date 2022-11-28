@@ -20,7 +20,7 @@ from getpass import getpass
 from datetime import datetime, date, timedelta
 
 import pandas as pd
-
+import numpy as np
 import mysql.connector
 
 from astropy.io import fits
@@ -112,7 +112,7 @@ def register_raw(data_dir, run_date, db_object, telescope):
                 raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
                 raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
             except:
-                print("This is probably not a science file, no coordinates found")
+                #This is not a science file
                 continue
             if 'INSPOROT' not in raw_header and 'FILTER' in raw_header:
                 if raw_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear', 'I']:
@@ -960,7 +960,6 @@ def register_photometry(data_dir, run_date, db_object, telescope):
             photometry_info_path = glob.glob(searching)[0]
             print(f'Reading file: {photometry_info_path}')
             photometry_data = pd.read_csv(photometry_info_path)
-            print(photometry_data.info())
         except:
             print(f"--------------ERROR: catalog '{searching}' not available.")
             continue
@@ -1151,7 +1150,6 @@ def register_photometry_refstars(data_dir, run_date, db_object, telescope):
             photometry_info_path = glob.glob(searching)[0]
             print(f'Reading file: {photometry_info_path}')
             photometry_data = pd.read_csv(photometry_info_path)
-            print(photometry_data.info())
         except:
             print(f"--------------ERROR: catalog '{searching}' not available.")
             continue
@@ -1537,7 +1535,167 @@ def register_polarimetry_refstars_data(data_dir, run_date, db_object, telescope)
     
     return new_registrations, updates
 
+def compose_final_table(db_object, run_date):
+    """
+    Combine polarimetric and photometric results in a common table
+    """
+    new_registrations = 0
+    updates = 0
+    
+    db_cursor = db_object.cursor()
+    dt = datetime.strptime(run_date, '%y%m%d')
+    r_date = dt.strftime("%Y-%m-%d")
+    
+    #Compose df for reference stars:
+    
+    query_pol=f"SELECT * FROM polarimetry_reference_stars WHERE `date_run` = '{r_date}'"
+    db_cursor.execute(query_pol)
+    table_rows_pol=db_cursor.fetchall()
 
+    query_column_names=f"DESCRIBE polarimetry_reference_stars"
+    db_cursor.execute(query_column_names)
+    col_description=db_cursor.fetchall()
+    col_names=[]
+    for column in col_description:
+        col_names.append(column[0])
+    df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
+
+    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O'"
+    db_cursor.execute(query_phot)
+    table_rows_phot=db_cursor.fetchall()
+
+    query_column_names=f"DESCRIBE photometry_reference_stars"
+    db_cursor.execute(query_column_names)
+    col_description=db_cursor.fetchall()
+    col_names_phot=[]
+    for column in col_description:
+        col_names_phot.append(column[0])
+    df_phot = pd.DataFrame(table_rows_phot, columns=col_names_phot)
+
+    query_star_mag_lit="SELECT name, rmag FROM blazar_source"
+    db_cursor.execute(query_star_mag_lit)
+    table_rows=db_cursor.fetchall()
+
+    df_maglit=pd.DataFrame(table_rows, columns=['alternative_name', 'Rmag_lit'])
+
+    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'name':'alternative_name', 'name_IAU':'name', 'cal_id':'id', }, inplace = True)
+
+    alt_phot = pd.DataFrame(columns = df_pol.columns)
+
+    for col in alt_phot.columns:
+        if col in df_phot:
+            alt_phot[col] = df_phot[col]
+    alt_phot['manual_flag'] = 0
+    alt_phot['flag'] = 0
+    
+    final_df = pd.concat([df_pol, alt_phot])
+    
+    final_df = final_df.merge(df_maglit, on='alternative_name', how='left')
+    final_df = final_df.drop(columns='Rmag_lit_x')
+    final_df.rename(columns = {'Rmag_lit_y':'Rmag_lit'}, inplace=True)
+
+    final_df = final_df.drop(columns='id')
+    #final_df = final_df.set_index('blazar_id')
+
+    # Insert DataFrame records one by one.
+    par = []
+    str_params = ['date_run', 'source_type', 'name', 'alternative_name', 'Telescope']
+    for row in final_df.values:
+        values = []
+        pairs = []
+        par = []
+        for i, val in enumerate(row):
+            if val==None:
+                continue
+            if type(val)!=float:
+                values.append(val)
+                par.append(final_df.columns[i])
+                continue
+            if not np.isnan(val):
+                values.append(val)
+                par.append(final_df.columns[i])
+
+        v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, values)])
+        val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(par, values)]
+        for k, j in zip(par, val_fmt):
+            pairs.append(f'`{k}` = {j}')
+
+        sql = f"INSERT INTO `final_results_reference_stars` (`{'`,`'.join(par)}`) VALUES ({v}) ON DUPLICATE KEY UPDATE {','.join(pairs)}"
+        print(sql)
+        db_cursor.execute(sql)
+
+        # the connection is not autocommitted by default, so we must commit to save our changes
+        db_object.commit()
+
+    #Compose df for blazars:
+    
+    query_pol=f"SELECT * FROM polarimetry WHERE `date_run` = '{r_date}'"
+    db_cursor.execute(query_pol)
+    table_rows_pol=db_cursor.fetchall()
+
+    query_column_names=f"DESCRIBE polarimetry"
+    db_cursor.execute(query_column_names)
+    col_description=db_cursor.fetchall()
+    col_names=[]
+    for column in col_description:
+        col_names.append(column[0])
+    df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
+
+    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O'"
+    db_cursor.execute(query_phot)
+    table_rows_phot=db_cursor.fetchall()
+
+    query_column_names=f"DESCRIBE photometry"
+    db_cursor.execute(query_column_names)
+    col_description=db_cursor.fetchall()
+    col_names_phot=[]
+    for column in col_description:
+        col_names_phot.append(column[0])
+    df_phot = pd.DataFrame(table_rows_phot, columns=col_names_phot)
+
+    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'name':'alternative_name', 'name_IAU':'name', 'cal_id':'id', }, inplace = True)
+
+    alt_phot = pd.DataFrame(columns = df_pol.columns)
+
+    for col in alt_phot.columns:
+        if col in df_phot:
+            alt_phot[col] = df_phot[col]
+    alt_phot['manual_flag'] = 0
+    alt_phot['flag'] = 0
+
+    final_df = pd.concat([df_pol, alt_phot])
+    final_df = final_df.drop(columns='id')
+    #final_df = final_df.set_index('blazar_id')
+    # Insert DataFrame records one by one.
+    par = []
+    str_params = ['date_run', 'source_type', 'name', 'alternative_name', 'Telescope']
+    for row in final_df.values:
+        values = []
+        pairs = []
+        par = []
+        for i, val in enumerate(row):
+            if val==None:
+                continue
+            if type(val)!=float:
+                values.append(val)
+                par.append(final_df.columns[i])
+                continue
+            if not np.isnan(val):
+                values.append(val)
+                par.append(final_df.columns[i])
+
+        v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, values)])
+        val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(par, values)]
+        for k, j in zip(par, val_fmt):
+            pairs.append(f'`{k}` = {j}')
+
+        sql = f"INSERT INTO `final_results` (`{'`,`'.join(par)}`) VALUES ({v}) ON DUPLICATE KEY UPDATE {','.join(pairs)}"
+        db_cursor.execute(sql)
+        print(f'sql insert/update = {sql}')
+        # the connection is not autocommitted by default, so we must commit to save our changes
+        db_object.commit()
+
+    return 0
 
 def main():
     parser = argparse.ArgumentParser(prog='iop3_add_db_info.py', \
@@ -1668,7 +1826,10 @@ def main():
     res = register_polarimetry_refstars_data(directories['final'], args.run_date, my_db, telescope)
     print(f"Polarimetry data registration result -> {res}")
 
-    
+    # Compose the final table with combined photometry and polarimetry results
+    res = compose_final_table(my_db, args.run_date)
+    print(f"Registration of final table -> {res}")
+
     # return 1
 
     # # Unuseful table. Info can be get by querying...
