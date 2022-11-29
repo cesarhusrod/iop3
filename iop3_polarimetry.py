@@ -502,7 +502,7 @@ def compute_polarimetry(data_object):
         elif flux_std_mean_ratio > 0.05 and flux_std_mean_ratio <= 0.1:
             flag=2
         elif flux_std_mean_ratio > 0.1 or flux_std_mean_ratio < 0:
-            flag=3
+            flag=4
     elif round(data_object['SECPIX'].values[0],2) == 0.23 or round(data_object['SECPIX'].values[0],2) == 0.46: 
         #This is T150
         print("This is T150")
@@ -514,7 +514,7 @@ def compute_polarimetry(data_object):
         if flux_std_mean_ratio <=0.028 or flux_std_mean_ratio >= 0.044:
             flag=2 
         if flux_std_mean_ratio <= 0.02 or flux_std_mean_ratio >= 0.0475:
-            flag=3 
+            flag=4 
 
         #Set fluxes
         fluxes = data_object['FLUX_APER_O']
@@ -529,7 +529,7 @@ def compute_polarimetry(data_object):
         if flux_std_mean_ratio <=0.05 or flux_std_mean_ratio >= 0.063:
             flag=2 
         if flux_std_mean_ratio <= 0.04 or flux_std_mean_ratio >= 0.075:
-            flag=3 
+            flag=4 
         #Set fluxes
         fluxes = data_object['FLUX_APER_O']
     try: 
@@ -543,7 +543,11 @@ def compute_polarimetry(data_object):
         print(f'\tzps = {data_object["MAGZPT"].values}')
         print(f'\tFlux_apers\n{data_object[["FLUX_APER_O", "FLUX_APER_E"]]}')
         raise
-
+    
+    # Flagging in case of large polarization values/errors
+    if P * 100 > 80 or dP * 100 > 10 or dTheta > 50:
+        flag = 3
+    
     result['P'] = round(P * 100, 3)
     result['dP'] = round(dP * 100, 3)
     result['Theta'] = round(Theta, 2)
