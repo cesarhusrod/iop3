@@ -1346,14 +1346,14 @@ def register_polarimetry_data(data_dir, run_date, db_object, telescope):
         raise
     
     params = ['blazar_id', 'Telescope','date_run', \
-        'rjd-50000','mjd_obs', 'name','alternative_name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
-        'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles', 'flux_std_mean_ratio', 'flag']
+        'rjd-50000','mjd_obs', 'name_IAU','name', 'P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
+        'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles', 'flux_std_mean_ratio', 'fwhm', 'flag']
 
-    str_params = ['name', 'alternative_name','date_run', 'Telescope']
+    str_params = ['name_IAU', 'name','date_run', 'Telescope']
 
     pol_keywords = ['DATE_RUN', 'RJD-50000','MJD-OBS', 'MC-IAU-NAME','MC-NAME', \
         'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
-        'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'flux_std_mean_ratio', 'flag']
+        'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'flux_std_mean_ratio', 'fwhm', 'flag']
         
     flag_manual=False #Set the manual flagginf to false by default
 
@@ -1462,14 +1462,14 @@ def register_polarimetry_refstars_data(data_dir, run_date, db_object, telescope)
         raise
     
     params = ['blazar_id', 'Telescope','date_run', \
-        'rjd-50000', 'mjd_obs', 'name', 'alternative_name', 'Rmag_lit','P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
-        'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles', 'flux_std_mean_ratio', 'flag']
+        'rjd-50000', 'mjd_obs', 'name_IAU', 'name', 'Rmag_lit','P', 'dP', 'Theta', 'dTheta', 'R', 'dR', \
+        'Q', 'dQ', 'U', 'dU', 'exptime', 'aperpix', 'aperas', 'num_angles', 'flux_std_mean_ratio', 'fwhm', 'flag']
 
-    str_params = ['name', 'alternative_name', 'date_run']
+    str_params = ['name_IAU', 'name', 'date_run']
 
     pol_keywords = ['DATE_RUN', 'RJD-50000','MJD-OBS', 'MC-IAU-NAME','MC-NAME','RMAG-LIT', \
         'P', 'dP', 'Theta', 'dTheta', 'R', 'Sigma', \
-        'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'flux_std_mean_ratio', 'flag']
+        'Q', 'dQ', 'U', 'dU', 'EXPTIME', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'flux_std_mean_ratio', 'fwhm', 'flag']
         
     # Checking previous information on blazar in photometry table...
     for index, row in pol_data.iterrows():
@@ -1535,7 +1535,7 @@ def register_polarimetry_refstars_data(data_dir, run_date, db_object, telescope)
     
     return new_registrations, updates
 
-def compose_final_table(db_object, run_date):
+def compose_final_table(db_object, run_date, telescope):
     """
     Combine polarimetric and photometric results in a common table
     """
@@ -1548,7 +1548,7 @@ def compose_final_table(db_object, run_date):
     
     #Compose df for reference stars:
     
-    query_pol=f"SELECT * FROM polarimetry_reference_stars WHERE `date_run` = '{r_date}'"
+    query_pol=f"SELECT * FROM polarimetry_reference_stars WHERE `date_run` = '{r_date}' AND `Telescope` = '{telescope}'"
     db_cursor.execute(query_pol)
     table_rows_pol=db_cursor.fetchall()
 
@@ -1560,7 +1560,7 @@ def compose_final_table(db_object, run_date):
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
 
-    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O'"
+    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}'"
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1576,34 +1576,36 @@ def compose_final_table(db_object, run_date):
     db_cursor.execute(query_star_mag_lit)
     table_rows=db_cursor.fetchall()
 
-    df_maglit=pd.DataFrame(table_rows, columns=['alternative_name', 'Rmag_lit'])
-
-    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'name':'alternative_name', 'name_IAU':'name', 'cal_id':'id', }, inplace = True)
+    df_maglit=pd.DataFrame(table_rows, columns=['name', 'Rmag_lit'])
+    df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
+    df_phot=df_phot.drop(columns='fwhm')
+    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)
 
     alt_phot = pd.DataFrame(columns = df_pol.columns)
 
     for col in alt_phot.columns:
         if col in df_phot:
             alt_phot[col] = df_phot[col]
+
     alt_phot['manual_flag'] = 0
     alt_phot['flag'] = 0
     
     final_df = pd.concat([df_pol, alt_phot])
     
-    final_df = final_df.merge(df_maglit, on='alternative_name', how='left')
+    final_df = final_df.merge(df_maglit, on='name', how='left')
     final_df = final_df.drop(columns='Rmag_lit_x')
     final_df.rename(columns = {'Rmag_lit_y':'Rmag_lit'}, inplace=True)
 
     final_df = final_df.drop(columns='id')
     #final_df = final_df.set_index('blazar_id')
-
     # Insert DataFrame records one by one.
     par = []
-    str_params = ['date_run', 'source_type', 'name', 'alternative_name', 'Telescope']
+    str_params = ['date_run', 'source_type', 'name_IAU', 'name', 'Telescope']
     for row in final_df.values:
         values = []
         pairs = []
         par = []
+        print(row)
         for i, val in enumerate(row):
             if val==None:
                 continue
@@ -1629,7 +1631,7 @@ def compose_final_table(db_object, run_date):
 
     #Compose df for blazars:
     
-    query_pol=f"SELECT * FROM polarimetry WHERE `date_run` = '{r_date}'"
+    query_pol=f"SELECT * FROM polarimetry WHERE `date_run` = '{r_date}' AND `Telescope` = '{telescope}'"
     db_cursor.execute(query_pol)
     table_rows_pol=db_cursor.fetchall()
 
@@ -1641,7 +1643,7 @@ def compose_final_table(db_object, run_date):
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
 
-    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O'"
+    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}'"
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1652,8 +1654,9 @@ def compose_final_table(db_object, run_date):
     for column in col_description:
         col_names_phot.append(column[0])
     df_phot = pd.DataFrame(table_rows_phot, columns=col_names_phot)
-
-    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'name':'alternative_name', 'name_IAU':'name', 'cal_id':'id', }, inplace = True)
+    df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
+    df_phot = df_phot.drop(columns='fwhm')
+    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)
 
     alt_phot = pd.DataFrame(columns = df_pol.columns)
 
@@ -1668,7 +1671,7 @@ def compose_final_table(db_object, run_date):
     #final_df = final_df.set_index('blazar_id')
     # Insert DataFrame records one by one.
     par = []
-    str_params = ['date_run', 'source_type', 'name', 'alternative_name', 'Telescope']
+    str_params = ['date_run', 'source_type', 'name_IAU', 'name', 'Telescope']
     for row in final_df.values:
         values = []
         pairs = []
@@ -1827,7 +1830,7 @@ def main():
     print(f"Polarimetry data registration result -> {res}")
 
     # Compose the final table with combined photometry and polarimetry results
-    res = compose_final_table(my_db, args.run_date)
+    res = compose_final_table(my_db, args.run_date, telescope)
     print(f"Registration of final table -> {res}")
 
     # return 1
