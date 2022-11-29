@@ -266,7 +266,6 @@ def polarimetry(df):
         # valid combinations are: 0 and 22.5 or 45 and 67.5
         if (0 in all_angles and 45 in all_angles) or (22.5 in all_angles and 67.5 in all_angles):
             return [None] * 10
-    
     # aliases
     fo = df['FLUX_APER_O']
     fe = df['FLUX_APER_E']
@@ -441,7 +440,7 @@ def compute_polarimetry(data_object):
         index_date = 0
     elif len(dates) == 2:
         index_date = 1
-
+    
     obs_date = dates[index_date] 
     result['RJD-5000'] = round(obs_date, 4)
     result['ID-MC'] = data_object['id_mc_O'].values[0]
@@ -460,13 +459,15 @@ def compute_polarimetry(data_object):
         if (data_object['ALPHA_J2000_O'].values[0] != data_object['ALPHA_J2000_E'].values[0]):
             #This is MAPCAT
             P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_std_mean_ratio = polarimetry(data_object)
+            fwhm = (np.mean(data_object['FWHM_WORLD_O'])*3600+np.mean(data_object['FWHM_WORLD_E'])*3600)/2
         else:
             #This is OSN 
             P, dP, Theta, dTheta, RQ, dRQ, RU, dRU, flux_std, flux_std_mean_ratio = polarimetry_osn(data_object)
+            fwhm = np.mean(data_object['FWHM_WORLD_O'])*3600
     except ZeroDivisionError:
         print(f'\tZeroDivisionError while processing object called "{name}"')
         raise
-        
+    print(f"FWHM={fwhm}")
     if P is None:
         result['P'] = P
         result['dP'] = dP
@@ -480,6 +481,7 @@ def compute_polarimetry(data_object):
         result['dU'] = dRU
         result['flux_std_mean_ratio'] = flux_std_mean_ratio
         result['flag'] = -99
+        result['fwhm'] = fwhm
         return result
     
 
@@ -555,6 +557,7 @@ def compute_polarimetry(data_object):
     result['U'] = round(RU, 4)
     result['dU'] = round(dRU, 4)
     result['flux_std_mean_ratio'] = round(flux_std_mean_ratio,4)
+    result['fwhm'] = round(fwhm,4)
     result['flag'] = flag
 
     return result
@@ -1134,7 +1137,7 @@ def main():
             res_pol['R'], rp_sigma, \
             res_pol['APERPIX'], res_pol['APERAS'], \
             res_pol['NUM_ROTATION'], res_pol['EXPTIME'], \
-                         res_pol['flux_std_mean_ratio'], res_pol['flag']]
+                         res_pol['flux_std_mean_ratio'], res_pol['fwhm'], res_pol['flag']]
         pol_rows.append(row)
 
         # writing output night polarimetry file
@@ -1147,9 +1150,9 @@ def main():
     out_res = os.path.join(args.output_dir, name_out_file)
     
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10} {:>7}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10} {:>10} {:>10}'
+        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10} {:>7}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10} {:>10} {:>10} {:>10}'
 
-        header = 'DATE_RUN        RJD-50000   MJD   Object     RMAGLIT       P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME   FLUX-DEV  FLAG'
+        header = 'DATE_RUN        RJD-50000   MJD   Object     RMAGLIT       P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME   FLUX-DEV  FWHM FLAG'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
@@ -1166,7 +1169,7 @@ def main():
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD-OBS', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'RMAG-LIT', 'flux_std_mean_ratio', 'flag']
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'RMAG-LIT', 'flux_std_mean_ratio', 'fwhm', 'flag']
 
         df_stars = pd.DataFrame(pol_data, columns=cols)
     except:
@@ -1189,6 +1192,7 @@ def main():
     df_stars['Sigma'] = df_stars['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df_stars['APERAS'] = df_stars['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df_stars['flux_std_mean_ratio'] = df_stars['flux_std_mean_ratio'].map(lambda x: '{0:.3f}'.format(x))
+    df_stars['fwhm'] = df_stars['fwhm'].map(lambda x: '{0:.3f}'.format(x))
     df_stars['flag'] = df_stars['flag'].map(lambda x: '{0:d}'.format(x))
 
     df_stars.to_csv(out_csv, index=False)
@@ -1273,7 +1277,7 @@ def main():
             res_pol['R'], rp_sigma, \
             res_pol['APERPIX'], res_pol['APERAS'], \
             res_pol['NUM_ROTATION'], res_pol['EXPTIME'], \
-                         res_pol['flux_std_mean_ratio'], res_pol['flag']]
+                         res_pol['flux_std_mean_ratio'], res_pol['fwhm'], res_pol['flag']]
         pol_rows.append(row)
 
     #print("Could not assign the flags of the reference_stars")
@@ -1291,9 +1295,9 @@ def main():
     
     
     with open(out_res, 'w') as fout:
-        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10} {:>10} {:>10}'
+        str_out = '\n{:12s} {:12.6f}   {:12.6f}   {:10s}{:>10}{:>10}   {:>8}{:>8}   {:>14}{:>7}   {:>8}{:>7} {:>7}{:>8} {:>6}{:>14.3f} {:>14}{:>10} {:>10} {:>10} {:>10}'
 
-        header = 'DATE_RUN        RJD-50000   MJD   Object            P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME FLUX-DEV FLAG'
+        header = 'DATE_RUN        RJD-50000   MJD   Object            P+-dP(%)             Theta+-dTheta(deg.)      Q+-dQ             U+-dU          R      Sigma     APERPIX   APERAS   NUM_ROTATION  EXPTIME FLUX-DEV FWHM FLAG'
         fout.write(header)
         for lines in pol_rows:
             fout.write(str_out.format(*lines))
@@ -1310,7 +1314,7 @@ def main():
     try:
         cols = ['P', 'dP', 'Theta', 'dTheta', 'Q', 'dQ', 'U', 'dU', \
             'R', 'Sigma', 'DATE_RUN', 'EXPTIME', 'RJD-50000', 'MJD-OBS', 'ID-MC', \
-            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'flux_std_mean_ratio', 'flag']
+            'ID-BLAZAR-MC', 'MC-NAME', 'MC-IAU-NAME', 'OBJECT', 'APERPIX', 'APERAS', 'NUM_ROTATION', 'EXPTIME', 'flux_std_mean_ratio', 'fwhm', 'flag']
         df = pd.DataFrame(pol_data, columns=cols)
     except:
         print("pol_data")
@@ -1332,6 +1336,7 @@ def main():
     df['Sigma'] = df['Sigma'].map(lambda x: '{0:.3f}'.format(x))
     df['APERAS'] = df['APERAS'].map(lambda x: '{0:.3f}'.format(x))
     df['flux_std_mean_ratio'] = df['flux_std_mean_ratio'].map(lambda x: '{0:.3f}'.format(x))
+    df['fwhm'] = df['fwhm'].map(lambda x: '{0:.3f}'.format(x))
     df['flag'] = df['flag'].map(lambda x: '{0:d}'.format(x))
 
     for i in range(0, df.shape[0]):
@@ -1339,6 +1344,7 @@ def main():
             if df['MJD-OBS'].values[i]==df_stars['MJD-OBS'].values[j]:
                 df.at[i, 'flux_std_mean_ratio']= df_stars['flux_std_mean_ratio'].values[j]
                 df.at[i, 'flag']= df_stars['flag'].values[j]
+                df.at[i, 'fwhm']= df_stars['fwhm'].values[j]
     df.to_csv(out_csv, index=False)
 
     return 0
