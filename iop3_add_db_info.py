@@ -104,16 +104,17 @@ def register_raw(data_dir, run_date, db_object, telescope):
                 'min', 'max', 'mean', 'std', 'median']
 
             str_params = ['date_run', 'path', 'date_obs', 'object', \
-                'type', 'filtname', 'telescope', 'instrument']
-            try:
-                if 'RA' not in raw_header:
+                              'type', 'filtname', 'telescope', 'instrument']
+            if 'RA' not in raw_header:
+                try:
                     ra = raw_header['OBJCTRA'].split(' ')
                     dec = raw_header['OBJCTDEC'].split(' ')
-                raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
-                raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
-            except:
-                #This is not a science file
-                continue
+                    raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                    raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                except:
+                    print(f"{raw_path} not a science file")
+                    #This is not a science file
+                    continue
             if 'INSPOROT' not in raw_header and 'FILTER' in raw_header:
                 if raw_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear', 'I']:
                     raw_header['INSPOROT'] = -999
@@ -1577,6 +1578,7 @@ def compose_final_table(db_object, run_date, telescope):
     table_rows=db_cursor.fetchall()
 
     df_maglit=pd.DataFrame(table_rows, columns=['name', 'Rmag_lit'])
+    df_phot['aperas'] = df_phot['aperpix'] * df_phot['secpix']
     df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
     df_phot=df_phot.drop(columns='fwhm')
     df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)
@@ -1654,6 +1656,7 @@ def compose_final_table(db_object, run_date, telescope):
     for column in col_description:
         col_names_phot.append(column[0])
     df_phot = pd.DataFrame(table_rows_phot, columns=col_names_phot)
+    df_phot['aperas'] = df_phot['aperpix'] * df_phot['secpix']
     df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
     df_phot = df_phot.drop(columns='fwhm')
     df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)

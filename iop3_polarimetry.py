@@ -134,11 +134,11 @@ def polarimetry_osn(df):
     if round(df['SECPIX'].values[0],2) == 0.38 or round(df['SECPIX'].values[0],2) == 0.39 or round(df['SECPIX'].values[0],2) == 0.77 or round(df['SECPIX'].values[0],2) == 0.78 :
         #values for T090
         #qoff = 0.0645
-        qoff = 0.0570
-        uoff = 0.06
+        qoff = 0.0579
+        uoff = 0.0583
         #uoff = 0.0574
-        dqoff = 0.001
-        duoff = 0.003
+        dqoff = 0.003
+        duoff = 0.0023
         Phi=math.radians(-18)
         dPhi=math.radians(0.001)
     elif round(df['SECPIX'].values[0],2) == 0.23 or round(df['SECPIX'].values[0],2) == 0.46: 
@@ -198,6 +198,7 @@ def polarimetry_osn(df):
     q = qc*math.cos(2*Phi) - uc*math.sin(2*Phi)
     u = qc*math.sin(2*Phi) + uc*math.cos(2*Phi)
     
+    #Comment these to get instrumental polarization
     dqa = qc*math.cos(2*Phi) * math.sqrt((dqc/qc)**2+((2*dPhi*math.sin(2*Phi))/(math.cos(2*Phi)))**2) 
     dqb = uc*math.sin(2*Phi) * math.sqrt((duc/uc)**2+((2*dPhi*math.cos(2*Phi))/(math.sin(2*Phi)))**2)
     dua = qc*math.sin(2*Phi) * math.sqrt((dqc/qc)**2+((2*dPhi*math.cos(2*Phi))/(math.sin(2*Phi)))**2) 
