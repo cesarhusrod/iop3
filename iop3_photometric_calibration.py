@@ -672,7 +672,7 @@ def main():
     parser = argparse.ArgumentParser(prog='iop3_photometric_calibration.py', \
     conflict_handler='resolve',
     description='''Main program that perfoms input FITS photometric calibration. ''',
-    epilog='''''')
+    epilog='')
     parser.add_argument("config_dir", help="Configuration parameter files directory")
     parser.add_argument("output_dir", help="Output base directory for FITS calibration")
     parser.add_argument("input_fits", help="Astrocalibrated input FITS file")
@@ -944,7 +944,7 @@ def main():
             Filter='R'
             if 'FILTER' in i_fits.header:
                 Filter=i_fits.header['FILTER']
-            if 'R' in filter:
+            if 'R' in Filter:
                 Filter='R'
                 
             which_mag=''
