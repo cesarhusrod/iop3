@@ -33,7 +33,7 @@ def main():
     parser = argparse.ArgumentParser(prog='iop3_add_blazarinfo_to_database.py', \
     conflict_handler='resolve',
     description='''Set MAPCAT blazar parameters into `blazar_source` table. ''',
-    epilog='''''')
+    epilog='')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
     parser.add_argument("blazar_csv", help="Path to CSV format file with information about MAPCAT blazars.")
     # parser.add_argument("input_dir", help="Input directory")
@@ -81,12 +81,12 @@ def main():
 
     # reading input CSV blazar file
     if not os.path.exists(args.blazar_csv):
-        print(f'ERROR: Blazars file "{args.blazar_csv}" does not exists')
+        print(f'ERROR: Blazars file "{args.blazar_csv}" does not exist')
         return 1
     
     data = pd.read_csv(args.blazar_csv)    
     
-    query_insert = 'INSERT INTO blazar_source(`aper_pix_sext`, `name`, `name_IAU`, `ra2000`, `dec2000`, `rmag`, `rmagerr`, `P`, `dP`, `Theta`, `dTheta`) VALUES '
+    query_insert = 'INSERT INTO blazar_source(`aper_pix_sext`, `name`, `name_IAU`, `ra2000`, `dec2000`, `rmag`, `rmagerr`, `P`, `dP`, `Theta`, `dTheta`,`bmag`,`bmagerr`, `vmag`,`vmagerr`,`imag`,`imagerr`,`umag`,`umagerr`) VALUES '
     values = []
     for index, row in data.iterrows():
         # check for new blazar
@@ -94,10 +94,12 @@ def main():
         db_cursor.execute(query_check)
         res_search = db_cursor.fetchall()
         if db_cursor.rowcount == 0:
-            line = " ({}, '{}', '{}', '{}', '{}', {}, {}, {}, {}, {}, {})"
+            line = " ({}, '{}', '{}', '{}', '{}', {}, {}, {}, {}, {}, {} , {}, {}, {}, {}, {}, {}, {}, {})"
             line = line.format(row['aper_mc'], row['name_mc'], row['IAU_name_mc'], \
-                row['ra2000_mc'], row['dec2000_mc'], row['Rmag_mc'], row['Rmagerr_mc'], \
-                row['PolDeg_mc'], row['ErrPolDeg_mc'], row['PolAngle_mc'], row['ErrPolAngle_mc'])
+                                   row['ra2000_mc'], row['dec2000_mc'], row['Rmag_mc'], row['Rmagerr_mc'], \
+                                   row['PolDeg_mc'], row['ErrPolDeg_mc'], row['PolAngle_mc'], row['ErrPolAngle_mc'], \
+                                   row['Bmag'], row['Bmagerr'],row['Vmag'], row['Vmagerr'], \
+                                   row['Imag'], row['Imagerr'], row['Umag'], row['Umagerr'])
             # Insert new blazar or calibrator        
             values.append(line.replace('nan', 'NULL').replace("'NULL'", "NULL"))
     

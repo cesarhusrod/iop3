@@ -767,11 +767,7 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
         cr_fits.plot(inner_detect_sext_png, title=title_plot, \
             ref_coords='pixel', color='magenta', \
             coords=(data_sext_filtered['X_IMAGE'], data_sext_filtered['Y_IMAGE']))
-        # plotFits(clean_rotated_fits, inner_detect_sext_png, title=title_plot, \
-        #     ref_coords='pixel', color='magenta', \
-        #     coords=(data_sext_filtered['X_IMAGE'], data_sext_filtered['Y_IMAGE'])) # , \
-        #     # dictParams={'aspect':'auto', 'invert':'True', 'stretch': 'log', 'vmin':1})
-
+        
         # get better SExtractor detections for astrocalibration
         df_sorted = get_brilliant_sources(pd.DataFrame(data_sext_filtered), exptime)    
         
@@ -791,14 +787,6 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
         cr_fits.plot(out_detect_sext_png, title=title_plot, \
             coords=(df_sorted['X_IMAGE'], df_sorted['Y_IMAGE']), \
             ref_coords='pixel', color='green')
-        # plotFits(clean_rotated_fits, out_detect_sext_png, title=title_plot, \
-        #     coords=(df_sorted['X_IMAGE'], df_sorted['Y_IMAGE']), \
-        #     ref_coords='pixel', color='green') #, dictParams={'aspect':'auto', 'invert':'True'})
-
-        # # Astrometric calibration
-        # print("\tUsing new central FITS coordinates (Closest MAPCAT source)")
-        # closest_blazar_coords = {'RA': nearest_blazar['ra2000_mc_deg'], \
-        #     'DEC': nearest_blazar['dec2000_mc_deg']}
         
         res_astrocal = astrocal(clean_rotated_fits, blazar_path, cat_sort_filtered, \
             exclude_border=border, tol_pixs=tol_pixs, crotation=crotation)
@@ -807,6 +795,57 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
             print(f'ASTROCALIBRATION,ERROR,"Executing astrocalibration routine on \'{clean_rotated_fits}\'."')
             return 6
     else:
+        #### WARNING: This is a copy of the astrocalibration of the blazar, below is commented
+        #The old procedure for stars where it took the best blazar calibration of the night
+        # and used it... but it was problematic when in the night no blazar was observe!!
+        # SO THIS IS IN TESTING
+
+        # -------------- Astrocalibrating STAR -------------
+        # Filtering sources too close to FITS limits
+        data_sext_filtered = inner_detections(clean_rotated_fits, cat, border)
+        n_sources = len(data_sext_filtered.index)
+        if n_sources < 3:
+            message = 'ASTROCALIBRATION,WARNING,"Low number of sources ({}) in {}".'
+            print(message.format(n_sources, clean_rotated_fits))
+        
+        print(f"Number of sources after filtering = {n_sources}")
+
+        # Plotting inner sources...
+        # INNER SOURCES
+        inner_detect_sext_png = root_crf +  '_inner_detect_sext.png'
+        print('Out PNG ->', inner_detect_sext_png)
+        title_plot = f'SExtractor astrocalibration sources in {fits_object} {dateobs} {exptime}s'
+        cr_fits.plot(inner_detect_sext_png, title=title_plot, \
+            ref_coords='pixel', color='magenta', \
+            coords=(data_sext_filtered['X_IMAGE'], data_sext_filtered['Y_IMAGE']))
+        
+        # get better SExtractor detections for astrocalibration
+        df_sorted = get_brilliant_sources(pd.DataFrame(data_sext_filtered), exptime)    
+        
+        n_sources_filtered = df_sorted['NUMBER'].size
+        print(f'Number of brightest sources used = {n_sources_filtered}')
+        #cat_sort = cat.replace('.cat', '_sorted.cat')
+        cat_sort_filtered = root_crf + '_sorted_filtered.cat'
+
+        # Writing to file (needed for WCSTools astrometric calibration)
+        df_sorted.to_csv(cat_sort_filtered, index=False, sep=' ', header=False, columns=['X_IMAGE', 'Y_IMAGE'])
+
+        # Plotting selected brilliant sources
+        out_detect_sext_png = root_crf + '_detect_sext.png'
+        print('Out PNG ->', out_detect_sext_png)
+        title_plot = f'Valid astrocalibration sources in {fits_object} {dateobs} {exptime}s'
+
+        cr_fits.plot(out_detect_sext_png, title=title_plot, \
+            coords=(df_sorted['X_IMAGE'], df_sorted['Y_IMAGE']), \
+            ref_coords='pixel', color='green')
+        
+        res_astrocal = astrocal(clean_rotated_fits, blazar_path, cat_sort_filtered, \
+            exclude_border=border, tol_pixs=tol_pixs, crotation=crotation)
+            
+        if res_astrocal:
+            print(f'ASTROCALIBRATION,ERROR,"Executing astrocalibration routine on \'{clean_rotated_fits}\'."')
+            return 6
+        '''
         # -------------- Astrocalibrating STAR --------------
         # getting most brilliant source. This is our STAR
         print(f'cat = {cat}')
@@ -826,10 +865,7 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
         cr_fits.plot('selected_star.png', title='SELECTED STAR', \
             ref_coords='pixel', color='magenta', \
             coords=(dt_star['X_IMAGE'].values, dt_star['Y_IMAGE'].values))
-        # plotFits(clean_rotated_fits, 'selected_star.png', title='SELECTED STAR', \
-        #     ref_coords='pixel', color='magenta', \
-        #     coords=(dt_star['X_IMAGE'].values, dt_star['Y_IMAGE'].values))
-        
+                
         # get best calibration of the night
         calibration_dir = "/".join(path_fits.split("/")[:-2])
         df_best = get_best_astrocal(calibration_dir)
@@ -842,10 +878,7 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
         # set new/updated header keywords
         new_keys = OrderedDict()
         
-        # new_keys['CRVAL1'] = closest_iop3_source['ra2000_mc_deg']
-        # # Change DEC coordinate. I add -50 pixels to closest IOP3 target
-        # new_keys['CRVAL2'] = closest_iop3_source['dec2000_mc_deg'] - (50 * best_fits.header['SECPIX2'] / 3600.0) 
-        
+                
         # New procedure
         blazar_ra = nearest_blazar['ra2000_mc_deg']
         blazar_dec = nearest_blazar['dec2000_mc_deg']
@@ -864,14 +897,6 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
             pref_dec = '0'
         b_dec_dms = f'{op}{pref_dec}{int(b_dec.d)}:{int(b_dec.m)}:{b_dec.s:.5f}'
 
-        # center_coords = center_coordinates((x_star, y_star), \
-        #     (blazar_ra, blazar_dec), (input_head['NAXIS1'], input_head['NAXIS2']), \
-        #     arcs_per_pixel=0.53)
-        # new_coords = SkyCoord(center_coords['RA'], center_coords['DEC'], unit="deg")
-        # new_keys['CRVAL1'] = center_coords['RA']
-        # new_keys['CRVAL2'] = center_coords['DEC']
-        # new_keys['CRPIX1'] = input_head['NAXIS1'] / 2
-        # new_keys['CRPIX2'] = input_head['NAXIS1'] / 2
         
         cards = []
 
@@ -926,94 +951,8 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
         # Copying calibration keywords to FITS
         cal_fits = mcFits(astrom_out_fits)
         cal_fits.update_header(cards)
-
-
-        # new_keys['CRVAL1'] = blazar_ra
-        # new_keys['CRVAL2'] = blazar_dec
-        # new_keys['CRPIX1'] = round(x_star)
-        # new_keys['CRPIX2'] = round(y_star)
-        # new_keys['EPOCH'] = 2000
-        # new_keys['CDELT1'] = best_fits.header['CDELT1']
-        # new_keys['CDELT2'] = best_fits.header['CDELT2']
-        # new_keys['CTYPE1'] = 'RA---TAN'
-        # new_keys['CTYPE2'] = 'DEC--TAN'
-        # new_keys['CD1_1'] = best_fits.header['CD1_1']
-        # new_keys['CD1_2'] = best_fits.header['CD1_2']
-        # new_keys['CD2_1'] = best_fits.header['CD2_1']
-        # new_keys['CD2_2'] = best_fits.header['CD2_2']
-        # # new_keys['PC1_1'] = best_fits.header['CD1_1']
-        # # new_keys['PC1_2'] = best_fits.header['CD1_2']
-        # # new_keys['PC2_1'] = best_fits.header['CD2_1']
-        # # new_keys['PC2_2'] = best_fits.header['CD2_2']
-
-        # # new_keys['PC1_1'] = 1
-        # # new_keys['PC1_2'] = 0
-        # # new_keys['PC2_1'] = 0
-        # # new_keys['PC2_2'] = 1
-
-        # # rad_angle = math.radians(best_fits.header.get('CROTA1', best_fits.header.get('CROTA', 0)))
-        # # proportion = best_fits.header['CDELT2'] / best_fits.header['CDELT1']
-        # # new_keys['PC1_1'] = math.cos(rad_angle)
-        # # new_keys['PC1_2'] = -1 * proportion * math.sin(rad_angle)
-        # # new_keys['PC2_1'] = proportion * math.sin(rad_angle)
-        # # new_keys['PC2_2'] = math.cos(rad_angle)
+        '''
         
-        # new_keys['WCSRFCAT'] = 'tmc'
-        # new_keys['WCSIMCAT'] = ''
-        # new_keys['WCSMATCH'] = 1
-        # new_keys['WCSNREF'] = 1
-        # new_keys['WCSTOL'] = 0
-   
-        # t_ra = new_coords.ra.hms
-        # t_dec = new_coords.dec.dms
-        # new_keys['RA'] = f'{int(t_ra.h)}:{int(t_ra.m)}:{t_ra.s:.4f}'
-        # op = '+'
-        # if t_dec.d < 0:
-        #     op = ''
-        # new_keys['DEC'] = f'{op}{int(t_dec.d)}:{int(t_dec.m)}:{t_dec.s:.5f}'
-        # new_keys['WRA'] = new_keys['RA']
-        # new_keys['WDEC'] = new_keys['DEC'] 
-        # new_keys['EQUINOX'] = 2000
-        # new_keys['CROTA1'] = best_fits.header['CROTA1']
-        # new_keys['CROTA2'] = best_fits.header['CROTA2']
-        # new_keys['SECPIX1'] = best_fits.header.get('SECPIX1', '')
-        # new_keys['SECPIX2'] = best_fits.header.get('SECPIX2', '')
-        # # In some cases, only 'SECPIX' header keyword is present in calibrated FITS (square pixel size)
-        # if 'SECPIX' in best_fits.header:
-        #     new_keys['SECPIX1'] = best_fits.header['SECPIX']
-        #     new_keys['SECPIX2'] = best_fits.header['SECPIX']
-        # new_keys['WCSSEP'] = 0
-        # new_keys['IMWCS'] = 'None'
-        
-        # print(new_keys)
-        
-        # using clean_rotated_fits as FITS base    
-        # hdul = fits.open(clean_rotated_fits)
-        # header = hdul[0].header
-        # # delete some keywords
-        # for k in ['PC001001', 'PC001002', 'PC002001', 'PC002002']:
-        #     header.remove(k, ignore_missing=True)
-        # special keywords
-        #if 'RA' in header:
-        #    header.rename_keyword('RA', 'WRA')
-        #    header.rename_keyword('DEC', 'WDEC')
-        #else:
-        #    header.rename_keyword('OBJCTRA', 'WRA')
-        #    header.rename_keyword('OBJCTDEC', 'WDEC')
-        # header['BLANK'] = 32768
-
-        # calibration keywords
-        #for k, v in new_keys.items():
-        #    header.remove(k, ignore_missing=True)
-        #    header.append(card=(k, v, ''), end=True) # set
-            
-        # Finally, saving/updating astrocalibreated file with star coordinates and astrometric keywords from best fit
-        #if 'fits' in clean_rotated_fits: 
-        #    astrom_out_fits = clean_rotated_fits.replace('.fits', 'w.fits')
-        #else:
-        #    astrom_out_fits = clean_rotated_fits.replace('.fit', 'w.fits')
-        #hdul[0].header = header
-        #hdul.writeto(astrom_out_fits, output_verify='fix', overwrite=True)
 
     return 0
 

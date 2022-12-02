@@ -74,9 +74,9 @@ def main():
             rjd_start=Time(f'{args.date_start} 12:00:00.000', format='iso').jd-2400000-50000
             rjd_end=Time(args.date_end, format='iso').jd-2400000-50000+1.5 #Get the full night 
         # query
-            query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
+            query1 = f"SELECT name_IAU, name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME_IAU='{args.blazar_name}' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
         else:
-            query1 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME='{args.blazar_name}'"
+            query1 = f"SELECT name_IAU, name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR FROM polarimetry WHERE NAME_IAU='{args.blazar_name}'"
         # query execution
         cursor.execute(query1)
 
@@ -84,7 +84,7 @@ def main():
         table_rows = cursor.fetchall()
 
         # casting to Pandas DataFrame object
-        df = pd.DataFrame(table_rows, columns=['name', 'alternative_name', 'telescope', 'P','dP', 'RJD-50000', 'MJD-OBS', 'Theta', 'dTheta', 'R', 'dR'])
+        df = pd.DataFrame(table_rows, columns=['name_IAU', 'name', 'telescope', 'P','dP', 'RJD-50000', 'MJD-OBS', 'Theta', 'dTheta', 'R', 'dR'])
         #df['jyear'] = Time(df['MJD-OBS'], format='mjd').jyear
         
         if len(df.index) == 0:
@@ -95,14 +95,14 @@ def main():
         df['jyear'] = Time(df['RJD-50000']+2400000+50000, format='jd').jyear
         #Get reference stars
         for i in range(0,df.shape[0]):
-            alt_name=df.alternative_name.values[i]
+            alt_name=df.name.values[i]
             if alt_name!=None:
                 break
 
         if args.full_range==False:
-            query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
+            query2 = f"SELECT name_IAU, name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE NAME LIKE '%{alt_name}%' AND `rjd-50000`>='{rjd_start}' AND `rjd-50000`<='{rjd_end}'"
         else:
-            query2 = f"SELECT name, alternative_name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE ALTERNATIVE_NAME LIKE '%{alt_name}%'"
+            query2 = f"SELECT name_IAU, name, telescope, P, dP, `rjd-50000`,`mjd_obs`, Theta, dTheta, R, dR, Rmag_lit FROM polarimetry_reference_stars WHERE NAME LIKE '%{alt_name}%'"
         # query execution
         cursor.execute(query2)
 
@@ -110,7 +110,7 @@ def main():
         table_rows_refstars = cursor.fetchall()
 
         # casting to Pandas DataFrame object
-        df_stars = pd.DataFrame(table_rows_refstars, columns=['name', 'alternative_name', 'telescope', 'P','dP', 'RJD-50000', 'MJD-OBS', 'Theta', 'dTheta', 'R', 'dR', 'Rmag_lit'])
+        df_stars = pd.DataFrame(table_rows_refstars, columns=['name_IAU', 'name', 'telescope', 'P','dP', 'RJD-50000', 'MJD-OBS', 'Theta', 'dTheta', 'R', 'dR', 'Rmag_lit'])
         if len(df_stars.index) == 0:
             print(f'WARNING: This is not a blazar "{alt_name}", quitting')
             cursor.close()
@@ -131,7 +131,7 @@ def main():
             if Rmag_lit!=None:
                 break
         for i in range(0,df_stars.shape[0]):
-            alt_name_star=df_stars.alternative_name.values[i]
+            alt_name_star=df_stars.name.values[i]
             if alt_name_star!=None:
                 break        
         #to start plotting

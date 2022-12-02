@@ -104,16 +104,17 @@ def register_raw(data_dir, run_date, db_object, telescope):
                 'min', 'max', 'mean', 'std', 'median']
 
             str_params = ['date_run', 'path', 'date_obs', 'object', \
-                'type', 'filtname', 'telescope', 'instrument']
-            try:
-                if 'RA' not in raw_header:
+                              'type', 'filtname', 'telescope', 'instrument']
+            if 'RA' not in raw_header:
+                try:
                     ra = raw_header['OBJCTRA'].split(' ')
                     dec = raw_header['OBJCTDEC'].split(' ')
-                raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
-                raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
-            except:
-                #This is not a science file
-                continue
+                    raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                    raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                except:
+                    print(f"{raw_path} not a science file")
+                    #This is not a science file
+                    continue
             if 'INSPOROT' not in raw_header and 'FILTER' in raw_header:
                 if raw_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear', 'I']:
                     raw_header['INSPOROT'] = -999
@@ -1023,7 +1024,7 @@ def register_photometry(data_dir, run_date, db_object, telescope):
         # Taking info about ordinary and extraordinary sources...
         params = ['cal_id', 'blazar_id','name','name_IAU','Telescope'] # Parameters got from database registers
         params += ['date_run', 'mjd_obs', 'rjd-50000', 'pol_angle', \
-                       'aperpix', 'fwhm', 'secpix', 'exptime', 'magzpt']
+                       'aperpix', 'fwhm', 'secpix', 'exptime', 'filter','magzpt']
         
         photo_params = ['mag_auto', 'magerr_auto', 'flux_auto', 'fluxerr_auto', \
                             'flux_aper', 'fluxerr_aper', 'mag_aper', 'magerr_aper', \
@@ -1032,10 +1033,10 @@ def register_photometry(data_dir, run_date, db_object, telescope):
                             'distance_deg']
             
         # String parameters
-        str_params = ['date_run', 'source_type', 'name', 'name_IAU', 'Telescope']
+        str_params = ['date_run', 'source_type', 'name', 'name_IAU', 'Telescope', 'filter']
         
-        blazar_keywords = ['MJD-OBS', 'RJD-50000', 'ANGLE', \
-                               'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'MAGZPT']
+        blazar_keywords = ['MJD-OBS', 'RJD-50000', 'ANGLE',\
+                               'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'filter', 'MAGZPT']
         blazar_photometry_keywords = ['MAG_AUTO', 'MAGERR_AUTO', 'FLUX_AUTO', \
                                           'FLUXERR_AUTO', 'FLUX_APER', 'FLUXERR_APER', 'MAG_APER', \
                                           'MAGERR_APER', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', \
@@ -1206,15 +1207,11 @@ def register_photometry_refstars(data_dir, run_date, db_object, telescope):
                 print(f"ERROR: No found blazar_id for calibrated fits '{cal_name}'")
                 return 3 
     
-            # Parameters from input photometry file
-            #  index_O,id_mc_O,id_blazar_mc_O,aper_mc_O,IAU_name_mc_O,ra2000_mc_O,dec2000_mc_O,name_mc_O,Rmag_mc_O,Rmagerr_mc_O,PolDeg_mc_O,ErrPolDeg_mc_O,PolAngle_mc_O,ErrPolAngle_mc_O,ra2000_mc_deg_O,dec2000_mc_deg_O,index_O,NUMBER_O,MAG_AUTO_O,MAGERR_AUTO_O,FLUX_AUTO_O,FLUXERR_AUTO_O,FLUX_APER_O,FLUXERR_APER_O,MAG_APER_O,MAGERR_APER_O,X_IMAGE_O,Y_IMAGE_O,ALPHA_J2000_O,DELTA_J2000_O,FLAGS_O,CLASS_STAR_O,FWHM_IMAGE_O,FWHM_WORLD_O,ELONGATION_O,ELLIPTICITY_O,DISTANCE_DEG_O,
-            # index_E,id_mc_E,id_blazar_mc_E,aper_mc_E,IAU_name_mc_E,ra2000_mc_E,dec2000_mc_E,name_mc_E,Rmag_mc_E,Rmagerr_mc_E,PolDeg_mc_E,ErrPolDeg_mc_E,PolAngle_mc_E,ErrPolAngle_mc_E,ra2000_mc_deg_E,dec2000_mc_deg_E,index_E,NUMBER_E,MAG_AUTO_E,MAGERR_AUTO_E,FLUX_AUTO_E,FLUXERR_AUTO_E,FLUX_APER_E,FLUXERR_APER_E,MAG_APER_E,MAGERR_APER_E,X_IMAGE_E,Y_IMAGE_E,ALPHA_J2000_E,DELTA_J2000_E,FLAGS_E,CLASS_STAR_E,FWHM_IMAGE_E,FWHM_WORLD_E,ELONGATION_E,ELLIPTICITY_E,DISTANCE_DEG_E,RA_J2000_O,DEC_J2000_O,RA_J2000_E,DEC_J2000_E,
-            # APERPIX,FWHM,SECPIX,DATE-OBS,MJD-OBS,RJD-50000,EXPTIME,ANGLE,MAGZPT
 
             # Taking info about ordinary and extraordinary sources...
             params = ['cal_id', 'blazar_id','name','name_IAU','Telescope'] # Parameters got from database registers
             params += ['date_run', 'mjd_obs', 'rjd-50000', 'pol_angle', \
-                           'aperpix', 'fwhm', 'secpix', 'exptime', 'magzpt']
+                           'aperpix', 'fwhm', 'secpix', 'exptime', 'filter', 'magzpt']
             
             photo_params = ['mag_auto', 'magerr_auto', 'flux_auto', 'fluxerr_auto', \
                                 'flux_aper', 'fluxerr_aper', 'mag_aper', 'magerr_aper', \
@@ -1223,10 +1220,10 @@ def register_photometry_refstars(data_dir, run_date, db_object, telescope):
                                 'distance_deg']
             
             # String parameters
-            str_params = ['date_run','name', 'name_IAU','source_type', 'Telescope']
+            str_params = ['date_run','name', 'name_IAU','source_type', 'Telescope', 'filter']
             
             blazar_keywords = ['MJD-OBS', 'RJD-50000', 'ANGLE', \
-                                   'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'MAGZPT']
+                                   'APERPIX', 'FWHM', 'SECPIX', 'EXPTIME', 'filter', 'MAGZPT']
             blazar_photometry_keywords = ['MAG_AUTO', 'MAGERR_AUTO', 'FLUX_AUTO', \
                                               'FLUXERR_AUTO', 'FLUX_APER', 'FLUXERR_APER', 'MAG_APER', \
                                               'MAGERR_APER', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', \
@@ -1560,7 +1557,7 @@ def compose_final_table(db_object, run_date, telescope):
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
 
-    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}'"
+    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = '{R}' "
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1577,6 +1574,7 @@ def compose_final_table(db_object, run_date, telescope):
     table_rows=db_cursor.fetchall()
 
     df_maglit=pd.DataFrame(table_rows, columns=['name', 'Rmag_lit'])
+    df_phot['aperas'] = df_phot['aperpix'] * df_phot['secpix']
     df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
     df_phot=df_phot.drop(columns='fwhm')
     df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)
@@ -1643,7 +1641,7 @@ def compose_final_table(db_object, run_date, telescope):
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
 
-    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}'"
+    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = '{R}'"
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1654,6 +1652,7 @@ def compose_final_table(db_object, run_date, telescope):
     for column in col_description:
         col_names_phot.append(column[0])
     df_phot = pd.DataFrame(table_rows_phot, columns=col_names_phot)
+    df_phot['aperas'] = df_phot['aperpix'] * df_phot['secpix']
     df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
     df_phot = df_phot.drop(columns='fwhm')
     df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)

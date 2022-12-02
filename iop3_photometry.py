@@ -972,16 +972,25 @@ def main():
     pair_params['ID-MC'] = [info_target['id_mc_O'].iloc[0]]
     pair_params['ID-BLAZAR-MC'] = [info_target['id_blazar_mc_O'].values[0]]
     # pair_params['TYPE'] = ['O', 'E']
+    
+    Filter = 'R'
     if 'INSPOROT' in header:
-        angle = float(header['INSPOROT'])
+        angle = float(header['INSPOROT']) 
     else:
+        Filter = header['FILTER']
         if header['FILTER']=='R':
+            angle = -999.0
+        elif 'R' not in header['FILTER']:
             angle = -999.0
         elif header['FILTER']=='R_45':
             angle = float(-45)
         else:
             angle = float(header['FILTER'].replace('R',''))
-            
+    
+    if 'R' in Filter:
+        Filter = 'R'
+   
+    pair_params['FILTER'] = [Filter]
     pair_params['ANGLE'] = [round(angle, ndigits=1)]
     pair_params['OBJECT'] = [header['OBJECT']]
     
@@ -1057,6 +1066,7 @@ def main():
     info_target['RJD-50000'] = [Time(i_fits.header['DATE-OBS']).mjd - 50000 + 0.5] * info_target.shape[0]
     info_target['EXPTIME'] = [i_fits.header['EXPTIME']] * info_target.shape[0]
     info_target['ANGLE'] = [round(angle, ndigits=1)] * info_target.shape[0]
+    info_target['filter'] = [Filter] * info_target.shape[0]
     info_target['MAGZPT'] = [round(header['MAGZPT'], 2)] * info_target.shape[0]
 
 

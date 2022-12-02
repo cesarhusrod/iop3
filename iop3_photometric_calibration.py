@@ -493,7 +493,14 @@ def compute_zeropoint(input_fits, merged_data, output_png=None):
         tuple: (mag_zeropoint, magerr_zeropoint, num_non-saturated_calibrators)
     """ 
     i_fits = mcFits(input_fits)
-     
+    
+    Filter='R'
+    if 'FILTER' in i_fits.header:
+        Filter=i_fits.header['FILTER']
+    if 'R' in Filter:
+        Filter='R'
+
+    print(f"\nComputing zeropoint for filter: {Filter}\n")
     # checking for non-saturated calibrators
     print("checking Saturation")
     print(merged_data[['IAU_name_mc_O', 'DISTANCE_DEG_O', 'FLUX_APER_O', 'FLAGS_O', 'DISTANCE_DEG_E', 'FLUX_APER_E', 'FLAGS_E']])
@@ -551,7 +558,13 @@ def compute_zeropoint(input_fits, merged_data, output_png=None):
     
     # Computing ZEROPOINT using non-saturated calibrators (or all of them if 
     # they are all saturated)
-    zps = merged_data['Rmag_mc_O'][~sat_calibrator].values + 2.5 * np.log10(calibrators_total_flux.values)
+    
+    which_mag=''
+    if Filter=='R':
+        which_mag=f'{Filter}mag_mc_O'
+    else:
+        which_mag=f'{Filter}mag_O'
+    zps = merged_data[which_mag][~sat_calibrator].values + 2.5 * np.log10(calibrators_total_flux.values)
     
     return zps.mean(), zps.std(), len(zps)
 
@@ -603,13 +616,28 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
         print(f'ERROR: No closer enough MAPCAT sources found for this input FITS: {input_fits}')
         return 3
     
+    #Dected which filter are we analyzing
+    Filter='R'
+    if 'FILTER' in i_fits.header:
+        Filter=i_fits.header['FILTER']
+    if 'R' in Filter:
+        Filter='R'
+    
+    which_mag=''
+    which_magerr=''
+    if Filter=='R':
+        which_mag=f'{Filter}mag_mc_O'
+        which_magerr=f'{Filter}magerr_mc_O'
+    else:
+        which_mag=f'{Filter}mag_O'
+        which_magerr=f'{Filter}magerr_O'
     # Printing info about MAPCAT-SExtractor sources
-    str_match_mapcat = " MAPCAT (name, ra, dec, Rmag, Rmagerr) = ({}, {}, {}, {}, {})"
+    str_match_mapcat = "MAPCAT (name, ra, dec, "+Filter+"mag, "+Filter+"magerr) = ({}, {}, {}, {}, {})"
     str_match_sext = "SExtractor (ra, dec, mag_aper, magerr_aper) = ({}, {}, {}, {})"
     str_dist = "Distance = {}\n-----------------------"
     for j, row in data_match_o.iterrows():
         print(str_match_mapcat.format(row['name_mc_O'], row['ra2000_mc_deg_O'], row['dec2000_mc_deg_O'], \
-            row['Rmag_mc_O'], row['Rmagerr_mc_O']))
+            row[which_mag], row[which_magerr]))
         print(str_match_sext.format(row['ALPHA_J2000_O'], row['DELTA_J2000_O'], \
             row['MAG_APER_O'], row['MAGERR_APER_O']))
         print(str_dist.format(row['DISTANCE_DEG_O']))
@@ -748,6 +776,7 @@ def main():
     # print("MAPCAT filtered info...")
     print(df_mc_o.info())
     print(df_mc_o)
+    
     print(f'Number of MAPCAT sources inside FITS sky area = {len(df_mc_o.index)}')
 
     root, ext = os.path.splitext(input_fits)
@@ -911,13 +940,26 @@ def main():
         try:
             # SExtractor AUTO measures used in photometric calibration
             # total_flux = (data['FLUX_AUTO'][indexes_target]).sum()
+            
+            Filter='R'
+            if 'FILTER' in i_fits.header:
+                Filter=i_fits.header['FILTER']
+            if 'R' in filter:
+                Filter='R'
+                
+            which_mag=''
+            if Filter=='R':
+                which_mag=f'{Filter}mag_mc_O'
+            else:
+                which_mag=f'{Filter}mag_O'
+                
             if 'MAPCAT' in input_fits:
                 fluxes = info_target['FLUX_AUTO_O'] + info_target['FLUX_AUTO_E']
             else:
                 fluxes = info_target['FLUX_AUTO_O']
 
             total_flux = fluxes.values.sum()
-            mag_zeropoint = info_target['Rmag_mc_O'].values[0] + \
+            mag_zeropoint = info_target[which_mag].values[0] + \
                 2.5 * np.log10(total_flux)
             std_mag_zeropoint = 0
         except ValueError:
