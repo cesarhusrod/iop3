@@ -892,7 +892,6 @@ def main():
     else:
         df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
     if len(df_stars.index) > 0:
-
         #df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
         # sorting by DATE-OBS
         df_stars = df_stars.sort_values('DATE-OBS', ascending=True)
@@ -1028,16 +1027,15 @@ def main():
                 message = 'PHOTOMETRY,ERROR,"Failed processing star: DATE-OBS={}, OBJECT={}, EXPTIME={}"'
                 print(message.format(i_fits.header['DATE-OBS'], i_fits.header['OBJECT'], i_fits.header['EXPTIME']))
                 continue
-
+                
     #  4th STEP: Computing polarimetric parameters
     if not args.skip_polarimetry:
-        if pol_sources:
-            print("COMPUTING POLARIMETRY. Please wait...")
-            com_polarimetry = f"python iop3_polarimetry.py {proc_dirs['calibration_dir']} {proc_dirs['polarization_dir']}"
-            print('+' * 100)
-            print(com_polarimetry)
-            print('+' * 100)
-            subprocess.Popen(com_polarimetry, shell=True).wait()
+        print("COMPUTING POLARIMETRY. Please wait...")
+        com_polarimetry = f"python iop3_polarimetry.py {proc_dirs['calibration_dir']} {proc_dirs['polarization_dir']}"
+        print('+' * 100)
+        print(com_polarimetry)
+        print('+' * 100)
+        subprocess.Popen(com_polarimetry, shell=True).wait()
 
     # 5th STEP: Inserting results in database
     telescope=input_dir.split('/')[-2]

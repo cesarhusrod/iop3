@@ -137,8 +137,8 @@ def main():
         print(df)
         print(df_stars)
         print(df['flag'])
-        df=df[df['flag'].values.astype(int)<1]
-        df_stars=df_stars[df_stars['flag'].values.astype(int)<1]
+        df=df[df['flag'].values.astype(int)<5]
+        df_stars=df_stars[df_stars['flag'].values.astype(int)<5]
         for i, telescope in enumerate(telescopes): 
             blazar_df = df[df['telescope'] == telescope]
             if blazar_df.shape[0]>0:
