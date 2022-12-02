@@ -1557,7 +1557,7 @@ def compose_final_table(db_object, run_date, telescope):
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
 
-    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = '{R}' "
+    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = 'R'"
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1641,7 +1641,7 @@ def compose_final_table(db_object, run_date, telescope):
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
 
-    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = '{R}'"
+    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = 'R'"
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1662,7 +1662,7 @@ def compose_final_table(db_object, run_date, telescope):
     for col in alt_phot.columns:
         if col in df_phot:
             alt_phot[col] = df_phot[col]
-    alt_phot['manual_flag'] = 0
+    
     alt_phot['flag'] = 0
 
     final_df = pd.concat([df_pol, alt_phot])
