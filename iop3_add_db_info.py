@@ -93,7 +93,7 @@ def register_raw(data_dir, run_date, db_object, telescope):
                 raw_fits = mcFits(raw_path)
             except:
                 print(f"ERROR: processing {raw_path}")
-                raise
+                continue
             raw_header = raw_fits.header
             raw_stats = raw_fits.stats()
             
@@ -105,6 +105,16 @@ def register_raw(data_dir, run_date, db_object, telescope):
 
             str_params = ['date_run', 'path', 'date_obs', 'object', \
                               'type', 'filtname', 'telescope', 'instrument']
+            
+            if 'RA' in raw_header:
+                if ' ' in raw_header['RA']:
+                    try:
+                        ra = raw_header['RA'].split(' ')
+                        dec = raw_header['DEC'].split(' ')
+                        raw_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                        raw_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                    except:
+                        print(f"{raw_path} not a science file")
             if 'RA' not in raw_header:
                 try:
                     ra = raw_header['OBJCTRA'].split(' ')
@@ -114,7 +124,7 @@ def register_raw(data_dir, run_date, db_object, telescope):
                 except:
                     print(f"{raw_path} not a science file")
                     #This is not a science file
-                    continue
+                    continue 
             if 'INSPOROT' not in raw_header and 'FILTER' in raw_header:
                 if raw_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear', 'I']:
                     raw_header['INSPOROT'] = -999
@@ -674,6 +684,16 @@ def register_reduced(data_dir, run_date, db_object, telescope):
             str_params = ['date_run', 'path', 'date_obs', 'object', \
                 'soft', 'proc_date', 'type', 'object', 'filtname', \
                 'telescope', 'instrument']
+
+            if 'RA' in red_header:
+                if ' ' in red_header['RA']:
+                    try:
+                        ra = red_header['RA'].split(' ')
+                        dec = red_header['DEC'].split(' ')
+                        red_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                        red_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                    except:
+                        print(f"{red_path} not a science file")
             
             if 'RA' not in red_header:
                 ra = red_header['OBJCTRA'].split(' ')
@@ -781,6 +801,7 @@ def register_calibrated(data_dir, run_date, db_object, telescope):
             if db_cursor.rowcount == 0:
                 # Insert new register
                 cal_path = os.path.join(cal_dir, cal_name)
+                print(cal_path)
                 try:
                     cal_fits = mcFits(cal_path)
                 except:
@@ -905,7 +926,7 @@ def register_calibrated(data_dir, run_date, db_object, telescope):
                     db_cursor.execute(sql_insert)
                 except:
                     print(f"SQL ERROR: {sql_insert}")
-                    raise
+                    continue
                 
                 # Commiting insertion
                 db_object.commit()
@@ -1207,7 +1228,7 @@ def register_photometry_refstars(data_dir, run_date, db_object, telescope):
                 print(f"ERROR: No found blazar_id for calibrated fits '{cal_name}'")
                 return 3 
     
-
+            
             # Taking info about ordinary and extraordinary sources...
             params = ['cal_id', 'blazar_id','name','name_IAU','Telescope'] # Parameters got from database registers
             params += ['date_run', 'mjd_obs', 'rjd-50000', 'pol_angle', \
@@ -1242,60 +1263,35 @@ def register_photometry_refstars(data_dir, run_date, db_object, telescope):
             cal_id=cal_id
             values = [cal_id, blazar_id, blazar_name, blazar_name_IAU,telescope, dt.strftime("%Y-%m-%d")]
             values += [photometry_data[k].values[1] for k in blazar_keywords]
-
+            
             # Checking previous information on blazar in photometry table...
             sql_search_cal_id = f"SELECT `cal_id` FROM `photometry_reference_stars` WHERE `cal_id`={cal_id} AND date_run='{run_date}'"
             db_cursor.execute(sql_search_cal_id)
             res_search_cal_id = db_cursor.fetchall()
-        
-            if db_cursor.rowcount == 0:
-                # Insert new register
-                for t in ['O', 'E']:
-                    par = params + photo_params + ['source_type']
-                    vals = values + [photometry_data[k + f'_{t}'].values[1] for k in blazar_photometry_keywords] + [t]
-                    # formatting values
-                    v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, vals)])
-                    print(v)
-                    # Inserting new register on database.photometry
-                
-                    sql_insert = f"INSERT INTO `photometry_reference_stars` (`{'`,`'.join(par)}`) VALUES ({v})"
-                    print(f"SQL command (photometry) = '{sql_insert}'")
-
-                    try:
-                        db_cursor.execute(sql_insert)
-                    except:
-                        print(f"SQL ERROR: {sql_insert}")
-                        raise
-                
-                    # Commiting insertion
-                    db_object.commit()
-
-                    if db_cursor.rowcount > 0:
-                        print(f"INFO: {db_cursor.rowcount} register/s inserted successfully.")
-                    new_registrations += db_cursor.rowcount
-            else:
-                # Update register
-                for t in ['O', 'E']:
-                    par = params + photo_params + ['source_type']
-                    vals = values + [photometry_data[k + f'_{t}'].values[0] for k in blazar_photometry_keywords] + [t]
+            # Update register
+            for t in ['O', 'E']:
+                par = params + photo_params + ['source_type']
+                vals = values + [photometry_data[k + f'_{t}'].values[1] for k in blazar_photometry_keywords] + [t]
                 # formatting values
-                    val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(par, vals)]
-                    v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, vals)])
-                    pairs = []
-                    for k, j in zip(par, val_fmt):
-                        pairs.append(f'`{k}` = {j}')
-                    sql = f"INSERT INTO `photometry_reference_stars` (`{'`,`'.join(par)}`) VALUES ({v}) ON DUPLICATE KEY UPDATE {','.join(pairs)}"
-        
-                    print(f"SQL command (photometry) = {sql}")
-                    try:
-                        db_cursor.execute(sql)
-                    except:
-                        print(f"SQL ERROR: {sql}")
-                        raise
-                    # Commiting insertion
-                    db_object.commit()
-                    if db_cursor.rowcount > 0:
-                        print(f"INFO: {db_cursor.rowcount} register/s inserted successfully.")    
+                val_fmt = [f"'{val}'" if par in str_params else f"{val}" for par, val in zip(par, vals)]
+                v = ','.join([f"'{va}'" if p in str_params else f"{va}" for p, va in zip(par, vals)])
+                pairs = []
+                for k, j in zip(par, val_fmt):
+                    pairs.append(f'`{k}` = {j}')
+                sql = f"INSERT INTO `photometry_reference_stars` (`{'`,`'.join(par)}`) VALUES ({v}) ON DUPLICATE KEY UPDATE {','.join(pairs)}"
+                db_cursor.execute(sql)
+                db_object.commit()
+                print(db_cursor.rowcount)
+                print(f"SQL command (photometry) = {sql}")
+                #try:
+                #    db_cursor.execute(sql)
+                #except:
+                #    print(f"SQL ERROR: {sql}")
+                #    raise
+                # Commiting insertion
+                #db_object.commit()
+                #if db_cursor.rowcount > 0:
+                #    print(f"INFO: {db_cursor.rowcount} register/s inserted successfully.")    
     return new_registrations
 
 
