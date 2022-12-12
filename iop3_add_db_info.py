@@ -448,7 +448,7 @@ def register_masterflats(data_dir, run_date, db_object, telescope):
             
             # Keywords are the same for CSV and fits files.
             if ('INSPOROT' not in mf_header and 'FILTER' in mf_header):
-                if mf_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear','I']:
+                if mf_header['FILTER'] in ['R', 'U', 'V', 'B', 'Clear','I', 'Cle']:
                     mf_header['INSPOROT'] = -999
                 else:
                     mf_header['INSPOROT'] = int(mf_header['FILTER'][1:]) 
@@ -459,7 +459,7 @@ def register_masterflats(data_dir, run_date, db_object, telescope):
                     mf_header['INSPOROT'] = -45
                 else:
                     mf_header['INSPOROT'] = int(mf_header['INSPOROT'][1:])
-            if mf_header['INSPOROT'] in ['I','R', 'U', 'V', 'B', 'Clear']:
+            if mf_header['INSPOROT'] in ['I','R', 'U', 'V', 'B', 'Clear', 'Cle']:
                 mf_header['INSPOROT'] = -999
                 
             keywords = ['NAXIS1', 'NAXIS2', 'INSPOROT', 'SOFT', 'PXBORDER', 'FLATOP']

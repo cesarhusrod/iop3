@@ -3,8 +3,8 @@
 """
 Created on Thu April 15 17:38:23 2021
 
-___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
 
 VERSION:
     0.1 Initial version, based on CAFOS_wcstools_perfect_pruebas_revision_HD.ipynb
@@ -183,18 +183,12 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
     if dt['EXPTIME'] > 1:
         params['FILTER'] = 'Y'
         params['CLEAN'] = 'Y'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
+        # WARNING!!! THIS PATH HAS TO BE SET MANUALLY!!
         params['FILTER_NAME'] = '/home/users/dreg/misabelber/GitHub/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
     
     if dt['STD/MEAN'] > 2: # noisy
         params['ANALYSIS_THRESH'] = 1.5
         params['DETECT_THRESH'] = 1.5
-    # elif dt['STD/MEAN'] > 5: # very noisy
-    #     params['ANALYSIS_THRESH'] = 2.5
-    #     params['DETECT_THRESH'] = 2.5
-
 
     return params
 
@@ -301,7 +295,6 @@ def read_blazar_file(path, verbose=False):
     return df
 
 def closest_blazar(blazar_path, path_fits):
-    """"""
     # Getting header informacion
     i_fits = mcFits(path_fits)
     input_head = i_fits.header
@@ -328,45 +321,6 @@ def closest_blazar(blazar_path, path_fits):
     i_min = distances.deg.argmin()
     
     return df_blazars.iloc[i_min], distances.deg[i_min]
-
-# def closest_blazar(astronomical_deg_coords, blazar_path):
-#     """
-#     Get closest blazar to astronomical_deg_coords.
-    
-#     Args:
-#         astronomical_deg_coords (tuple or list): Astronomical coordinates (ra, dec) in degrees.
-#         blazar_path (str): path to blazars info file.
-        
-#     Returns:
-#         pandas.DataFrame: Info about closest blazar/s.
-#     """
-#     # read blazars file
-#     data = read_blazar_file(blazar_path)
-    
-#     icoords = "{} {}".format(*(astronomical_deg_coords)) # tuple/list expansion
-#     input_coords = SkyCoord(icoords, frame=FK5, unit=(u.deg, u.deg), \
-#     obstime="J2000")
-    
-#     # Blazars subset...
-#     df_blazars = data[data['IAU_name_mc'].notna()]  # take target sources from data
-#     c  = []
-#     for ra, dec in zip(df_blazars['ra2000_mc'], df_blazars['dec2000_mc']):
-#         c.append("{} {}".format(ra, dec))
-#     blazar_coords = SkyCoord(c, frame=FK5, unit=(u.hourangle, u.deg), \
-#     obstime="J2000")
-    
-#     # Closest MAPCAT source to FITS central coordinates
-#     # Distance between this center FITS and MAPCAT targets
-#     distances = input_coords.separation(blazar_coords)
-    
-#     # Closest source in complete set...
-#     i_min = distances.deg.argmin()
-    
-#     blz_name = df_blazars['IAU_name_mc'].values[i_min]
-#     # print(f"Blazar closest source name = {blz_name}")
-#     cond = data['IAU_name_mc'] == blz_name
-    
-#     return data[cond], distances.deg.min()
 
 def detections_inside(data, ra_limits, dec_limits, \
     keywords={'RA': 'ra2000_mc_deg', 'DEC': 'dec2000_mc_deg'}):
@@ -578,78 +532,6 @@ def assoc_sources(df_sext, df_mapcat, max_deg_dist=0.006, suffix='O'):
     # print(f' --------- Columnas para el merge del tipo {suffix} = {df_merge.columns.values}')
 
     return df_merge
-
-
-# def merge_mapcat_sextractor(cat, df_mc, input_fits, max_deg_dist=0.0006):
-#     """_summary_
-
-#     Args:
-#         cat (_type_): _description_
-#         df_mc_o (_type_): _description_
-#         input_fits (_type_): _description_
-#         max_deg_dist (float, optional): _description_. Defaults to 0.006.
-
-#     Returns:
-#         _type_: _description_
-#     """
-#     root, ext = os.path.splitext(input_fits) 
-#     i_fits = mcFits(input_fits)
-#     header = i_fits.header
-
-#     data_match_o = assoc_sources(cat, df_mc, max_deg_dist=max_deg_dist, suffix='O')
-
-#     try:
-#         f_source = data_match_o['IAU_name_mc_O'].str.len() > 0
-#     except TypeError:
-#         print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
-#         return 1 
-#     # if len(df_mapcat[f_source].index) == 0:
-#     if f_source.sum() == 0:
-#         print(data_match_o[['id_mc_O', 'IAU_name_mc_O', 'DISTANCE_DEG_O']])
-#         print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
-#         return 2 
-#     else:
-#         print(f'Target = {data_match_o[f_source]}') 
-    
-#     # Plotting MAPCAT sources
-#     if len(df_mc.index) > 0:
-#         mc_ra = data_match_o['ra2000_mc_deg_O'].values
-#         mc_dec = data_match_o['dec2000_mc_deg_O'].values 
-#         sources_mapcat_png = f'{root}_mapcat_sources.png'
-#         title_temp = "{}, {} ({} s)"
-#         title = title_temp.format(header['OBJECT'], header['DATE-OBS'], header['EXPTIME'])
-#         i_fits.plot(sources_mapcat_png, title=title, astroCal=True, color='magenta', \
-#             coords=(mc_ra, mc_dec), dictParams={'aspect':'auto', 'invert':'True'})
-#         print('Out PNG ->', sources_mapcat_png)
-#     else:
-#         print(f'ERROR: No closer enough MAPCAT sources found for this input FITS: {input_fits}')
-#         return 3
-    
-#     # Printing info about MAPCAT-SExtractor sources
-#     # str_match_mapcat = " MAPCAT (name, ra, dec, Rmag, Rmagerr) = ({}, {}, {}, {}, {})"
-#     # str_match_sext = "SExtractor (ra, dec, mag_auto, magerr_auto) = ({}, {}, {}, {})"
-#     # str_dist = "Distance = {}\n-----------------------"
-#     # for j, row in data_match_o.iterrows():
-#     #     print(str_match_mapcat.format(row['name_mc_O'], row['ra2000_mc_deg_O'], row['dec2000_mc_deg_O'], \
-#     #         row['Rmag_mc_O'], row['Rmagerr_mc_O']))
-#     #     print(str_match_sext.format(row['ALPHA_J2000_O'], row['DELTA_J2000_O'], \
-#     #         row['MAG_AUTO_O'], row['MAGERR_AUTO_O']))
-#     #     print(str_dist.format(row['DISTANCE_DEG_O']))
-
-#     # Extraordinary counterparts location
-#     # rough coordinates (relative to ordinary source locations)
-#     df_mc_e = df_mc.copy()
-#     df_mc_e['dec2000_mc_deg'] = df_mc['dec2000_mc_deg'] - 0.0052
-#     data_match_e = assoc_sources(cat, df_mc_e, max_deg_dist=max_deg_dist, suffix='E')
-
-#     if len(data_match_e.index) != len(data_match_o.index):
-#         print(f'(len(data_match_e), len(data_match_o)) = ({len(data_match_e.index)}, {len(data_match_o.index)})')
-#         print('PHOTOMETRY,ERROR,"Different number of ORDINARY and EXTRAORDINARY sources."')
-#         return 4
-
-#     data_matched = pd.concat([data_match_o, data_match_e], axis=1)
-
-#     return data_matched
 
 def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.006):
     """_summary_
@@ -963,10 +845,6 @@ def main():
     # Loading FITS_LDAC format SExtractor catalog
     data = read_sext_catalog(cat, format='FITS_LDAC')
     
-    
-    # root, ext = os.path.splitext(input_fits)
-    # fits_name = os.path.split(root)[1]
-    
     pair_params = defaultdict(list)
 
     pair_params['ID-MC'] = [info_target['id_mc_O'].iloc[0]]
@@ -1012,11 +890,6 @@ def main():
     pair_params['APERPIX'] = [mc_aper]
     pair_params['RJD-50000'] = [d_obs.mjd - 50000 + 0.5]
     pair_params['FWHM'] = [header.get('FWHM', -99)]
-    # if 'FWHM' in header:
-    #     pair_params['FWHM'] = [header['FWHM']]
-    # else:
-    #     pair_params['FWHM'] = [-99]
-
     # Transforming from degrees coordinates (ra, dec) to ("hh mm ss.ssss", "[sign]dd mm ss.sss") representation
     print('----------- INFO TARGET ----------')
     print(info_target)

@@ -14,8 +14,8 @@ It allows
 
 Created on Mon March 30 16:51:58 2020.
 
-___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
 
 VERSION:
     0.1 Initial version

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+"""
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
+"""
+
 import sys
 from typing import DefaultDict
 
@@ -96,27 +101,6 @@ def object_measures(data, name):
         data_sets = data_sets + subsets(g)
     
     return data_sets        
-
-def instrumental_polarimetry(df):
-    """
-    Compute instrumental polarization for OSN telescopes
-    Args:
-        df (pandas.DataFrame): Data from object taken from 4 polarization angles.
-
-    Returns:
-        tuple: qoff, uoff, duoff, dqoff
-
-    Formula taken from "F. Moreno and O. Muñoz polarization.pdf"
-    """
-
-    #List of zero polarization standars
-    zero_pol=["PG1633+099", "HD154892","HD21447","BD+332642", "GD 319", "BD+38 4955", "HD 14069", "HD 212311", "BD+32 3739", "BD+59 38", ]
-    
-    #List for highly polarized standards
-    high_pol=["BD +64 106", "HD155197", "HD155528", "Hiltner960", "HD 204827", "BD+28 4211", "HD161056", "HD154445", "HD25443", "HD19820"]
-    high_pol_angles=[96.74, 104.45,92.4, 54.54, 59.10, 138.1, 67.33, 88.91, 134.21, 114.46]
-
-    
     
 def polarimetry_osn(df):
     """
@@ -131,12 +115,11 @@ def polarimetry_osn(df):
     """
     #df = df[df['TYPE'] == 'O'] #Only the ordinary source makes sense
     print(df['SECPIX'].values[0])
+    #A very long way to identify the telescope...
     if round(df['SECPIX'].values[0],2) == 0.38 or round(df['SECPIX'].values[0],2) == 0.39 or round(df['SECPIX'].values[0],2) == 0.77 or round(df['SECPIX'].values[0],2) == 0.78 :
         #values for T090
-        #qoff = 0.0645
         qoff = 0.0579
         uoff = 0.0583
-        #uoff = 0.0574
         dqoff = 0.003
         duoff = 0.0023
         Phi=math.radians(-18)
@@ -154,16 +137,33 @@ def polarimetry_osn(df):
         print("COULD NOT DETERMINE TELESCOPE!")
         return -99,-99, -99, -99, -99, -99, -99, -99, -99, -99
 
-    #values of T150 from polarization.pdf
-    #qoff=0.031
-    #uoff=0.024
-    #dqoff=0.05
-    #duoff=0.05
+    ##############################################################################
+    #INSTRUCTIONS TO CALCULATE INSTRUMENTAL POLARIZATION:
+    # 1. Set the qoff, uoff values to 0, also dqa, dqb, phi etc below.
+    # 2. Run the polarimetry script over an epoch with 0 polarization standard stars
+    # 3. Check the Q, U results from the polarimetry csv output.
+    # 4. Calculate the mean values of Q and U removing outliers.
+    # 5. Set those values to the uoff, qoff values above.
+    # 6. To calculate angle Phi, standard polarization stars are needed.
+    # 7. Angle Phi is the difference between the polarization angle of the
+    # star in the literature, and the angle Theta obtained when setting all
+    # these uoff, qoff etc parameters to 0. Calculate the mean of the night for the 
+    # different standard polarization stars. In any case, the effect of setting
+    # properly this angle is not super dramatic. 
+    # Note: This is Only necessary for OSN. T090 is quite stable, but T150 is not, 
+    # instrumental polarization of T150 should be monitored often.
+    #############################################################################
     # For getting instrumental polarization
     #qoff=0
     #uoff=0
     #Phi=0
     #dPhi=0
+
+    #values of T150 from polarization.pdf (highly outdated)
+    #qoff=0.031
+    #uoff=0.024
+    #dqoff=0.05
+    #duoff=0.05
     
     try:
         I_0 = (df['FLUX_APER_O'][df['ANGLE'] == 0]).values[0]
@@ -247,17 +247,6 @@ def polarimetry(df):
 
     Formula taken from "Zapatero_Osorio_2005_ApJ_621_445.pdf"
     """
-    
-    # print("Ordinary data")
-    # print(df_o[['MJD-OBS', 'DATE-OBS', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
-
-    # print("Extraordinary data")
-    # print(df_e[['MJD-OBS', 'DATE-OBS', 'MC-IAU-NAME', 'FLUX_APER', 'FLUXERR_APER']])
-
-    #print(df_o['FLUX_AUTO'][df_o[key_polangle] == '0.0'].values[0])
-    # print('Ordinary =')
-    # print(df_o)
-    # print(df_o.info())
 
     all_angles = df['ANGLE'].unique().tolist()
     

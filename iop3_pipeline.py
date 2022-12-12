@@ -3,8 +3,8 @@
 """
 Created on Thu April 09 09:49:53 2020
 
-___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
 
 VERSION:
     1.0 Initial version
@@ -39,10 +39,13 @@ from mcReduction import mcReduction
 
 def read_blazar_file(blazar_csv):
     """
+    Read the csv list of blazars and field stars.
+    Args:
+        blazar_csv (str): Path to blazars info csv.
+    Returns:
+        pandas.DataFrame: With blazars info.
     """
     df_mapcat = pd.read_csv(blazar_csv, comment='#')
-    # print(df_mapcat.info())
-    # getting coordinates in degrees unit
     c  = []
     for ra, dec in zip(df_mapcat['ra2000_mc'], df_mapcat['dec2000_mc']):
         c.append("{} {}".format(ra, dec))
@@ -76,6 +79,14 @@ def create_dataframe(fits_paths, keywords=[]):
     return pd.DataFrame(info)
 
 def closest_blazar(blazar_data, path_fits):
+    """
+    Get the closest blazar from the blazar csv list to the source in a fits file
+    Args:
+         blazar_data (pandas.DataFrame): With blazars info
+         path_fits (str): Path to fits file
+    Returns:
+        Closest blazar and distance to it.
+    """
     # Getting header informacion
     i_fits = mcFits(path_fits)
     input_head = i_fits.header
@@ -170,80 +181,6 @@ def object_groups(data_object):
         data_sets = data_sets + subsets(g)
     
     return data_sets        
-
-
-
-def group_calibration(data, calibration_dir, config_dir, tol_pixs=10, overwrite=False, crotation=3):
-    # Processing each group
-    calibration = {'CAL_IMWCS': [], 'CAL_NO-IMWCS': [], 'NO-CAL': []}
-    non_calibrated_group_commands =[]
-    non_calibrated_group_datetimes =[]
-    if data is None:
-        print('WARNING: Group has no information')
-        return calibration
-    
-    # print(type(data)) 
-    for index, row in data.iterrows():
-        print(row)
-        # print(row['dateobs'])
-        try:
-            dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-        except:
-            dt_obj = datetime.fromisoformat(row['DATE-OBS']+'0')
-        #if 'MAPCAT' in calibration_dir:
-        #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-        #else:
-        #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
-        im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
-        cal_dir = os.path.join(calibration_dir, im_time)
-        
-        # generating calibration output directory
-        if not os.path.isdir(cal_dir):
-            try:
-                os.makedirs(cal_dir)
-            except IOError:
-                print(f"ERROR: Calibration directory '{cal_dir}' could no be generated.")
-                raise
-
-        # calibration command
-        reduced = row['PATH'].replace('raw', 'reduction')
-        
-        com_calibration = "python iop3_astrometric_calibration.py --crotation={} --tol_pixs={} {} {} {}"
-        if overwrite:
-            com_calibration = "python iop3_astrometric_calibration.py --crotation={} --overwrite --tol_pixs={} {} {} {}"
-
-        com_calibration = com_calibration.format(crotation, tol_pixs, config_dir, cal_dir, reduced)
-        print('+' * 100)
-        print(com_calibration)
-        print('+' * 100)
-        with open(os.path.join(cal_dir, im_time + '.log'), 'w') as log_file:
-            res = subprocess.run(com_calibration, stdout=log_file, \
-                stderr=subprocess.PIPE, shell=True)
-            if res.returncode:
-                print(f'ASTROCALIBRATION,ERROR,"Failed for calibrating {reduced} file."')
-        # Checking for succesful calibration
-        calibrated = glob.glob(os.path.join(cal_dir, '*final.fit*'))
-        if calibrated:
-            calibration['CAL_IMWCS'].append(calibrated[0])
-            # Photometric calibration
-            if overwrite:
-                com_photocal = f"python iop3_photometric_calibration.py --overwrite {config_dir} {cal_dir} {calibrated[0]}"
-            else:
-                com_photocal = f"python iop3_photometric_calibration.py {config_dir} {cal_dir} {calibrated[0]}"
-            print('+' * 100)
-            print(com_photocal)
-            print('+' * 100)
-            
-            res = subprocess.run(com_photocal, stdout=subprocess.PIPE, \
-                stderr=subprocess.PIPE, shell=True)
-            if res.returncode:
-                print(f'PHOTOCALIBRATION,ERROR,"Failed for calibrating {calibrated[0]} file."')
-                print(f'(Error code = {res.returncode})')
-        else:
-            non_calibrated_group_commands.append(row['PATH'])
-            non_calibrated_group_datetimes.append(row['DATE-OBS'])
-
-    return calibration
 
 def get_best_rotangle(path, config_dir, cal_dir, tol_pixs=5):
     """Try serveral rotation angles and gets the one who maximize the number of matches.
@@ -343,6 +280,17 @@ def create_directories(raw_dir, path_subdir='raw'):
 
 
 def contains_valid_coords(fits_path, keywordRA='RA', keywordDEC='DEC'):
+    """
+    Checks if a fits file contains valid RA,DEC coordinates
+    
+    Args:
+         fits_path (str): Path to fits file
+         keywordRA, keywordDEC: Keywords for RA, DEC coordinates in the
+         fits header
+    Returns:
+         True if valid coordinates
+    """
+
     # Getting header informacion
     i_fits = mcFits(fits_path)
     input_head = i_fits.header
@@ -562,13 +510,10 @@ def main():
 
     # Getting run date (input directory must have pattern like *YYMMDD)
     dt_run = re.findall('(\d{6})', input_dir)[0]
-    # date_run = f'20{dt_run[:2]}-{dt_run[2:4]}-{dt_run[-2:]}'
     
     # --------------- Classifying input FITS -----------------------
     oRed = mcReduction(input_dir, proc_dirs['reduction_dir'], \
         border=args.border_image)
-    # print(f'oRed.science = {oRed.science}')
-    # print(oRed.science.iloc[0])
 
     # ------------ Checking input FITS content --------------- #
     input_paths = oRed.science['FILENAME'].values
@@ -609,8 +554,6 @@ def main():
     print(f'Blazar paths = {len(blazar_paths)}')
     print(f'Star paths = {len(star_paths)}')
     print('----------------------------------------------------------------------')
-    
-    # return -1
 
     # Printing info in detail
     if non_valid_dateobs:
@@ -697,9 +640,7 @@ def main():
             
             df_blazars = pd.concat([df_blazars, df_blazars_obj], axis=1)
             df_blazars.sort_values(by='EXPTIME', inplace=True, ascending=False)
-            # print(df_blazars['EXPTIME'])
             
-            # return -99
             # grouping by object and getting first fit for each group
             candidate_paths = df_blazars.groupby('OBJ')['PATH'].last()
             
@@ -764,10 +705,6 @@ def main():
                     dt_obj = datetime.fromisoformat(row['DATE-OBS'])
                 except:
                     dt_obj = datetime.fromisoformat(row['DATE-OBS']+'0')
-            #if 'MAPCAT' in input_dir:
-            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-            #else:
-            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
 
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             print(f'FITS DateTime = {im_time}')
@@ -797,9 +734,7 @@ def main():
                 
     # Photometric calibration 
     calibrated = sorted(glob.glob(os.path.join(proc_dirs['calibration_dir'], '*-*/*final.fit*')))
-    # print(calibrated)
     df_astrocal_blazars = create_dataframe(calibrated, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'INSPOROT', 'BLZRNAME', 'FWHM'])
-    # print(df_astrocal_blazars[df_astrocal_blazars['BLZRNAME'].isnull()]['PATH'].values)
 
     ###################################################################################
 
@@ -891,7 +826,6 @@ def main():
     else:
         df_stars =  create_dataframe(star_paths, keywords=['DATE-OBS', 'OBJECT', 'EXPTIME', 'FILTER']) 
     if len(df_stars.index) > 0:
-        #df_stars['CLOSE_IOP3'] = [closest_blazar(blazar_data, bp)[0]['IAU_name_mc'] for bp in df_stars['PATH'].values]
         # sorting by DATE-OBS
         df_stars = df_stars.sort_values('DATE-OBS', ascending=True)
     
@@ -906,14 +840,6 @@ def main():
                     dt_obj = datetime.fromisoformat(row['DATE-OBS'])
                 except:
                     dt_obj = datetime.fromisoformat(row['DATE-OBS']+'0')
-            #if 'MAPCAT' in input_dir:
-            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'])
-            #else:
-            #    dt_obj = datetime.fromisoformat(row['DATE-OBS'][:-3])
-            #i_fits = mcFits(row['PATH'])
-            #if len(row['DATE-OBS']) <= 10: # it only contains date in format YYY-mm-dd
-            #    if 'DATE' in i_fits.header and len(i_fits.header['DATE']) > 10:
-            #        dt_obj = datetime.fromisoformat(i_fits.header['DATE'])
 
             im_time = dt_obj.strftime('%Y%m%d-%H%M%S')
             print(f'im_time = {im_time}')
@@ -1048,8 +974,6 @@ def main():
         print(com_insertdb)
         with open(os.path.join(proc_dirs['polarization_dir'], 'db.log'), 'w') as log_file:
             subprocess.Popen(com_insertdb, shell=True, stdout=log_file).wait()
-
-    
 
     # 6th: Generate plot for each observed blazar
     if not args.skip_plotting:
