@@ -852,7 +852,6 @@ def main():
                 aper_pix=float("nan")
             # If there is no aperture asigned for this object, 2 times mean FWHM for night object is taken
             if math.isnan(aper_pix):
-                print(df_fwhm_mean.info())
                 try:
                     fwhm = df_fwhm_mean[df_fwhm_mean["BLZRNAME"] == blzrname]["MEAN_FWHM"].values[0]
                 except:
@@ -963,8 +962,12 @@ def main():
                 # Querying blazar data info file.
                 # If aperture is given, the script takes it.
                 aperas = blazar_data[blazar_data["IAU_name_mc"] == blzr_name]["aper_mc"].values[0]
-                aper = aperas / i_fits.header['PIXSCALE']
-                print(f'aper = {aper}')
+                if 'PIXSCALE' in i_fits.header: 
+                    aper = aperas / i_fits.header['PIXSCALE']
+                    print(f'aper = {aper}')
+                else:
+                    print("No pixscale in header, skipping calibration")
+                    continue
                 cmd_photocal = "python iop3_photometric_calibration.py --aper_pix={} {} {} {}"
                 if args.overwrite:
                     cmd_photocal = "python iop3_photometric_calibration.py --overwrite --aper_pix={} {} {} {}"    

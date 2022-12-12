@@ -431,7 +431,7 @@ def get_mapcat_sources(input_fits, blazar_path):
     
     return df_mc
 
-def assoc_sources(catalog1, catalog2, max_deg_dist=0.0006, suffix='O'):
+def assoc_sources(catalog1, catalog2, max_deg_dist=0.006, suffix='O'):
     """Match each source from 'catalog1' to closest one of 'catalog2'.
 
     Max matched distance betwwen sources is given by 'max_deg_dist' value.
@@ -466,7 +466,7 @@ def assoc_sources(catalog1, catalog2, max_deg_dist=0.0006, suffix='O'):
     df_merge = pd.concat([catalog2, data], axis=1)
     print(f'(suffix, distances) =({suffix}, {d2d.deg})')
     # getting close enough matches
-    fboo = df_merge['DISTANCE_DEG'] < max_deg_dist
+    fboo = round(df_merge['DISTANCE_DEG'],3) <= max_deg_dist
     if fboo.sum() == 0:  # no near sources
         print('Merged catalogs')
         print(df_merge[['IAU_name_mc', 'ra2000_mc_deg', 'dec2000_mc_deg', \
@@ -569,7 +569,7 @@ def compute_zeropoint(input_fits, merged_data, output_png=None):
     return zps.mean(), zps.std(), len(zps)
 
 
-def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.0006):
+def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.006):
     """_summary_
 
     Args:
