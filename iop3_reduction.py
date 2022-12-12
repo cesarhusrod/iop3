@@ -3,8 +3,8 @@
 """
 Created on Thu April 09 09:49:53 2020
 
-___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Hiop3_pousillos'
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
 
 VERSION:
     1.0 Initial version
@@ -57,8 +57,6 @@ def report(csv_file, output_dir, template_file, title=''):
 
     # results = results.sort(columns='DATE-OBS')
     results['FILENAME'] = [os.path.split(r)[1] for r in results['PATH'].values]
-    # results['FILEPNG'] = [quote(r.replace('.fits', '.png'), safe='') for r in results['FILENAME'].values]
-    # results['HISTOPNG'] = [quote(r.replace('.fits', '_histogram.png'), safe='') for r in results['FILENAME'].values]
     if 'MJD-OBS' in results.columns:
         results['MJDOBS'] = results['MJD-OBS']
     if 'DATE-OBS' in results.columns:
@@ -103,7 +101,7 @@ def main():
     conflict_handler='resolve',
     description='''Main program that reads, classify and reduces data from 
     FITS located at input directory. ''',
-    epilog='''''')
+    epilog='')
     parser.add_argument('--version', action='version', version='%(prog)s 0.1')
     parser.add_argument("config_dir", help="Configuration parameter files directory")
     parser.add_argument("reduction_dir", help="Reduction output directory")
@@ -172,7 +170,6 @@ def main():
     print(f'Bias number = {len(oReduction.bias)}')
     print(f'Flats number = {len(oReduction.flats)}')
     print(f'Science number = {len(oReduction.science)}')
-    # print('Description = {}'.format(oReduction.science.describe))
 
     # Getting input FITS info
     some_raw_keys = ['INSFLNAM', 'NAXIS1', 'NAXIS2', 'RA', 'DEC', 'OBJECT', \
@@ -211,10 +208,7 @@ def main():
     # Saving input raw data by using a CSV file
     csv_data_raw = os.path.join(args.reduction_dir, 'input_data_raw.csv')
     df_raw_out = pd.DataFrame(data_raw_input)
-    # print('df_raw_out.info()')
-    # print(df_raw_out.info())
     df_raw_out.to_csv(csv_data_raw, index=False)
-
 
     # ------------------- MasterBIAS generation -------------------
     if oReduction.createMasterBIAS() != 0:
@@ -355,23 +349,6 @@ def main():
             continue
         mcRED = mcFits(path_red)
 
-        # Estimating FWHM from extracted sources
-        # dictSEx = {}
-        # if 'fits' in mcRED.path:
-        #    dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fits', '.cat')
-        #else:
-        #    dictSEx['CATALOG_NAME'] = mcRED.path.replace('.fit', '.cat')
-        #dictSEx['CONFIG_FILE'] = os.path.join(args.config_dir, 'daofind.sex')
-        
-        #try:
-            #mcRED.compute_fwhm(dictSEx)
-        #    mcRED.get_fwhm(sext_conf=dictSEx['CONFIG_FILE'], cat_out=dictSEx['CATALOG_NAME'])
-        #    mcRED = 0 # Forcing to write FWHM dataSEX
-        #    mcRED = mcFits(path_red, border=border_image)
-        #except Exception as e:
-        #    print(f'REDUCTION,ERROR,"Could not compute FWHM in FITS \'{path_red}\'."')
-        #    print(e)
-
         # Plotting Science image...
         if 'fits' in mcRED.path:
             plotSCI = mcRED.path.replace('.fits', '.png')
@@ -407,7 +384,6 @@ def main():
         some_reduction_keys = ['NAXIS1', 'NAXIS2', 'SOFT', 'PROCDATE', \
             'PXBORDER', 'INSFLNAM', 'RA', 'DEC', 'OBJECT', 'EXPTIME', \
             'DATE-OBS', 'EQUINOX', 'MJD-OBS', 'BIAS', 'FLAT', \
-            # 'FWHM', 'FWHMSTD', 'FWNSOURC', 'FWHMFLAG', 'FWHMELLI', \
             'MAX', 'MIN', 'MEAN', 'STD', 'MED']
         
         for sr_key in some_reduction_keys:

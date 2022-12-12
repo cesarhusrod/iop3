@@ -8,8 +8,8 @@ It allows to users read, write, update and create new files in FITS format.
 
 Created on Mon March 28 17:43:15 2020.
 
-___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
 
 VERSION:
     1.1 Cleaned initial version (2021-11-03)
@@ -440,16 +440,11 @@ class mcFits:
         if dt['EXPTIME'] > 1:
             params['FILTER'] = 'Y'
             params['CLEAN'] = 'Y'
-            # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
-            # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
-            # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
+            # THIS PATH MUST BE MODIFIED!!!!!
             params['FILTER_NAME'] = '/home/users/dreg/misabelber/GitHub/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
         if dt['STD/MEAN'] > 2: # noisy
             params['ANALYSIS_THRESH'] = 1.5
             params['DETECT_THRESH'] = 1.5
-        # elif dt['STD/MEAN'] > 5: # very noisy
-        #     params['ANALYSIS_THRESH'] = 2.5
-        #     params['DETECT_THRESH'] = 2.5
 
         return params
 
@@ -854,9 +849,6 @@ class mcFits:
         """
         if 'SEGMENTATION' not in detect_params:
             detect_params['SEGMENTATION'] = self.path.replace('.fits', '_segment_supersources.fits')
-        # BACKGOUND is contaminated by original data values
-        # if 'BACKGROUND' not in detect_params:
-        #    detect_params['BACKGROUND'] = self.path.replace('.fits', '_back_supersources.fits')
 
         if self.extract_sources(detect_params, overwrite=overwrite,
                                 show_info=show_info):
@@ -885,7 +877,6 @@ class mcFits:
                 y_image = int(data_sextractor['Y_IMAGE'][index])
                 dist = int(square_size / 2)
                 # Replace supersource values for background ones
-                # self.data[x-dist:x+dist, y-dist:y+dist] = mc_background.data[x-dist:x+dist, y-dist:y+dist]
                 self.data[x_image - dist: x_image + dist,
                           y_image - dist: y_image + dist] = 0
                 counter += 1

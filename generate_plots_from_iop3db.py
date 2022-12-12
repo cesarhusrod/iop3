@@ -3,6 +3,9 @@
 """
 Plotting and saving polarimetry object measurements (and magnitudes) using IOP^3 database queryies.
 
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
+
 VERSION: 0.1
 """
 

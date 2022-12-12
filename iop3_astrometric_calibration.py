@@ -3,8 +3,8 @@
 """
 Created on Thu April 15 17:38:23 2021
 
-___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
 
 VERSION:
     0.1 Initial version, based on CAFOS_wcstools_perfect_pruebas_revision_HD.ipynb
@@ -171,7 +171,6 @@ def read_sext_catalog(path, format='ASCII', verbose=False):
         data_sext = np.genfromtxt(path, names=campos)
         
         # Working with pandas DataFrame
-        # data_sext = pd.DataFrame({k:np.atleast_1d(data_sext[k]) for k in campos})
     else:
         sext = fits.open(path)
         data_sext = sext[2].data
@@ -197,7 +196,6 @@ def get_duplicated(cat_path, format='ASCII'):
     data = pd.DataFrame(data)
     
     numbers = list()
-    # mask = np.ones(len(data['NUMBER'].index), dtype=bool) # Nothing selected
     mask = np.ones(data['NUMBER'].size, dtype=bool) # Nothing selected
 
     for index, n in enumerate(data['NUMBER'].tolist()):
@@ -209,7 +207,6 @@ def get_duplicated(cat_path, format='ASCII'):
             boo = (data['NUMBER'].astype(int) != n) & (disty < 10) & \
                 (distx > 5) & (distx < 45) & (diffmag < 2) # & (data['FLAGS'].astype(int) == 0)
             if boo.sum() >= 1: # Hay fuentes que han pasado el filtro anterior
-                # print(data_sex[boo].info())
                 numbers.append(int(data[boo]['NUMBER'].values[0]))
                 mask[index] = False
 
@@ -395,17 +392,12 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
     if dt['EXPTIME'] > 1:
         params['FILTER'] = 'Y'
         params['CLEAN'] = 'Y'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
+        # THIS PATH HAS TO BE MANUALLY CHANGED!
         params['FILTER_NAME'] = '/home/users/dreg/misabelber/GitHub/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
     
     if dt['STD/MEAN'] > 2: # noisy
         params['ANALYSIS_THRESH'] = 1.5
         params['DETECT_THRESH'] = 1.5
-    # elif dt['STD/MEAN'] > 5: # very noisy
-    #     params['ANALYSIS_THRESH'] = 2.5
-    #     params['DETECT_THRESH'] = 2.5
 
     return params
 
@@ -522,7 +514,7 @@ def get_brilliant_sources(data, exptime, max_number=75, exptime_threshold=1):
 def astrocal(path_fits, blazar_file_path, coords_csv, exclude_border=15, tol_pixs=10, crotation=3):
     """
     """
-    # header del fichero
+    # header of the file
     fits = mcFits(path_fits)
     head = fits.header
 
@@ -797,7 +789,7 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
     else:
         #### WARNING: This is a copy of the astrocalibration of the blazar, below is commented
         #The old procedure for stars where it took the best blazar calibration of the night
-        # and used it... but it was problematic when in the night no blazar was observe!!
+        # and used it... but it was problematic when in the night no blazar was observed!!
         # SO THIS IS IN TESTING
 
         # -------------- Astrocalibrating STAR -------------
@@ -845,6 +837,8 @@ def calibrate(path_fits, sext_conf, blazar_path, overwrite=False, \
         if res_astrocal:
             print(f'ASTROCALIBRATION,ERROR,"Executing astrocalibration routine on \'{clean_rotated_fits}\'."')
             return 6
+
+        # OLD PROCEDURE
         '''
         # -------------- Astrocalibrating STAR --------------
         # getting most brilliant source. This is our STAR

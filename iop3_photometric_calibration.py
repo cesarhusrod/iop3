@@ -3,8 +3,9 @@
 """
 Created on Thu April 15 17:38:23 2021
 
-___e-mail__ = cesar_husillos@tutanota.com
-__author__ = 'Cesar Husillos'
+___e-mail__ = cesar_husillos@tutanota.com, m.isabel.bernardos@gmail.com
+__author__ = 'Cesar Husillos', 'María Isabel Bernardos Martín'
+
 
 VERSION:
     0.1 Initial version, based on CAFOS_wcstools_perfect_pruebas_revision_HD.ipynb
@@ -184,10 +185,8 @@ def sext_params_detection(path_fits, border=15, sat_threshold=45000):
     if dt['EXPTIME'] > 1:
         params['FILTER'] = 'Y'
         params['CLEAN'] = 'Y'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/mexhat_5.0_11x11.conv'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/gauss_5.0_9x9.conv'
+        # WARNING THIS PATH HAS TO BE MANUALLY SET!!
         params['FILTER_NAME'] = '/home/users/dreg/misabelber/GitHub/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
-        # params['FILTER_NAME'] = '/home/cesar/desarrollos/Ivan_Agudo/code/iop3/conf/filters_sext/tophat_5.0_5x5.conv'
     
     if dt['STD/MEAN'] > 2: # noisy
         params['ANALYSIS_THRESH'] = 1.5
@@ -594,7 +593,6 @@ def merge_mapcat_sextractor(df_sext, df_mc, input_fits, max_deg_dist=0.006):
     except TypeError:
         print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
         return 1 
-    # if len(df_mapcat[f_source].index) == 0:
     if f_source.sum() == 0:
         print(data_match_o[['id_mc_O', 'IAU_name_mc_O', 'DISTANCE_DEG_O']])
         print('PHOTOCALIBRATION,ERROR,"SExtractor has not detected close source to target IOP3."')
