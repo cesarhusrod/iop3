@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Thu April 09 09:49:53 2020
@@ -465,7 +465,7 @@ def main():
     parser.add_argument("--skip_db_registration", dest='skip_db_registration', action='store_true', \
         help='Skip registering/updating run information in database as last pipeline step.')
     parser.add_argument("--skip_plotting", dest='skip_plotting', action='store_true', \
-        help='Skip generating plots for the sources observed in the night')
+                        help='DEPRECATED')
     parser.add_argument('-v', '--verbose', action='count', default=0,
         help="Show running and progress information [default: %(default)s].")
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
@@ -974,18 +974,6 @@ def main():
         print(com_insertdb)
         with open(os.path.join(proc_dirs['polarization_dir'], 'db.log'), 'w') as log_file:
             subprocess.Popen(com_insertdb, shell=True, stdout=log_file).wait()
-
-    # 6th: Generate plot for each observed blazar
-    if not args.skip_plotting:
-        if pol_sources: #Plot only if there are polarimetry measurements
-            date=df_blazars['DATE-OBS'].values[0].split('T')[0]
-            for name in blazar_names:
-                com_plot_query = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} "{name}" --full_range=True'
-                com_plot_query_tonight = f'python generate_and_save_plots_from_iop3db.py --out_dir={proc_dirs["polarization_dir"]} "{name}" --date_start={date} --date_end={date}'
-                print(com_plot_query)    
-                subprocess.Popen(com_plot_query, shell=True).wait()
-                print(com_plot_query_tonight)
-                subprocess.Popen(com_plot_query_tonight, shell=True).wait()
 
     return 0
 if __name__ == '__main__':
