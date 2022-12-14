@@ -107,7 +107,7 @@ def register_raw(data_dir, run_date, db_object, telescope):
                               'type', 'filtname', 'telescope', 'instrument']
             
             if 'RA' in raw_header:
-                if ' ' in raw_header['RA']:
+                if ' ' in str(raw_header['RA']):
                     try:
                         ra = raw_header['RA'].split(' ')
                         dec = raw_header['DEC'].split(' ')
@@ -646,7 +646,7 @@ def register_reduced(data_dir, run_date, db_object, telescope):
                 raw_id = res_search_raw_id[0][0]
             else:
                 print(f"ERROR: No found raw_id for reduced fits '{red_name}'")
-                
+                continue
             
             # getting master_bias_id
             sql_search_mb_id = f"SELECT `id` FROM `master_bias` WHERE `path` = '{red_header['BIAS']}'"
@@ -686,7 +686,8 @@ def register_reduced(data_dir, run_date, db_object, telescope):
                 'telescope', 'instrument']
 
             if 'RA' in red_header:
-                if ' ' in red_header['RA']:
+                print(red_header['RA'])
+                if ' ' in str(red_header['RA']):
                     try:
                         ra = red_header['RA'].split(' ')
                         dec = red_header['DEC'].split(' ')
@@ -694,12 +695,16 @@ def register_reduced(data_dir, run_date, db_object, telescope):
                         red_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
                     except:
                         print(f"{red_path} not a science file")
-            
+                        
             if 'RA' not in red_header:
-                ra = red_header['OBJCTRA'].split(' ')
-                dec = red_header['OBJCTDEC'].split(' ')
-                red_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
-                red_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                try:
+                    ra = red_header['OBJCTRA'].split(' ')
+                    dec = red_header['OBJCTDEC'].split(' ')
+                    red_header['RA'] = ((((int(ra[0]) * 3600 + int(ra[1]) * 60 + int(float(ra[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                    red_header['DEC'] = ((((int(dec[0]) * 3600 + int(dec[1]) * 60 + int(float(dec[2])))/3600) * u.hourangle).to(u.deg)).to_value()
+                except:
+                    print(f"{red_path} not a science file")
+                    
             if 'INSPOROT' not in red_header and 'FILTER' in red_header:
                 if red_header['FILTER'] in ['I','R', 'U', 'V', 'B', 'Clear']:
                     red_header['INSPOROT'] = -999
@@ -1552,8 +1557,9 @@ def compose_final_table(db_object, run_date, telescope):
     for column in col_description:
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
+    df_pol.rename(columns = {'R':'Mag', 'dR':'dMag', 'Rmag_lit': 'Mag_lit'}, inplace = True)
 
-    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = 'R'"
+    query_phot=f"SELECT * FROM photometry_reference_stars WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}'"
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1565,15 +1571,17 @@ def compose_final_table(db_object, run_date, telescope):
         col_names_phot.append(column[0])
     df_phot = pd.DataFrame(table_rows_phot, columns=col_names_phot)
 
-    query_star_mag_lit="SELECT name, rmag FROM blazar_source"
+    query_star_mag_lit="SELECT name, rmag, bmag, vmag, imag, umag  FROM blazar_source"
     db_cursor.execute(query_star_mag_lit)
     table_rows=db_cursor.fetchall()
 
-    df_maglit=pd.DataFrame(table_rows, columns=['name', 'Rmag_lit'])
+    df_maglit=pd.DataFrame(table_rows, columns=['name', 'Rmag','Bmag', 'Vmag', 'Imag', 'Umag'])
     df_phot['aperas'] = df_phot['aperpix'] * df_phot['secpix']
     df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
     df_phot=df_phot.drop(columns='fwhm')
-    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)
+    df_phot.rename(columns = {'mag_aper':'Mag', 'magerr_aper':'dMag', 'cal_id':'id', 'fwhm_world': 'fwhm'}, inplace = True)
+
+    df_pol['filter'] = 'R'
 
     alt_phot = pd.DataFrame(columns = df_pol.columns)
 
@@ -1581,20 +1589,25 @@ def compose_final_table(db_object, run_date, telescope):
         if col in df_phot:
             alt_phot[col] = df_phot[col]
 
-    alt_phot['manual_flag'] = 0
     alt_phot['flag'] = 0
     
     final_df = pd.concat([df_pol, alt_phot])
     
     final_df = final_df.merge(df_maglit, on='name', how='left')
-    final_df = final_df.drop(columns='Rmag_lit_x')
-    final_df.rename(columns = {'Rmag_lit_y':'Rmag_lit'}, inplace=True)
+    final_df['Mag_lit'] = final_df['Rmag']
+    
+    for i in range(0, len(final_df)):
+        filt = final_df.loc[i,'filter']
+        final_df.loc[i, 'Mag_lit'] = final_df.loc[i, f'{filt}mag']
+
+    for col in ('Rmag', 'Vmag', 'Bmag', 'Umag', 'Imag'):
+        final_df = final_df.drop(columns=col)
 
     final_df = final_df.drop(columns='id')
-    #final_df = final_df.set_index('blazar_id')
+    
     # Insert DataFrame records one by one.
     par = []
-    str_params = ['date_run', 'source_type', 'name_IAU', 'name', 'Telescope']
+    str_params = ['date_run', 'source_type', 'name_IAU', 'name', 'Telescope', 'filter']
     for row in final_df.values:
         values = []
         pairs = []
@@ -1636,8 +1649,9 @@ def compose_final_table(db_object, run_date, telescope):
     for column in col_description:
         col_names.append(column[0])
     df_pol = pd.DataFrame(table_rows_pol, columns=col_names)
+    df_pol.rename(columns = {'R':'Mag', 'dR':'dMag'}, inplace = True)
 
-    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}' AND `filter` = 'R'"
+    query_phot=f"SELECT * FROM photometry WHERE `date_run` = '{r_date}' AND pol_angle=-999 AND source_type='O' AND `Telescope` = '{telescope}'"
     db_cursor.execute(query_phot)
     table_rows_phot=db_cursor.fetchall()
 
@@ -1651,22 +1665,23 @@ def compose_final_table(db_object, run_date, telescope):
     df_phot['aperas'] = df_phot['aperpix'] * df_phot['secpix']
     df_phot['fwhm_world'] = df_phot['fwhm_world']*3600
     df_phot = df_phot.drop(columns='fwhm')
-    df_phot.rename(columns = {'mag_aper':'R', 'magerr_aper':'dR', 'cal_id':'id', 'fwhm_world': 'fwhm' }, inplace = True)
+    df_phot.rename(columns = {'mag_aper':'Mag', 'magerr_aper':'dMag', 'cal_id':'id', 'fwhm_world': 'fwhm'}, inplace = True)
 
+    df_pol['filter'] = 'R'
     alt_phot = pd.DataFrame(columns = df_pol.columns)
 
     for col in alt_phot.columns:
         if col in df_phot:
             alt_phot[col] = df_phot[col]
-    
+                
     alt_phot['flag'] = 0
 
     final_df = pd.concat([df_pol, alt_phot])
     final_df = final_df.drop(columns='id')
-    #final_df = final_df.set_index('blazar_id')
+    
     # Insert DataFrame records one by one.
     par = []
-    str_params = ['date_run', 'source_type', 'name_IAU', 'name', 'Telescope']
+    str_params = ['date_run', 'source_type', 'name_IAU', 'name', 'Telescope', 'filter']
     for row in final_df.values:
         values = []
         pairs = []
