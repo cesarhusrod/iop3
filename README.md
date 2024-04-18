@@ -23,7 +23,7 @@ El procesamiento de las imágenes consiste en varios pasos:
 
 1. **Reducción de las imágenes**, mediante el procesado y escalado de la imagen de ciencia a partir de las imágenes de BIAS y FLATs en cada uno de los cuatro ángulos de polarización. Esta tarea implica la clasicación de imágenes contenidas en el directorio de entrada: BIAS, FLATs e imágenes de ciencia. También la generación de MasterBIAS y MasterFLATs.
 
-2. **Rotado de imágenes** a 270º para hacerlas orientarlas de forma adecuada.
+2. **Rotado de imágenes** a 270º para orientarlas de forma adecuada.
 
 3. **Localización y eliminación de cada una de las imágenes extraordinarias** para cada fuente de la imagen.
 
