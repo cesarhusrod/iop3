@@ -165,4 +165,8 @@ Si usa este software, por favor cítelo como sigue:
 
 Cesar Husillos Rodriguez;María Isabel Bernardos Martín;Iván Agudo;Giacomo Bonnoli;Juan Escudero Pedrosa;2024, cesarhusrod/iop3: v1.0.0, Zenodo, DOI: 10.5281/zenodo.10995575, as developed on GitHub
 
+## 9. Licencia
+
+Este proyecto se ha desarrollado bajo la licencia GNU General Public License v3.0.
+
 
