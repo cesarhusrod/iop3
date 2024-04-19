@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10995575.svg)](https://doi.org/10.5281/zenodo.10995575)
+
 # IOP3
 
 Pipeline para la reducción y extración de información de fuentes altamente polarizadas usando el instrumento CAFOS del Centro Astronómico Hispano-Alemán (CAHA).
@@ -159,6 +161,8 @@ También puedes contactar a través de *GitHub*.
 
 ## 8. Cómo citar este software
 
+Si usa este software, por favor cítelo como sigue:
 
-## 9. Ejemplos de uso
+Cesar Husillos Rodriguez;María Isabel Bernardos Martín;Iván Agudo;Giacomo Bonnoli;Juan Escudero Pedrosa;2024, cesarhusrod/iop3: v1.0.0, Zenodo, DOI: 10.5281/zenodo.10995575, as developed on GitHub
+
 
